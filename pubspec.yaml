@@ -1,3 +1,4 @@
+#pubspec.yaml
 name: seguimientomapacnt
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
@@ -35,6 +36,9 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   http: ^1.6.0
+  intl: ^0.20.2
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
 
 dev_dependencies:
   flutter_test:
