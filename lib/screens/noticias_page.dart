@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../theme_controller.dart';
 import 'login_screen.dart';
 import 'noticia_detalle_page.dart';
+import 'tomar_noticias_page.dart';
 
 class NoticiasPage extends StatefulWidget {
   final int reporteroId;
@@ -49,13 +50,22 @@ class _NoticiasPageState extends State<NoticiasPage> {
     );
   }
 
-  void _tomarNoticias() {
+  void _tomarNoticias() async {
     Navigator.pop(context); // cierra el drawer
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Función "Tomar Noticias" pendiente por implementar.'),
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TomarNoticiasPage(
+          reporteroId: widget.reporteroId,
+          reporteroNombre: widget.reporteroNombre,
+        ),
       ),
     );
+
+    // Al regresar, recargamos las noticias asignadas al reportero
+    setState(() {
+      _futureNoticias = ApiService.getNoticias(widget.reporteroId);
+    });
   }
 
   void _mostrarAjustes() {
@@ -240,7 +250,6 @@ class _NoticiasPageState extends State<NoticiasPage> {
                     n.noticia,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  subtitle: Text(n.domicilio),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     Navigator.push(

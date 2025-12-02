@@ -44,15 +44,30 @@ class NoticiaDetallePage extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 8),
+
+                  if (noticia.descripcion != null &&
+                      noticia.descripcion!.trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Text(
+                        noticia.descripcion!,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+
                   if (noticia.cliente != null &&
                       noticia.cliente!.trim().isNotEmpty)
                     Text('Cliente: ${noticia.cliente}'),
+
                   const SizedBox(height: 4),
                   Text('Reportero: ${noticia.reportero}'),
                   const SizedBox(height: 4),
-                  Text('Domicilio: ${noticia.domicilio}'),
+                  Text('Domicilio: ${noticia.domicilio ?? 'Sin domicilio'}'),
                   const SizedBox(height: 8),
-                  Text('Fecha de cita: ${_formatearFecha(noticia.fechaCita)}'),
+                  Text(
+                    'Fecha de cita: '
+                    '${noticia.fechaCita != null ? _formatearFecha(noticia.fechaCita!) : 'Sin fecha de cita'}',
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     'Fecha de pago: '

@@ -51,4 +51,49 @@ class ApiService {
       throw Exception('Error en el servidor (${response.statusCode})');
     }
   }
+
+    // 🔹 Noticias disponibles (sin reportero asignado)
+  static Future<List<Noticia>> getNoticiasDisponibles() async {
+    final url = Uri.parse('$baseUrl/get_noticias_disponibles.php');
+
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+
+      if (data['success'] == true) {
+        final List<dynamic> list = data['data'] ?? [];
+        return list.map((e) => Noticia.fromJson(e)).toList();
+      } else {
+        throw Exception(data['message'] ?? 'Error al obtener noticias disponibles');
+      }
+    } else {
+      throw Exception('Error en el servidor (${response.statusCode})');
+    }
+  }
+
+  // 🔹 Tomar noticia: asignar reportero a una noticia
+  static Future<void> tomarNoticia({
+    required int reporteroId,
+    required int noticiaId,
+  }) async {
+    final url = Uri.parse('$baseUrl/tomar_noticia.php');
+
+    final response = await http.post(
+      url,
+      body: {
+        'reportero_id': reporteroId.toString(),
+        'noticia_id': noticiaId.toString(),
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+      if (data['success'] != true) {
+        throw Exception(data['message'] ?? 'No se pudo tomar la noticia');
+      }
+    } else {
+      throw Exception('Error en el servidor (${response.statusCode})');
+    }
+  }
 }

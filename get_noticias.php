@@ -12,6 +12,7 @@ $sql = "
     SELECT
         n.id,
         n.noticia,
+        n.descripcion,
         c.nombre AS cliente,
         n.domicilio,
         r.nombre AS reportero,
