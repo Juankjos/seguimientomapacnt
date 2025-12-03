@@ -96,4 +96,34 @@ class ApiService {
       throw Exception('Error en el servidor (${response.statusCode})');
     }
   }
+
+    static Future<void> actualizarUbicacionNoticia({
+    required int noticiaId,
+    required double latitud,
+    required double longitud,
+    String? domicilio,
+  }) async {
+    final url = Uri.parse('$baseUrl/actualizar_ubicacion_noticia.php');
+
+    final body = {
+      'noticia_id': noticiaId.toString(),
+      'latitud': latitud.toString(),
+      'longitud': longitud.toString(),
+    };
+
+    if (domicilio != null && domicilio.isNotEmpty) {
+      body['domicilio'] = domicilio;
+    }
+
+    final response = await http.post(url, body: body);
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+      if (data['success'] != true) {
+        throw Exception(data['message'] ?? 'No se pudo actualizar la ubicación');
+      }
+    } else {
+      throw Exception('Error en el servidor (${response.statusCode})');
+    }
+  }
 }

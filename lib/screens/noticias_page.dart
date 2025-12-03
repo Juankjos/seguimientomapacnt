@@ -251,13 +251,19 @@ class _NoticiasPageState extends State<NoticiasPage> {
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.push(
+                  onTap: () async {
+                    // Abrimos el detalle y esperamos a que el usuario regrese
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => NoticiaDetallePage(noticia: n),
                       ),
                     );
+
+                    // Al volver del detalle, recargamos las noticias desde el backend
+                    setState(() {
+                      _futureNoticias = ApiService.getNoticias(widget.reporteroId);
+                    });
                   },
                 ),
               );
