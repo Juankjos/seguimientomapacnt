@@ -133,20 +133,43 @@ class _MapaUbicacionPageState extends State<MapaUbicacionPage> {
   }
 
   Future<void> _guardarUbicacion() async {
+    // 🔹 Paso 1: Confirmar
+    final bool? confirmar = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Marcar destino'),
+        content: const Text('¿Marcar este destino?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sí'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true) {
+      // El usuario canceló
+      return;
+    }
+
+    // 🔹 Paso 2: Guardar si confirmó
     setState(() {
       _cargando = true;
     });
 
     try {
-      // En flutter_map 7.x usamos _mapController.camera.center
       final camera = _mapController.camera;
       final center = camera.center;
       final lat = center.latitude;
       final lon = center.longitude;
 
-      // 🔁 Obtenemos domicilio "Calle, Código postal, Municipio"
-      final domicilio =
-          await _obtenerDomicilioDesdeCoordenadas(lat, lon);
+      // Reverse geocoding: construye "Calle, CP Municipio"
+      final domicilio = await _obtenerDomicilioDesdeCoordenadas(lat, lon);
 
       await ApiService.actualizarUbicacionNoticia(
         noticiaId: widget.noticiaId,
@@ -225,6 +248,7 @@ class _MapaUbicacionPageState extends State<MapaUbicacionPage> {
                     child: Icon(
                       Icons.add_location_alt,
                       size: 40,
+                      color: Colors.red,
                     ),
                   ),
                 ),

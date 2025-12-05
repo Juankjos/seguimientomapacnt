@@ -1,7 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
+
+const _kPrefsKeyNoticiasNuevas = 'noticias_nuevas_timestamps';
+const _kNuevaDuracionMs = 10 * 60 * 1000; // 10 minutos
 
 class TomarNoticiasPage extends StatefulWidget {
   final int reporteroId;
@@ -21,11 +27,30 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
   bool _loading = false;
   String? _error;
   List<Noticia> _noticias = [];
+  Set<int> _nuevasNoticias = {}; // IDs de noticias que son "nuevas" visualmente
 
   @override
   void initState() {
     super.initState();
     _cargarNoticias();
+  }
+
+  Future<Map<String, int>> _cargarTimestampsGuardados() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kPrefsKeyNoticiasNuevas);
+    if (raw == null || raw.isEmpty) return {};
+
+    try {
+      final Map<String, dynamic> decoded = jsonDecode(raw);
+      return decoded.map((key, value) => MapEntry(key, value as int));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _guardarTimestamps(Map<String, int> map) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPrefsKeyNoticiasNuevas, jsonEncode(map));
   }
 
   Future<void> _cargarNoticias() async {
@@ -35,9 +60,41 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
     });
 
     try {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+      // 1) Cargar timestamps de primeras apariciones
+      var timestamps = await _cargarTimestampsGuardados();
+
+      // 2) Limpiar entradas viejas (>10min)
+      timestamps.removeWhere((key, ts) => nowMs - ts > _kNuevaDuracionMs);
+
+      // 3) Traer noticias disponibles del backend
       final list = await ApiService.getNoticiasDisponibles();
+
+      final nuevas = <int>{};
+
+      for (final n in list) {
+        final key = n.id.toString();
+
+        if (!timestamps.containsKey(key)) {
+          // Primera vez que aparece en el feed → la marcamos nueva
+          timestamps[key] = nowMs;
+          nuevas.add(n.id);
+        } else {
+          final ts = timestamps[key]!;
+          if (nowMs - ts <= _kNuevaDuracionMs) {
+            // Aún está dentro de la ventana de 10 minutos → sigue siendo nueva
+            nuevas.add(n.id);
+          }
+        }
+      }
+
+      // 4) Guardar de nuevo timestamps (con limpiezas + nuevas entradas)
+      await _guardarTimestamps(timestamps);
+
       setState(() {
         _noticias = list;
+        _nuevasNoticias = nuevas;
       });
     } catch (e) {
       setState(() {
@@ -85,6 +142,7 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
 
       setState(() {
         _noticias.removeWhere((n) => n.id == noticia.id);
+        _nuevasNoticias.remove(noticia.id);
       });
 
       if (!mounted) return;
@@ -108,6 +166,13 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tomar noticias'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Actualizar',
+            onPressed: _loading ? null : _cargarNoticias,
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _cargarNoticias,
@@ -134,7 +199,7 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
       return ListView(
         children: const [
           SizedBox(height: 40),
-          Center(child: Text('No hay noticias disponibles para tomar.')),
+          Center(child: Text('No hay noticias por ahora')),
         ],
       );
     }
@@ -144,12 +209,28 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
       itemCount: _noticias.length,
       itemBuilder: (context, index) {
         final n = _noticias[index];
+        final esNueva = _nuevasNoticias.contains(n.id);
+
         return Card(
           margin: const EdgeInsets.symmetric(vertical: 6),
+          color: esNueva ? const Color(0xFFE3F2FD) : null, // azul claro
           child: ListTile(
-            title: Text(
-              n.noticia,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (esNueva)
+                  Text(
+                    '¡Nueva noticia!',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color.fromARGB(255, 124, 30, 28),
+                    ),
+                  ),
+                Text(
+                  n.noticia,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
             ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

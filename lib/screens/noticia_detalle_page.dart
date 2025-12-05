@@ -80,7 +80,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Noticia #${_noticia.id}'),
+        title: Text('Noticia: ${_noticia.noticia}'),
       ),
       body: Column(
         children: [
@@ -157,7 +157,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
           // ------- Mapa abajo (solo si hay ubicación) -------
           SizedBox(
-            height: 250,
+            height: 600,
             child: tieneCoordenadas && punto != null
                 ? FlutterMap(
                     key: ValueKey(
@@ -182,6 +182,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                             child: const Icon(
                               Icons.location_on,
                               size: 40,
+                              color: Colors.red,
                             ),
                           ),
                         ],
