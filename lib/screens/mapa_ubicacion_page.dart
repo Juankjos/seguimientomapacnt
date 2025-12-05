@@ -7,18 +7,6 @@ import 'package:latlong2/latlong.dart' as latlng;
 
 import '../services/api_service.dart';
 
-class DireccionSugerida {
-  final String displayName;
-  final double lat;
-  final double lon;
-
-  DireccionSugerida({
-    required this.displayName,
-    required this.lat,
-    required this.lon,
-  });
-}
-
 class MapaUbicacionPage extends StatefulWidget {
   final int noticiaId;
   final double? latitudInicial;
@@ -39,24 +27,17 @@ class MapaUbicacionPage extends StatefulWidget {
 
 class _MapaUbicacionPageState extends State<MapaUbicacionPage> {
   late final MapController _mapController;
-  final TextEditingController _searchController = TextEditingController();
 
   bool _cargando = false;
-  bool _buscando = false;
 
-  List<DireccionSugerida> _sugerencias = [];
-
-  // Coordenadas de Tepatitlán de Morelos (centro visual inicial)
-  // Aproximadamente 20.8169, -102.7635 
-  final latlng.LatLng _tepaCenter =
-      latlng.LatLng(20.8169, -102.7635);
+  // Centro visual inicial: Tepatitlán de Morelos
+  final latlng.LatLng _tepaCenter = latlng.LatLng(20.8169, -102.7635);
 
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
 
-    // Si ya hay ubicación, centramos ahí; si no, en Tepatitlán.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final lat = widget.latitudInicial;
       final lon = widget.longitudInicial;
@@ -66,49 +47,25 @@ class _MapaUbicacionPageState extends State<MapaUbicacionPage> {
       } else {
         _mapController.move(_tepaCenter, 14);
       }
-
-      // Si ya había domicilio, lo ponemos en el buscador
-      if (widget.domicilioInicial != null &&
-          widget.domicilioInicial!.trim().isNotEmpty) {
-        _searchController.text = widget.domicilioInicial!;
-      }
     });
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _buscarDirecciones(String query) async {
-    if (query.trim().isEmpty) {
-      setState(() {
-        _sugerencias = [];
-      });
-      return;
-    }
-
-    setState(() {
-      _buscando = true;
-    });
-
+  // 🔁 Reverse geocoding: de lat/lon a "Calle, CP Municipio"
+  Future<String?> _obtenerDomicilioDesdeCoordenadas(
+      double lat, double lon) async {
     try {
-      // Limitamos búsqueda a Jalisco, México
       final params = {
         'format': 'jsonv2',
+        'lat': lat.toString(),
+        'lon': lon.toString(),
         'addressdetails': '1',
-        'limit': '5',
-        'q': '$query, Jalisco, Mexico',
-        'countrycodes': 'mx',
-        // bounding box aproximado de Jalisco (lon_min,lat_max,lon_max,lat_min)
-        'viewbox': '-105.90,22.80,-101.60,18.90',
-        'bounded': '1',
+        'accept-language': 'es',
+        'zoom': '18',
       };
 
       final uri = Uri.https(
         'nominatim.openstreetmap.org',
-        '/search',
+        '/reverse',
         params,
       );
 
@@ -119,42 +76,60 @@ class _MapaUbicacionPageState extends State<MapaUbicacionPage> {
         },
       );
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        final List<DireccionSugerida> resultados = data.map((item) {
-          final lat = double.tryParse(item['lat'].toString()) ?? 0.0;
-          final lon = double.tryParse(item['lon'].toString()) ?? 0.0;
-          final name = item['display_name']?.toString() ?? 'Sin nombre';
-          return DireccionSugerida(
-            displayName: name,
-            lat: lat,
-            lon: lon,
-          );
-        }).toList();
+      if (response.statusCode != 200) return null;
 
-        setState(() {
-          _sugerencias = resultados;
-        });
+      final Map<String, dynamic> data = jsonDecode(response.body);
+
+      final addr = data['address'] as Map<String, dynamic>? ?? {};
+
+      final road = addr['road'] ??
+          addr['pedestrian'] ??
+          addr['footway'] ??
+          addr['residential'];
+      final house = addr['house_number'];
+      final postcode = addr['postcode'];
+      final city = addr['city'] ??
+          addr['town'] ??
+          addr['municipality'] ??
+          addr['village'] ??
+          addr['county'];
+
+      String? parteCalle;
+      if (road != null) {
+        parteCalle = house != null ? '$road $house' : road.toString();
       }
-    } catch (e) {
-      // Podrías mostrar un SnackBar si quieres
-    } finally {
-      if (mounted) {
-        setState(() {
-          _buscando = false;
-        });
+
+      String? parteCP;
+      if (postcode != null) {
+        parteCP = postcode.toString();
       }
+
+      String? parteMunicipio;
+      if (city != null) {
+        parteMunicipio = city.toString();
+      }
+
+      final partes = <String>[];
+      if (parteCalle != null && parteCalle.trim().isNotEmpty) {
+        partes.add(parteCalle);
+      }
+      if (parteCP != null && parteCP.trim().isNotEmpty) {
+        partes.add(parteCP);
+      }
+      if (parteMunicipio != null && parteMunicipio.trim().isNotEmpty) {
+        partes.add(parteMunicipio);
+      }
+
+      if (partes.isEmpty) {
+        // Si no logramos formatear nada, intentamos usar display_name
+        final raw = data['display_name']?.toString();
+        return raw;
+      }
+
+      return partes.join(', ');
+    } catch (_) {
+      return null;
     }
-  }
-
-  Future<void> _moverMapaADireccion(DireccionSugerida dir) async {
-    setState(() {
-      _sugerencias = [];
-      _searchController.text = dir.displayName;
-    });
-
-    final destino = latlng.LatLng(dir.lat, dir.lon);
-    _mapController.move(destino, 17);
   }
 
   Future<void> _guardarUbicacion() async {
@@ -163,36 +138,41 @@ class _MapaUbicacionPageState extends State<MapaUbicacionPage> {
     });
 
     try {
+      // En flutter_map 7.x usamos _mapController.camera.center
       final camera = _mapController.camera;
-      final center = camera.center;  
+      final center = camera.center;
       final lat = center.latitude;
       final lon = center.longitude;
 
-      // Mandamos también el texto de domicilio (opcional)
-      final domicilio = _searchController.text.trim();
+      // 🔁 Obtenemos domicilio "Calle, Código postal, Municipio"
+      final domicilio =
+          await _obtenerDomicilioDesdeCoordenadas(lat, lon);
 
       await ApiService.actualizarUbicacionNoticia(
         noticiaId: widget.noticiaId,
         latitud: lat,
         longitud: lon,
-        domicilio: domicilio.isNotEmpty ? domicilio : null,
+        domicilio: domicilio,
       );
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ubicación guardada correctamente'),
+        SnackBar(
+          content: Text(
+            domicilio != null
+                ? 'Ubicación guardada:\n$domicilio'
+                : 'Ubicación guardada correctamente',
+          ),
         ),
       );
 
-      // Regresamos las coordenadas al caller
       Navigator.pop<Map<String, dynamic>>(
         context,
         {
           'lat': lat,
           'lon': lon,
-          'domicilio': domicilio.isNotEmpty ? domicilio : null,
+          'domicilio': domicilio,
         },
       );
     } catch (e) {
@@ -221,74 +201,7 @@ class _MapaUbicacionPageState extends State<MapaUbicacionPage> {
       ),
       body: Column(
         children: [
-          // --------- Barra superior: PIN + búsqueda + sugerencias ----------
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-            child: Column(
-              children: [
-                TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    labelText: 'Buscar domicilio (Jalisco)',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _buscando
-                        ? const Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _sugerencias = [];
-                              });
-                            },
-                          ),
-                    border: const OutlineInputBorder(),
-                  ),
-                  onChanged: (value) {
-                    _buscarDirecciones(value);
-                  },
-                ),
-                if (_sugerencias.isNotEmpty)
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 160),
-                    margin: const EdgeInsets.only(top: 4),
-                    decoration: BoxDecoration(
-                      color: theme.cardColor,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [
-                        BoxShadow(
-                          blurRadius: 4,
-                          color: Colors.black.withOpacity(0.1),
-                        ),
-                      ],
-                    ),
-                    child: ListView.builder(
-                      itemCount: _sugerencias.length,
-                      itemBuilder: (context, index) {
-                        final s = _sugerencias[index];
-                        return ListTile(
-                          title: Text(
-                            s.displayName,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          onTap: () => _moverMapaADireccion(s),
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          // --------- Mapa con mira en el centro ----------
+          // (Ya no hay barra de búsqueda, solo el mapa)
           Expanded(
             child: Stack(
               children: [
@@ -307,7 +220,6 @@ class _MapaUbicacionPageState extends State<MapaUbicacionPage> {
                     ),
                   ],
                 ),
-                // Mira en el centro
                 const Center(
                   child: IgnorePointer(
                     child: Icon(
@@ -316,7 +228,6 @@ class _MapaUbicacionPageState extends State<MapaUbicacionPage> {
                     ),
                   ),
                 ),
-                // Leyenda abajo
                 Positioned(
                   left: 8,
                   bottom: 8,
