@@ -7,6 +7,7 @@ import '../theme_controller.dart';
 import 'login_screen.dart';
 import 'noticia_detalle_page.dart';
 import 'tomar_noticias_page.dart';
+import 'agenda_page.dart';
 
 class NoticiasPage extends StatefulWidget {
   final int reporteroId;
@@ -62,7 +63,6 @@ class _NoticiasPageState extends State<NoticiasPage> {
       ),
     );
 
-    // Al regresar, recargamos las noticias asignadas al reportero
     setState(() {
       _futureNoticias = ApiService.getNoticias(widget.reporteroId);
     });
@@ -175,16 +175,31 @@ class _NoticiasPageState extends State<NoticiasPage> {
                 title: const Text('Tomar Noticias'),
                 onTap: _tomarNoticias,
               ),
+              ListTile(
+                leading: const Icon(Icons.calendar_today),
+                title: const Text('Agenda'),
+              onTap: () {
+                  Navigator.pop(context); // cierra el drawer
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AgendaPage(
+                        reporteroId: widget.reporteroId,
+                        reporteroNombre: widget.reporteroNombre,
+                      ),
+                    ),
+                  );
+                },
+              ),
 
-              // --------- AQUÍ EL CAMBIO IMPORTANTE ---------
               ListTile(
                 leading: Icon(
                   modoActual == ThemeMode.light
-                      ? Icons.light_mode   // ícono sol
-                      : Icons.dark_mode,   // ícono luna
+                      ? Icons.light_mode
+                      : Icons.dark_mode,
                 ),
                 title: const Text('Color de App'),
-                onTap: _mostrarAjustes, // sigue abriendo tu diálogo
+                onTap: _mostrarAjustes,
               ),
               // ----------------------------------------------
 

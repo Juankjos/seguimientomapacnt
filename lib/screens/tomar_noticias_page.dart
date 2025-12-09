@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -7,7 +9,7 @@ import '../models/noticia.dart';
 import '../services/api_service.dart';
 
 const _kPrefsKeyNoticiasNuevas = 'noticias_nuevas_timestamps';
-const _kNuevaDuracionMs = 10 * 60 * 1000; // 10 minutos
+const _kNuevaDuracionMs = 1 * 60 * 1000;
 
 class TomarNoticiasPage extends StatefulWidget {
   final int reporteroId;
@@ -27,13 +29,26 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
   bool _loading = false;
   String? _error;
   List<Noticia> _noticias = [];
-  Set<int> _nuevasNoticias = {}; // IDs de noticias que son "nuevas" visualmente
+  Set<int> _nuevasNoticias = {};
+
+  Map<String, int> _timestamps = {};
+
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _cargarNoticias();
+    _iniciarTimer();
   }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  // ------------ SharedPreferences helpers ------------
 
   Future<Map<String, int>> _cargarTimestampsGuardados() async {
     final prefs = await SharedPreferences.getInstance();
@@ -53,6 +68,51 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
     await prefs.setString(_kPrefsKeyNoticiasNuevas, jsonEncode(map));
   }
 
+  // ------------ Timer para actualizar el estado "nuevo" en tiempo real ------------
+
+  void _iniciarTimer() {
+    _timer?.cancel();
+    // Revisamos cada 5 segundos, se puede ajustar
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _actualizarEstadoNuevasPorTiempo();
+    });
+  }
+
+  Future<void> _actualizarEstadoNuevasPorTiempo() async {
+    if (_timestamps.isEmpty || _noticias.isEmpty) return;
+
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+    bool huboCambiosTimestamps = false;
+
+    _timestamps.removeWhere((key, ts) {
+      final expired = nowMs - ts > _kNuevaDuracionMs;
+      if (expired) huboCambiosTimestamps = true;
+      return expired;
+    });
+
+    final nuevas = <int>{};
+    for (final n in _noticias) {
+      final key = n.id.toString();
+      final ts = _timestamps[key];
+      if (ts != null && nowMs - ts <= _kNuevaDuracionMs) {
+        nuevas.add(n.id);
+      }
+    }
+
+    if (!setEquals(_nuevasNoticias, nuevas)) {
+      setState(() {
+        _nuevasNoticias = nuevas;
+      });
+    }
+
+    if (huboCambiosTimestamps) {
+      await _guardarTimestamps(_timestamps);
+    }
+  }
+
+  // ------------ Carga de noticias desde backend ------------
+
   Future<void> _cargarNoticias() async {
     setState(() {
       _loading = true;
@@ -62,13 +122,10 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
     try {
       final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-      // 1) Cargar timestamps de primeras apariciones
       var timestamps = await _cargarTimestampsGuardados();
 
-      // 2) Limpiar entradas viejas (>10min)
       timestamps.removeWhere((key, ts) => nowMs - ts > _kNuevaDuracionMs);
 
-      // 3) Traer noticias disponibles del backend
       final list = await ApiService.getNoticiasDisponibles();
 
       final nuevas = <int>{};
@@ -77,25 +134,25 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
         final key = n.id.toString();
 
         if (!timestamps.containsKey(key)) {
-          // Primera vez que aparece en el feed → la marcamos nueva
           timestamps[key] = nowMs;
           nuevas.add(n.id);
         } else {
           final ts = timestamps[key]!;
           if (nowMs - ts <= _kNuevaDuracionMs) {
-            // Aún está dentro de la ventana de 10 minutos → sigue siendo nueva
             nuevas.add(n.id);
           }
         }
       }
 
-      // 4) Guardar de nuevo timestamps (con limpiezas + nuevas entradas)
       await _guardarTimestamps(timestamps);
 
       setState(() {
         _noticias = list;
         _nuevasNoticias = nuevas;
+        _timestamps = timestamps;
       });
+
+      _actualizarEstadoNuevasPorTiempo();
     } catch (e) {
       setState(() {
         _error = 'Error al cargar noticias: $e';
@@ -106,6 +163,8 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
       });
     }
   }
+
+  // ------------ Lógica para tomar noticias ------------
 
   Future<void> _confirmarTomar(Noticia noticia) async {
     final bool? confirmar = await showDialog<bool>(
@@ -143,7 +202,10 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
       setState(() {
         _noticias.removeWhere((n) => n.id == noticia.id);
         _nuevasNoticias.remove(noticia.id);
+        _timestamps.remove(noticia.id.toString());
       });
+
+      await _guardarTimestamps(_timestamps);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -160,6 +222,8 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
       );
     }
   }
+
+  // ------------ UI ------------
 
   @override
   Widget build(BuildContext context) {
@@ -219,9 +283,9 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (esNueva)
-                  Text(
+                  const Text(
                     '¡Nueva noticia!',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Color.fromARGB(255, 124, 30, 28),
                     ),

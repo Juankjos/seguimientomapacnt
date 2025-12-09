@@ -80,56 +80,64 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Noticia: ${_noticia.noticia}'),
+        title: Text('Panel de Detalles'),
       ),
       body: Column(
         children: [
           // ------- Datos arriba -------
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _noticia.noticia,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-
-                  if (_noticia.descripcion != null &&
-                      _noticia.descripcion!.trim().isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: Text(
-                        _noticia.descripcion!,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _noticia.noticia,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 8),
 
-                  if (_noticia.cliente != null &&
-                      _noticia.cliente!.trim().isNotEmpty)
-                    Text('Cliente: ${_noticia.cliente}'),
-                  const SizedBox(height: 4),
-                  Text('Reportero: ${_noticia.reportero}'),
-                  const SizedBox(height: 4),
-                  Text('Domicilio: ${_noticia.domicilio ?? 'Sin domicilio'}'),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Fecha de cita: '
-                    '${_noticia.fechaCita != null ? _formatearFecha(_noticia.fechaCita!) : 'Sin fecha de cita'}',
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Fecha de pago: '
-                    '${_noticia.fechaPago != null ? _formatearFecha(_noticia.fechaPago!) : 'Sin pago registrado'}',
-                  ),
-                  const SizedBox(height: 16),
+                      if (_noticia.descripcion != null &&
+                          _noticia.descripcion!.trim().isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: Text(
+                            _noticia.descripcion!,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ),
 
-                  // Botón Agregar/Editar ubicación
+                      if (_noticia.cliente != null && _noticia.cliente!.trim().isNotEmpty)
+                      Text(
+                        'Cliente: ${_noticia.cliente}',
+                      ),
+                      const SizedBox(height: 4),
+                      Text('Domicilio: ${_noticia.domicilio ?? 'Sin domicilio'}',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Fecha de cita: '
+                        '${_noticia.fechaCita != null ? _formatearFecha(_noticia.fechaCita!) : 'Sin fecha de cita'}',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+
+                      // Botón Agregar/Editar ubicación
                   SizedBox(
                     width: double.infinity,
-                    child: OutlinedButton.icon(
+                    child: FilledButton.icon(
                       onPressed: _abrirMapaUbicacion,
                       icon: Icon(
                         tieneCoordenadas
@@ -144,54 +152,58 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                     ),
                   ),
 
-                  const SizedBox(height: 8),
-                  if (!tieneCoordenadas)
-                    const Text(
-                      'No hay coordenadas para mostrar en el mapa.',
-                      style: TextStyle(color: Colors.red),
-                    ),
-                ],
+                      const SizedBox(height: 8),
+                      if (!tieneCoordenadas)
+                        const Text(
+                          'No hay coordenadas para mostrar en el mapa.',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
 
-          // ------- Mapa abajo (solo si hay ubicación) -------
           SizedBox(
-            height: 600,
-            child: tieneCoordenadas && punto != null
-                ? FlutterMap(
-                    key: ValueKey(
-                        '${_noticia.latitud}-${_noticia.longitud}'), // fuerza reconstrucción
-                    options: MapOptions(
-                      initialCenter: punto,
-                      initialZoom: 16,
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName:
-                            'com.example.seguimientomapacnt',
-                      ),
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: punto,
-                            width: 80,
-                            height: 80,
-                            child: const Icon(
-                              Icons.location_on,
-                              size: 40,
-                              color: Colors.red,
-                            ),
+            height: 500,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: tieneCoordenadas && punto != null
+                    ? FlutterMap(
+                        key: ValueKey('${_noticia.latitud}-${_noticia.longitud}'),
+                        options: MapOptions(
+                          initialCenter: punto,
+                          initialZoom: 16,
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.example.seguimientomapacnt',
+                          ),
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: punto,
+                                width: 80,
+                                height: 80,
+                                child: const Icon(
+                                  Icons.location_on,
+                                  size: 40,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
+                      )
+                    : const Center(
+                        child: Text('Sin mapa disponible'),
                       ),
-                    ],
-                  )
-                : const Center(
-                    child: Text('Sin mapa disponible'),
-                  ),
+              ),
+            ),
           ),
         ],
       ),
