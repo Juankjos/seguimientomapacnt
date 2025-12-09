@@ -7,6 +7,115 @@ import 'noticia_detalle_page.dart';
 
 enum AgendaView { year, month, day }
 
+  // ------------ EFEMÉRIDES POR MES ------------
+
+  class MesEfemeride {
+    final IconData icon;
+    final Color color;
+    final String tooltip;
+
+    MesEfemeride({
+      required this.icon,
+      required this.color,
+      required this.tooltip,
+    });
+  }
+
+  MesEfemeride _efemerideMes(int month, ThemeData theme) {
+    switch (month) {
+      case 1:
+        // Enero – Año Nuevo
+        return MesEfemeride(
+          icon: Icons.celebration,
+          color: Color(0xFFF94144),
+          tooltip: 'Año Nuevo',
+        );
+      case 2:
+        // Febrero – San Valentín / Amor y amistad
+        return MesEfemeride(
+          icon: Icons.favorite,
+          color: Color(0xFFF3722C),
+          tooltip: 'Día del Amor y la Amistad',
+        );
+      case 3:
+        // Marzo – Primavera / Natalicio de Benito Juárez
+        return MesEfemeride(
+          icon: Icons.emoji_nature ,
+          color: Color(0xFFF8961E),
+          tooltip: 'Primavera',
+        );
+      case 4:
+        // Abril – Día del Niño
+        return MesEfemeride(
+          icon: Icons.face_outlined,
+          color: Color(0xFFF9844A),
+          tooltip: 'Día del Niño',
+        );
+      case 5:
+        // Mayo – Día de las Madres
+        return MesEfemeride(
+          icon: Icons.face_2_rounded,
+          color: Color(0xFFF9C74F),
+          tooltip: 'Día de las Madres',
+        );
+      case 6:
+        // Junio – Verano
+        return MesEfemeride(
+          icon: Icons.wb_sunny,
+          color: Color(0xFF90BE6D),
+          tooltip: 'Verano',
+        );
+      case 7:
+        // Julio – Vacaciones de verano
+        return MesEfemeride(
+          icon: Icons.beach_access,
+          color: Color(0xFF43AA8B),
+          tooltip: 'Vacaciones de verano',
+        );
+      case 8:
+        // Agosto – Regreso a clases
+        return MesEfemeride(
+          icon: Icons.school,
+          color: Color(0xFF4D908E),
+          tooltip: 'Regreso a clases',
+        );
+      case 9:
+        // Septiembre – Independencia de México
+        return MesEfemeride(
+          icon: Icons.flag,
+          color: Color(0xFF577590),
+          tooltip: 'Independencia de México',
+        );
+      case 10:
+        // Octubre – Otoño / Día de Muertos cerca
+        return MesEfemeride(
+          icon: Icons.nights_stay,
+          color: Color(0xFF277DA1),
+          tooltip: 'Día de Muertos',
+        );
+      case 11:
+        // Noviembre – Día de Muertos / Revolución Mexicana
+        return MesEfemeride(
+          icon: Icons.local_florist,
+          color: Color(0xFF4D908E),
+          tooltip: 'Día de Muertos',
+        );
+      case 12:
+        // Diciembre – Navidad
+        return MesEfemeride(
+          icon: Icons.ice_skating_outlined,
+          color: Color(0xFFF94144),
+          tooltip: 'Navidad',
+        );
+      default:
+        return MesEfemeride(
+          icon: Icons.event,
+          color: theme.colorScheme.primary,
+          tooltip: 'Mes',
+        );
+    }
+  }
+
 class AgendaPage extends StatefulWidget {
   final int reporteroId;
   final String reporteroNombre;
@@ -41,8 +150,7 @@ class _AgendaPageState extends State<AgendaPage> {
     _cargarNoticias();
   }
 
-  DateTime _soloFecha(DateTime dt) =>
-      DateTime(dt.year, dt.month, dt.day);
+  DateTime _soloFecha(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
 
   Future<void> _cargarNoticias() async {
     setState(() {
@@ -51,13 +159,12 @@ class _AgendaPageState extends State<AgendaPage> {
     });
 
     try {
-      final noticias =
-          await ApiService.getNoticias(widget.reporteroId);
+      final noticias = await ApiService.getNoticias(widget.reporteroId);
 
       _eventosPorDia.clear();
 
       for (final n in noticias) {
-        if (n.fechaCita == null) continue; // solo con fecha_cita
+        if (n.fechaCita == null) continue;
         final fechaClave = _soloFecha(n.fechaCita!);
         _eventosPorDia.putIfAbsent(fechaClave, () => []);
         _eventosPorDia[fechaClave]!.add(n);
@@ -106,8 +213,6 @@ class _AgendaPageState extends State<AgendaPage> {
     final y = fecha.year.toString();
     return '$d/$m/$y';
   }
-
-  // ---------- UI ----------
 
   @override
   Widget build(BuildContext context) {
@@ -195,10 +300,11 @@ class _AgendaPageState extends State<AgendaPage> {
     }
   }
 
-  // ---------- Vista Año: header con año + cuadritos por mes ----------
+  // ---------- Vista Año estilizada con efemérides ----------
 
   Widget _buildVistaYear() {
     final year = _focusedDay.year;
+    final theme = Theme.of(context);
 
     // Calculamos eventos por mes
     final Map<int, int> eventosPorMes = {};
@@ -211,8 +317,6 @@ class _AgendaPageState extends State<AgendaPage> {
         );
       }
     });
-
-    final theme = Theme.of(context);
 
     return Column(
       children: [
@@ -267,7 +371,6 @@ class _AgendaPageState extends State<AgendaPage> {
               final month = index + 1;
               final count = eventosPorMes[month] ?? 0;
               final nombreMes = _nombreMes(month);
-
               final bool tieneEventos = count > 0;
 
               return InkWell(
@@ -303,19 +406,23 @@ class _AgendaPageState extends State<AgendaPage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Inicial grande del mes
-                      CircleAvatar(
-                        radius: 16,
-                        backgroundColor: tieneEventos
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.secondaryContainer,
-                        child: Text(
-                          nombreMes.characters.first,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                      // Ícono de efeméride del mes
+                      Builder(
+                        builder: (context) {
+                          final efem = _efemerideMes(month, theme);
+                          return Tooltip(
+                            message: efem.tooltip,
+                            child: CircleAvatar(
+                              radius: 18,
+                              backgroundColor: efem.color,
+                              child: Icon(
+                                efem.icon,
+                                size: 20,
+                                color: Colors.white,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -334,8 +441,9 @@ class _AgendaPageState extends State<AgendaPage> {
                           color: tieneEventos
                               ? theme.colorScheme.primary
                               : Colors.grey,
-                          fontWeight:
-                              tieneEventos ? FontWeight.w600 : FontWeight.normal,
+                          fontWeight: tieneEventos
+                              ? FontWeight.w600
+                              : FontWeight.normal,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -350,7 +458,7 @@ class _AgendaPageState extends State<AgendaPage> {
     );
   }
 
-  // ---------- Vista Mes: calendario con marcadores ----------
+  // ---------- Vista Mes estilizada ----------
 
   Widget _buildVistaMonth() {
     final theme = Theme.of(context);
@@ -432,7 +540,8 @@ class _AgendaPageState extends State<AgendaPage> {
                       fontWeight: FontWeight.w600,
                     ),
                     weekendStyle: TextStyle(
-                      color: theme.colorScheme.error.withOpacity(0.9),
+                      color:
+                          theme.colorScheme.error.withOpacity(0.9),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -484,7 +593,7 @@ class _AgendaPageState extends State<AgendaPage> {
     );
   }
 
-  // ---------- Vista Día: lista de noticias del día ----------
+  // ---------- Vista Día: lista bonita + botón Ir a detalles ----------
 
   Widget _buildVistaDay() {
     final dia = _selectedDay ?? _soloFecha(DateTime.now());
