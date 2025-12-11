@@ -2,11 +2,11 @@ class Noticia {
   final int id;
   final String noticia;
   final String? descripcion;
-  final String? cliente;      // opcional
-  final String? domicilio;    // ahora opcional
+  final String? cliente;
+  final String? domicilio;
   final String reportero;
-  final DateTime? fechaCita;  // ahora opcional
-  final DateTime? fechaPago;  // ya era opcional
+  final DateTime? fechaCita;
+  final DateTime? fechaPago;
   final double? latitud;
   final double? longitud;
 
@@ -37,12 +37,12 @@ class Noticia {
     return Noticia(
       id: int.parse(json['id'].toString()),
       noticia: json['noticia'] ?? '',
-      descripcion: json['descripcion'],         // puede venir null
-      cliente: json['cliente'],                 // puede venir null
-      domicilio: json['domicilio'],             // puede venir null
+      descripcion: json['descripcion'],
+      cliente: json['cliente'],
+      domicilio: json['domicilio'],
       reportero: json['reportero'] ?? '',
-      fechaCita: _parseDate(json['fecha_cita']), // ahora nullable
-      fechaPago: _parseDate(json['fecha_pago']), // ya nullable
+      fechaCita: _parseDate(json['fecha_cita']),
+      fechaPago: _parseDate(json['fecha_pago']),
       latitud: _parseDouble(json['latitud']),
       longitud: _parseDouble(json['longitud']),
     );

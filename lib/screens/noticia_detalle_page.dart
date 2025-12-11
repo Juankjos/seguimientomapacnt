@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart' as latlng;
 
 import '../models/noticia.dart';
 import 'mapa_ubicacion_page.dart';
+import 'trayecto_ruta_page.dart';
 
 class NoticiaDetallePage extends StatefulWidget {
   final Noticia noticia;
@@ -151,6 +152,27 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                       ),
                     ),
                   ),
+                  if (widget.noticia.latitud != null && widget.noticia.longitud != null)
+                    const SizedBox(height: 8),
+
+                  if (widget.noticia.latitud != null && widget.noticia.longitud != null)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.directions),
+                        label: const Text('Ir a destino ahora'),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => TrayectoRutaPage(
+                                noticia: widget.noticia,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
 
                       const SizedBox(height: 8),
                       if (!tieneCoordenadas)
