@@ -38,6 +38,9 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
   bool _seguirUsuario = false;
   StreamSubscription<Position>? _posicionSub;
 
+  // Zoom cercano para ver calles
+  static const double _zoomSeguir = 17.0;
+
   @override
   void initState() {
     super.initState();
@@ -81,7 +84,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
         _cargando = false;
       });
 
-      // Si el mapa ya está listo, posicionamos la vista inicial
       if (_mapIsReady) {
         _moverMapaInicial();
       }
@@ -197,7 +199,7 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     _mapController.move(center, 13);
   }
 
-  // --------- Seguimiento de usuario ---------
+  // --------- Seguimiento de usuario (centrar cerca) ---------
 
   Future<void> _toggleSeguirUsuario() async {
     if (_seguirUsuario) {
@@ -229,9 +231,9 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       _seguirUsuario = true;
     });
 
-    // Centrar inmediatamente
+    // Centrar inmediatamente con zoom cercano
     if (_mapIsReady && _origen != null) {
-      _mapController.move(_origen!, _mapController.camera.zoom);
+      _mapController.move(_origen!, _zoomSeguir);
     }
 
     // Iniciar stream de posición
@@ -244,7 +246,8 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     ).listen((pos) {
       _origen = latlng.LatLng(pos.latitude, pos.longitude);
       if (_mapIsReady && _seguirUsuario && _origen != null) {
-        _mapController.move(_origen!, _mapController.camera.zoom);
+        // Seguimos al usuario con zoom cercano
+        _mapController.move(_origen!, _zoomSeguir);
       }
       setState(() {}); // para redibujar marker de origen
     });
@@ -263,6 +266,11 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       );
       _mapController.move(center, 13);
     }
+  }
+
+  void _centrarEnDestino() {
+    if (!_mapIsReady) return;
+    _mapController.move(_destino, _zoomSeguir);
   }
 
   @override
@@ -307,7 +315,7 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
               _mapIsReady = true;
               _moverMapaInicial();
             },
-            // 👇 Cuando seguimos al usuario, bloqueamos el drag pero dejamos zoom
+            // Cuando seguimos al usuario, bloqueamos drag pero dejamos zoom
             interactionOptions: InteractionOptions(
               flags: _seguirUsuario
                   ? InteractiveFlag.pinchZoom |
@@ -335,7 +343,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
             ),
             MarkerLayer(
               markers: [
-                // Origen (ubicación actual)
                 if (_origen != null)
                   Marker(
                     point: _origen!,
@@ -347,7 +354,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
                       size: 30,
                     ),
                   ),
-                // Destino
                 Marker(
                   point: _destino,
                   width: 40,
@@ -363,12 +369,13 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
           ],
         ),
 
-        // --------- Botones flotantes (Centrar / Ruta) ---------
+        // --------- Botones flotantes (Seguir / Ruta / Destino) ---------
         Positioned(
           top: 16,
           right: 16,
           child: Column(
             children: [
+              // CENTRAR / SEGUIR
               FloatingActionButton.small(
                 heroTag: 'centrar_btn',
                 onPressed: _toggleSeguirUsuario,
@@ -376,17 +383,38 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
                     ? 'Desactivar seguimiento'
                     : 'Centrar y seguir ubicación',
                 child: Icon(
-                  _seguirUsuario
-                      ? Icons.gps_off
-                      : Icons.gps_fixed,
+                  _seguirUsuario ? Icons.gps_off : Icons.gps_fixed,
                 ),
               ),
               const SizedBox(height: 8),
+
+              // VER RUTA COMPLETA (se deshabilita si seguimos al usuario)
               FloatingActionButton.small(
                 heroTag: 'ruta_btn',
-                onPressed: _verRutaCompleta,
+                onPressed: _seguirUsuario ? null : _verRutaCompleta,
                 tooltip: 'Ver ruta completa',
+                backgroundColor: _seguirUsuario
+                    ? theme.disabledColor.withOpacity(0.3)
+                    : null,
+                foregroundColor: _seguirUsuario
+                    ? theme.disabledColor
+                    : null,
                 child: const Icon(Icons.alt_route),
+              ),
+              const SizedBox(height: 8),
+
+              // UBICAR DESTINO (se deshabilita si seguimos al usuario)
+              FloatingActionButton.small(
+                heroTag: 'destino_btn',
+                onPressed: _seguirUsuario ? null : _centrarEnDestino,
+                tooltip: 'Ubicar destino',
+                backgroundColor: _seguirUsuario
+                    ? theme.disabledColor.withOpacity(0.3)
+                    : null,
+                foregroundColor: _seguirUsuario
+                    ? theme.disabledColor
+                    : null,
+                child: const Icon(Icons.place),
               ),
             ],
           ),
