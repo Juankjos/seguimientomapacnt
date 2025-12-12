@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -31,7 +32,11 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
   bool _cargando = true;
   String? _error;
 
-  bool _mapIsReady = false; // 👈 nuevo flag
+  bool _mapIsReady = false;
+
+  // Seguimiento de la ubicación del usuario
+  bool _seguirUsuario = false;
+  StreamSubscription<Position>? _posicionSub;
 
   @override
   void initState() {
@@ -48,6 +53,12 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       );
       _inicializarRuta();
     }
+  }
+
+  @override
+  void dispose() {
+    _posicionSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _inicializarRuta() async {
@@ -70,8 +81,7 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
         _cargando = false;
       });
 
-      // 👇 Ya NO llamamos aquí a _ajustarMapaBounds().
-      // Esperamos a que el mapa esté listo (onMapReady)
+      // Si el mapa ya está listo, posicionamos la vista inicial
       if (_mapIsReady) {
         _moverMapaInicial();
       }
@@ -148,14 +158,13 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     return puntos;
   }
 
-  // 👇 Esta función se llama SOLO cuando el mapa ya está listo
+  // Se llama cuando el mapa ya está listo
   void _moverMapaInicial() {
     if (!_mapIsReady || _origen == null) return;
 
     if (_rutaPuntos.isNotEmpty) {
       _ajustarMapaBounds();
     } else {
-      // Sin ruta, centramos entre origen y destino
       final center = latlng.LatLng(
         (_origen!.latitude + _destino.latitude) / 2,
         (_origen!.longitude + _destino.longitude) / 2,
@@ -186,6 +195,74 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     );
 
     _mapController.move(center, 13);
+  }
+
+  // --------- Seguimiento de usuario ---------
+
+  Future<void> _toggleSeguirUsuario() async {
+    if (_seguirUsuario) {
+      // Apagar seguimiento
+      setState(() {
+        _seguirUsuario = false;
+      });
+      _posicionSub?.cancel();
+      _posicionSub = null;
+      return;
+    }
+
+    // Encender seguimiento
+    if (_origen == null) {
+      final pos = await _obtenerUbicacionActual();
+      if (pos == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo obtener la ubicación actual.'),
+          ),
+        );
+        return;
+      }
+      _origen = latlng.LatLng(pos.latitude, pos.longitude);
+    }
+
+    setState(() {
+      _seguirUsuario = true;
+    });
+
+    // Centrar inmediatamente
+    if (_mapIsReady && _origen != null) {
+      _mapController.move(_origen!, _mapController.camera.zoom);
+    }
+
+    // Iniciar stream de posición
+    _posicionSub?.cancel();
+    _posicionSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.best,
+        distanceFilter: 5, // metros para actualizar
+      ),
+    ).listen((pos) {
+      _origen = latlng.LatLng(pos.latitude, pos.longitude);
+      if (_mapIsReady && _seguirUsuario && _origen != null) {
+        _mapController.move(_origen!, _mapController.camera.zoom);
+      }
+      setState(() {}); // para redibujar marker de origen
+    });
+  }
+
+  void _verRutaCompleta() {
+    if (!_mapIsReady) return;
+    if (_origen == null && _rutaPuntos.isEmpty) return;
+
+    if (_rutaPuntos.isNotEmpty) {
+      _ajustarMapaBounds();
+    } else if (_origen != null) {
+      final center = latlng.LatLng(
+        (_origen!.latitude + _destino.latitude) / 2,
+        (_origen!.longitude + _destino.longitude) / 2,
+      );
+      _mapController.move(center, 13);
+    }
   }
 
   @override
@@ -219,57 +296,100 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       );
     }
 
-    return FlutterMap(
-      mapController: _mapController,
-      options: MapOptions(
-        initialCenter: _origen!,
-        initialZoom: 13,
-        // 👇 Aquí nos avisa cuando el mapa ya está renderizado
-        onMapReady: () {
-          _mapIsReady = true;
-          _moverMapaInicial();
-        },
-      ),
+    return Stack(
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.example.seguimientomapacnt',
-        ),
-        PolylineLayer(
-          polylines: [
-            if (_rutaPuntos.isNotEmpty)
-              Polyline(
-                points: _rutaPuntos,
-                strokeWidth: 4,
-                color: theme.colorScheme.primary,
-              ),
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: _origen!,
+            initialZoom: 13,
+            onMapReady: () {
+              _mapIsReady = true;
+              _moverMapaInicial();
+            },
+            // 👇 Cuando seguimos al usuario, bloqueamos el drag pero dejamos zoom
+            interactionOptions: InteractionOptions(
+              flags: _seguirUsuario
+                  ? InteractiveFlag.pinchZoom |
+                      InteractiveFlag.doubleTapZoom |
+                      InteractiveFlag.scrollWheelZoom
+                  : InteractiveFlag.all,
+            ),
+          ),
+          children: [
+            TileLayer(
+              urlTemplate:
+                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName:
+                  'com.example.seguimientomapacnt',
+            ),
+            PolylineLayer(
+              polylines: [
+                if (_rutaPuntos.isNotEmpty)
+                  Polyline(
+                    points: _rutaPuntos,
+                    strokeWidth: 4,
+                    color: theme.colorScheme.primary,
+                  ),
+              ],
+            ),
+            MarkerLayer(
+              markers: [
+                // Origen (ubicación actual)
+                if (_origen != null)
+                  Marker(
+                    point: _origen!,
+                    width: 40,
+                    height: 40,
+                    child: const Icon(
+                      Icons.my_location,
+                      color: Colors.blue,
+                      size: 30,
+                    ),
+                  ),
+                // Destino
+                Marker(
+                  point: _destino,
+                  width: 40,
+                  height: 40,
+                  child: const Icon(
+                    Icons.location_on,
+                    color: Colors.red,
+                    size: 36,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
-        MarkerLayer(
-          markers: [
-            // Origen
-            Marker(
-              point: _origen!,
-              width: 40,
-              height: 40,
-              child: const Icon(
-                Icons.my_location,
-                color: Colors.blue,
-                size: 30,
+
+        // --------- Botones flotantes (Centrar / Ruta) ---------
+        Positioned(
+          top: 16,
+          right: 16,
+          child: Column(
+            children: [
+              FloatingActionButton.small(
+                heroTag: 'centrar_btn',
+                onPressed: _toggleSeguirUsuario,
+                tooltip: _seguirUsuario
+                    ? 'Desactivar seguimiento'
+                    : 'Centrar y seguir ubicación',
+                child: Icon(
+                  _seguirUsuario
+                      ? Icons.gps_off
+                      : Icons.gps_fixed,
+                ),
               ),
-            ),
-            // Destino
-            Marker(
-              point: _destino,
-              width: 40,
-              height: 40,
-              child: const Icon(
-                Icons.location_on,
-                color: Colors.red,
-                size: 36,
+              const SizedBox(height: 8),
+              FloatingActionButton.small(
+                heroTag: 'ruta_btn',
+                onPressed: _verRutaCompleta,
+                tooltip: 'Ver ruta completa',
+                child: const Icon(Icons.alt_route),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
