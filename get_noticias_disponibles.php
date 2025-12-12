@@ -16,6 +16,7 @@ $sql = "
     FROM noticias n
     LEFT JOIN clientes c ON n.cliente_id = c.id
     WHERE n.reportero_id IS NULL
+        AND n.pendiente = 1
     ORDER BY n.id DESC
 ";
 

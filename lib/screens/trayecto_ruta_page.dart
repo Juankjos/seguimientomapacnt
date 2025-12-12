@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/noticia.dart';
+import '../services/api_service.dart';
 
 class TrayectoRutaPage extends StatefulWidget {
   final Noticia noticia;
@@ -40,6 +41,8 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
 
   // Zoom cercano para ver calles
   static const double _zoomSeguir = 17.0;
+
+  bool _enviandoLlegada = false;
 
   @override
   void initState() {
@@ -199,6 +202,89 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     _mapController.move(center, 13);
   }
 
+  Future<void> _onFinalizarTrayectoPressed() async {
+    if (_enviandoLlegada) return;
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Finalizar ruta'),
+          content: const Text(
+            '¿Seguro que deseas finalizar la ruta?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Sí'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmar != true) return;
+
+    await _enviarLlegada();
+  }
+
+  Future<void> _enviarLlegada() async {
+    setState(() {
+      _enviandoLlegada = true;
+    });
+
+    try {
+      // Tomamos la ubicación actual real al momento de finalizar
+      final pos = await _obtenerUbicacionActual();
+      if (pos == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo obtener la ubicación actual para registrar la llegada.'),
+          ),
+        );
+        return;
+      }
+
+      final lat = pos.latitude;
+      final lon = pos.longitude;
+
+      await ApiService.registrarLlegadaNoticia(
+        noticiaId: widget.noticia.id,
+        latitud: lat,
+        longitud: lon,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Trayecto finalizado y llegada registrada.'),
+        ),
+      );
+
+      // Opcional: regresar a la pantalla anterior (detalle de noticia)
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al registrar llegada: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _enviandoLlegada = false;
+        });
+      }
+    }
+  }
+
   // --------- Seguimiento de usuario (centrar cerca) ---------
 
   Future<void> _toggleSeguirUsuario() async {
@@ -296,7 +382,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
               : _buildMapa(theme),
     );
   }
-
   Widget _buildMapa(ThemeData theme) {
     if (_origen == null) {
       return const Center(
@@ -304,119 +389,153 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       );
     }
 
-    return Stack(
+    return Column(
       children: [
-        FlutterMap(
-          mapController: _mapController,
-          options: MapOptions(
-            initialCenter: _origen!,
-            initialZoom: 13,
-            onMapReady: () {
-              _mapIsReady = true;
-              _moverMapaInicial();
-            },
-            // Cuando seguimos al usuario, bloqueamos drag pero dejamos zoom
-            interactionOptions: InteractionOptions(
-              flags: _seguirUsuario
-                  ? InteractiveFlag.pinchZoom |
-                      InteractiveFlag.doubleTapZoom |
-                      InteractiveFlag.scrollWheelZoom
-                  : InteractiveFlag.all,
-            ),
-          ),
-          children: [
-            TileLayer(
-              urlTemplate:
-                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName:
-                  'com.example.seguimientomapacnt',
-            ),
-            PolylineLayer(
-              polylines: [
-                if (_rutaPuntos.isNotEmpty)
-                  Polyline(
-                    points: _rutaPuntos,
-                    strokeWidth: 4,
-                    color: theme.colorScheme.primary,
-                  ),
-              ],
-            ),
-            MarkerLayer(
-              markers: [
-                if (_origen != null)
-                  Marker(
-                    point: _origen!,
-                    width: 40,
-                    height: 40,
-                    child: const Icon(
-                      Icons.my_location,
-                      color: Colors.blue,
-                      size: 30,
-                    ),
-                  ),
-                Marker(
-                  point: _destino,
-                  width: 40,
-                  height: 40,
-                  child: const Icon(
-                    Icons.location_on,
-                    color: Colors.red,
-                    size: 36,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-
-        // --------- Botones flotantes (Seguir / Ruta / Destino) ---------
-        Positioned(
-          top: 16,
-          right: 16,
-          child: Column(
+        // Mapa ocupa casi toda la pantalla
+        Expanded(
+          child: Stack(
             children: [
-              // CENTRAR / SEGUIR
-              FloatingActionButton.small(
-                heroTag: 'centrar_btn',
-                onPressed: _toggleSeguirUsuario,
-                tooltip: _seguirUsuario
-                    ? 'Desactivar seguimiento'
-                    : 'Centrar y seguir ubicación',
-                child: Icon(
-                  _seguirUsuario ? Icons.gps_off : Icons.gps_fixed,
+              FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _origen!,
+                  initialZoom: 13,
+                  onMapReady: () {
+                    _mapIsReady = true;
+                    _moverMapaInicial();
+                  },
+                  interactionOptions: InteractionOptions(
+                    flags: _seguirUsuario
+                        ? InteractiveFlag.pinchZoom |
+                            InteractiveFlag.doubleTapZoom |
+                            InteractiveFlag.scrollWheelZoom
+                        : InteractiveFlag.all,
+                  ),
                 ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName:
+                        'com.example.seguimientomapacnt',
+                  ),
+                  PolylineLayer(
+                    polylines: [
+                      if (_rutaPuntos.isNotEmpty)
+                        Polyline(
+                          points: _rutaPuntos,
+                          strokeWidth: 4,
+                          color: theme.colorScheme.primary,
+                        ),
+                    ],
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      if (_origen != null)
+                        Marker(
+                          point: _origen!,
+                          width: 40,
+                          height: 40,
+                          child: const Icon(
+                            Icons.my_location,
+                            color: Colors.blue,
+                            size: 30,
+                          ),
+                        ),
+                      Marker(
+                        point: _destino,
+                        width: 40,
+                        height: 40,
+                        child: const Icon(
+                          Icons.location_on,
+                          color: Colors.red,
+                          size: 36,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
 
-              // VER RUTA COMPLETA (se deshabilita si seguimos al usuario)
-              FloatingActionButton.small(
-                heroTag: 'ruta_btn',
-                onPressed: _seguirUsuario ? null : _verRutaCompleta,
-                tooltip: 'Ver ruta completa',
-                backgroundColor: _seguirUsuario
-                    ? theme.disabledColor.withOpacity(0.3)
-                    : null,
-                foregroundColor: _seguirUsuario
-                    ? theme.disabledColor
-                    : null,
-                child: const Icon(Icons.alt_route),
-              ),
-              const SizedBox(height: 8),
+              // Botones flotantes
+              Positioned(
+                top: 16,
+                right: 16,
+                child: Column(
+                  children: [
+                    // CENTRAR / SEGUIR
+                    FloatingActionButton.small(
+                      heroTag: 'centrar_btn',
+                      onPressed: _toggleSeguirUsuario,
+                      tooltip: _seguirUsuario
+                          ? 'Desactivar seguimiento'
+                          : 'Centrar y seguir ubicación',
+                      child: Icon(
+                        _seguirUsuario ? Icons.gps_off : Icons.gps_fixed,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
 
-              // UBICAR DESTINO (se deshabilita si seguimos al usuario)
-              FloatingActionButton.small(
-                heroTag: 'destino_btn',
-                onPressed: _seguirUsuario ? null : _centrarEnDestino,
-                tooltip: 'Ubicar destino',
-                backgroundColor: _seguirUsuario
-                    ? theme.disabledColor.withOpacity(0.3)
-                    : null,
-                foregroundColor: _seguirUsuario
-                    ? theme.disabledColor
-                    : null,
-                child: const Icon(Icons.place),
+                    // VER RUTA COMPLETA
+                    FloatingActionButton.small(
+                      heroTag: 'ruta_btn',
+                      onPressed: _seguirUsuario ? null : _verRutaCompleta,
+                      tooltip: 'Ver ruta completa',
+                      backgroundColor: _seguirUsuario
+                          ? theme.disabledColor.withOpacity(0.3)
+                          : null,
+                      foregroundColor: _seguirUsuario
+                          ? theme.disabledColor
+                          : null,
+                      child: const Icon(Icons.alt_route),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // UBICAR DESTINO
+                    FloatingActionButton.small(
+                      heroTag: 'destino_btn',
+                      onPressed: _seguirUsuario ? null : _centrarEnDestino,
+                      tooltip: 'Ubicar destino',
+                      backgroundColor: _seguirUsuario
+                          ? theme.disabledColor.withOpacity(0.3)
+                          : null,
+                      foregroundColor: _seguirUsuario
+                          ? theme.disabledColor
+                          : null,
+                      child: const Icon(Icons.place),
+                    ),
+                  ],
+                ),
               ),
             ],
+          ),
+        ),
+
+        // Botón FINALIZAR TRAYECTO abajo
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                icon: _enviandoLlegada
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : const Icon(Icons.flag),
+                label: Text(
+                  _enviandoLlegada ? 'Guardando...' : 'Finalizar trayecto',
+                ),
+                onPressed: _enviandoLlegada ? null : _onFinalizarTrayectoPressed,
+              ),
+            ),
           ),
         ),
       ],

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart' as latlng;
 
 import '../models/noticia.dart';
+import '../services/api_service.dart';
 import 'mapa_ubicacion_page.dart';
 import 'trayecto_ruta_page.dart';
 
@@ -18,6 +19,7 @@ class NoticiaDetallePage extends StatefulWidget {
 
 class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   late Noticia _noticia;
+  bool _eliminando = false;
 
   @override
   void initState() {
@@ -69,6 +71,71 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
       }
     }
   }
+
+  Future<void> _onEliminarPendientePressed() async {
+    if (_eliminando) return;
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Eliminar de mis pendientes'),
+          content: const Text(
+            '¿Seguro que deseas eliminar este pendiente?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Sí'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmar != true) return;
+
+    await _eliminarDePendientes();
+  }
+
+  Future<void> _eliminarDePendientes() async {
+    setState(() {
+      _eliminando = true;
+    });
+
+    try {
+      await ApiService.eliminarNoticiaDePendientes(widget.noticia.id);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Noticia eliminada de tus pendientes.'),
+        ),
+      );
+
+      // Cerramos la pantalla de detalle para que ya no la veas
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al eliminar pendiente: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _eliminando = false;
+        });
+      }
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -173,6 +240,32 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                         },
                       ),
                     ),
+
+                    // Mostrar sólo si ya tiene llegada_latitud y llegada_longitud
+                    if (widget.noticia.llegadaLatitud != null &&
+                        widget.noticia.llegadaLongitud != null) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: _eliminando
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.check_circle_outline),
+                          label: Text(
+                            _eliminando
+                                ? 'Eliminando...'
+                                : 'Eliminar de mis pendientes',
+                          ),
+                          onPressed: _eliminando ? null : _onEliminarPendientePressed,
+                        ),
+                      ),
+                    ],
 
                       const SizedBox(height: 8),
                       if (!tieneCoordenadas)

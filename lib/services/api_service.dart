@@ -97,7 +97,56 @@ class ApiService {
     }
   }
 
-    static Future<void> actualizarUbicacionNoticia({
+  static Future<void> registrarLlegadaNoticia({
+    required int noticiaId,
+    required double latitud,
+    required double longitud,
+  }) async {
+    final url = Uri.parse('$baseUrl/update_llegada_noticia.php');
+
+    final response = await http.post(
+      url,
+      body: {
+        'noticia_id': noticiaId.toString(),
+        'latitud': latitud.toString(),
+        'longitud': longitud.toString(),
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+      if (data['success'] != true) {
+        throw Exception(data['message'] ?? 'Error al registrar llegada');
+      }
+    } else {
+      throw Exception(
+          'Error en el servidor al registrar llegada (${response.statusCode})');
+    }
+  }
+
+  static Future<void> eliminarNoticiaDePendientes(int noticiaId) async {
+    final url = Uri.parse('$baseUrl/update_pendiente_noticia.php');
+
+    final response = await http.post(
+      url,
+      body: {
+        'noticia_id': noticiaId.toString(),
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+      if (data['success'] != true) {
+        throw Exception(data['message'] ?? 'Error al eliminar pendiente');
+      }
+    } else {
+      throw Exception(
+        'Error en el servidor al eliminar pendiente (${response.statusCode})',
+      );
+    }
+  }
+
+  static Future<void> actualizarUbicacionNoticia({
     required int noticiaId,
     required double latitud,
     required double longitud,

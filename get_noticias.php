@@ -19,11 +19,16 @@ $sql = "
         n.fecha_pago,
         n.fecha_cita,
         n.latitud,
-        n.longitud
+        n.longitud,
+        n.hora_llegada,
+        n.llegada_latitud,
+        n.llegada_longitud,
+        n.pendiente
     FROM noticias n
     LEFT JOIN clientes c ON n.cliente_id = c.id
     INNER JOIN reporteros r ON n.reportero_id = r.id
     WHERE n.reportero_id = ?
+        AND n.pendiente = 1
     ORDER BY n.fecha_cita ASC, n.id ASC
 ";
 
