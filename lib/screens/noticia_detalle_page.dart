@@ -21,6 +21,11 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   late Noticia _noticia;
   bool _eliminando = false;
 
+  String _formatearFechaHora(DateTime dt) {
+    // Asegúrate de tener intl inicializado en main con es_MX
+    return DateFormat("d 'de' MMMM 'de' y, HH:mm", 'es_MX').format(dt);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -66,6 +71,11 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
             fechaPago: _noticia.fechaPago,
             latitud: lat,
             longitud: lon,
+            horaLlegada: _noticia.horaLlegada,
+            llegadaLatitud: _noticia.llegadaLatitud,
+            llegadaLongitud: _noticia.llegadaLongitud,
+            pendiente: _noticia.pendiente,
+            ultimaMod: DateTime.now(),
           );
         });
       }
@@ -192,6 +202,18 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                               fontWeight: FontWeight.w600,
                             ),
                       ),
+
+                      if (_noticia.ultimaMod != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Última modificación: ${_formatearFechaHora(_noticia.ultimaMod!)}',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Colors.grey[700],
+                                fontStyle: FontStyle.italic,
+                              ),
+                        ),
+                      ],
+
                       const SizedBox(height: 8),
                       Text(
                         'Fecha de cita: '

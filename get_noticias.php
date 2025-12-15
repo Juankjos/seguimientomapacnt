@@ -23,7 +23,8 @@ $sql = "
         n.hora_llegada,
         n.llegada_latitud,
         n.llegada_longitud,
-        n.pendiente
+        n.pendiente,
+        n.ultima_mod 
     FROM noticias n
     LEFT JOIN clientes c ON n.cliente_id = c.id
     INNER JOIN reporteros r ON n.reportero_id = r.id

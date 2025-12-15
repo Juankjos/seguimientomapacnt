@@ -15,6 +15,8 @@ class Noticia {
   final double? llegadaLongitud;
   final bool pendiente;
 
+  final DateTime? ultimaMod;
+
   Noticia({
     required this.id,
     required this.noticia,
@@ -30,6 +32,7 @@ class Noticia {
     this.llegadaLatitud,
     this.llegadaLongitud,
     this.pendiente = true,
+    this.ultimaMod,
   });
 
   factory Noticia.fromJson(Map<String, dynamic> json) {
@@ -64,6 +67,7 @@ class Noticia {
       llegadaLatitud: _parseDouble(json['llegada_latitud']),
       llegadaLongitud: _parseDouble(json['llegada_longitud']),
       pendiente: _parseBool(json['pendiente']),
+      ultimaMod: _parseDate(json['ultima_mod']), 
     );
   }
 }
