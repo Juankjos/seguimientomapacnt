@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
 import 'noticias_page.dart';
+import 'agenda_page.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -31,22 +32,40 @@ class _LoginScreenState extends State<LoginScreen> {
       if (data['success'] == true) {
         final int reporteroId = int.parse(data['reportero_id'].toString());
         final String nombre = data['nombre'] ?? '';
+        final String role = data['role']?.toString() ?? 'reportero';
 
-        if (!mounted) return;
+      if (!mounted) return;
+
+      if (role == 'admin') {
+        // Admin: la página principal es agenda con vista global
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => NoticiasPage(
+            builder: (_) => AgendaPage(
+              reporteroId: reporteroId,
+              reporteroNombre: nombre,
+              esAdmin: true, // 👈 nuevo parámetro
+            ),
+          ),
+        );
+      } else {
+        // Reportero normal: flujo que ya tenías (noticias_page / home)
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => NoticiasPage( // o HomeScreen si es como lo tienes
               reporteroId: reporteroId,
               reporteroNombre: nombre,
             ),
           ),
         );
-      } else {
-        setState(() {
-          _errorMessage = data['message']?.toString() ?? 'Error de login';
-        });
       }
+    } else {
+      setState(() {
+        _errorMessage = data['message']?.toString() ?? 'Error de login';
+      });
+    }
+
     } catch (e) {
       setState(() {
         _errorMessage = 'Error al conectar con el servidor: $e';

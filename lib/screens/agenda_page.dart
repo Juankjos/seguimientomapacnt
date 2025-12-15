@@ -4,6 +4,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../models/noticia.dart';
 import '../services/api_service.dart';
 import 'noticia_detalle_page.dart';
+import 'crear_noticia_page.dart';
 
 enum AgendaView { year, month, day }
 
@@ -119,11 +120,13 @@ MesEfemeride efemerideMes(int month, ThemeData theme) {
 class AgendaPage extends StatefulWidget {
   final int reporteroId;
   final String reporteroNombre;
+  final bool esAdmin; // 👈
 
   const AgendaPage({
     super.key,
     required this.reporteroId,
     required this.reporteroNombre,
+    this.esAdmin = false,
   });
 
   @override
@@ -163,7 +166,9 @@ class _AgendaPageState extends State<AgendaPage> {
     });
 
     try {
-      final noticias = await ApiService.getNoticias(widget.reporteroId);
+      final noticias = widget.esAdmin
+        ? await ApiService.getNoticiasAdmin()
+        : await ApiService.getNoticias(widget.reporteroId);
 
       _eventosPorDia.clear();
 
@@ -252,6 +257,23 @@ class _AgendaPageState extends State<AgendaPage> {
         ],
       ),
       body: _buildBody(),
+      floatingActionButton: widget.esAdmin
+      ? FloatingActionButton.extended(
+          icon: const Icon(Icons.add),
+          label: const Text('Crear noticia'),
+          onPressed: () async {
+            final creado = await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const CrearNoticiaPage(),
+              ),
+            );
+            if (creado == true) {
+              _cargarNoticias();
+            }
+          },
+        )
+      : null,
     );
   }
 

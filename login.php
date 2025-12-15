@@ -15,7 +15,7 @@ if ($nombre === '' || $password === '') {
     exit;
 }
 
-$stmt = $pdo->prepare('SELECT id, nombre, password FROM reporteros WHERE nombre = ? LIMIT 1');
+$stmt = $pdo->prepare('SELECT id, nombre, password, role FROM reporteros WHERE nombre = ? LIMIT 1');
 $stmt->execute([$nombre]);
 $user = $stmt->fetch();
 
@@ -43,4 +43,5 @@ echo json_encode([
     'message'      => 'Login correcto',
     'reportero_id' => $user['id'],
     'nombre'       => $user['nombre'],
+    'role'         => $user['role'], 
 ]);

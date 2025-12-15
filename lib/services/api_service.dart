@@ -4,14 +4,24 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/noticia.dart';
+class ReporteroBusqueda {
+  final int id;
+  final String nombre;
+
+  ReporteroBusqueda({required this.id, required this.nombre});
+
+  factory ReporteroBusqueda.fromJson(Map<String, dynamic> json) {
+    return ReporteroBusqueda(
+      id: int.parse(json['id'].toString()),
+      nombre: json['nombre'] ?? '',
+    );
+  }
+}
 
 class ApiService {
-  // 📌 Para el emulador Android, usa 10.0.2.2 en lugar de localhost
   static const String baseUrl = 'http://localhost/seguimientomapacnt';
 
-  // Para dispositivo físico en la misma red, usa la IP de tu PC:
-  // static const String baseUrl = 'http://TU_IP_LOCAL/seguimientomapacnt_api';
-
+  // 🔹 Login
   static Future<Map<String, dynamic>> login(
       String nombre, String password) async {
     final url = Uri.parse('$baseUrl/login.php');
@@ -32,6 +42,7 @@ class ApiService {
     }
   }
 
+  // 🔹 Mostrar noticias creadas
   static Future<List<Noticia>> getNoticias(int reporteroId) async {
     final url =
         Uri.parse('$baseUrl/get_noticias.php?reportero_id=$reporteroId');
@@ -52,7 +63,64 @@ class ApiService {
     }
   }
 
-    // 🔹 Noticias disponibles (sin reportero asignado)
+  // 🔹 Obtener todas las noticias (modo admin) usando get_noticias.php
+  static Future<List<Noticia>> getNoticiasAdmin() async {
+    // Llamamos al mismo script, pero con ?modo=admin
+    final url = Uri.parse('$baseUrl/get_noticias.php?modo=admin');
+
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+
+      if (data['success'] == true) {
+        final List<dynamic> list = data['data'] ?? [];
+        return list.map((e) => Noticia.fromJson(e)).toList();
+      } else {
+        throw Exception(data['message'] ?? 'Error al obtener noticias (admin)');
+      }
+    } else {
+      throw Exception('Error en el servidor (${response.statusCode})');
+    }
+  }
+
+  static Future<void> crearNoticia({
+    required String noticia,
+    String? descripcion,
+    String? domicilio,
+    int? reporteroId,
+    DateTime? fechaCita,
+  }) async {
+    final url = Uri.parse('$baseUrl/crear_noticia.php');
+
+    // Formato DATETIME para MySQL
+    String? fechaCitaStr;
+    if (fechaCita != null) {
+      fechaCitaStr = fechaCita.toIso8601String().substring(0, 19).replaceFirst('T', ' ');
+      // Ej: 2025-12-20 15:30:00
+    }
+
+    final body = {
+      'noticia': noticia,
+      'descripcion': descripcion ?? '',
+      'domicilio': domicilio ?? '',
+      'reportero_id': reporteroId?.toString() ?? '',
+      'fecha_cita': fechaCitaStr ?? '',
+    };
+
+    final response = await http.post(url, body: body);
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+      if (data['success'] != true) {
+        throw Exception(data['message'] ?? 'Error al crear noticia');
+      }
+    } else {
+      throw Exception('Error en el servidor al crear noticia (${response.statusCode})');
+    }
+  }
+
+  // 🔹 Noticias disponibles (sin reportero asignado / Nuevas)
   static Future<List<Noticia>> getNoticiasDisponibles() async {
     final url = Uri.parse('$baseUrl/get_noticias_disponibles.php');
 
@@ -72,7 +140,7 @@ class ApiService {
     }
   }
 
-  // 🔹 Tomar noticia: asignar reportero a una noticia
+  // 🔹 Asignar reportero a una noticia
   static Future<void> tomarNoticia({
     required int reporteroId,
     required int noticiaId,
@@ -97,6 +165,26 @@ class ApiService {
     }
   }
 
+  // 🔹 Buscar reportero a una noticia
+  static Future<List<ReporteroBusqueda>> buscarReporteros(String query) async {
+    final url = Uri.parse('$baseUrl/search_reporteros.php?q=${Uri.encodeQueryComponent(query)}');
+
+    final response = await http.get(url);
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+      if (data['success'] == true) {
+        final List<dynamic> list = data['data'] ?? [];
+        return list
+            .map((e) => ReporteroBusqueda.fromJson(e as Map<String, dynamic>))
+            .toList();
+      } else {
+        throw Exception(data['message'] ?? 'Error al buscar reporteros');
+      }
+    } else {
+      throw Exception('Error en el servidor al buscar reporteros (${response.statusCode})');
+    }
+  }
+  // 🔹 Al llegar al destino, guardar lat y long de llegada
   static Future<void> registrarLlegadaNoticia({
     required int noticiaId,
     required double latitud,
@@ -124,6 +212,7 @@ class ApiService {
     }
   }
 
+  // 🔹 Eliminar visualmente las noticias, se conservan en DB
   static Future<void> eliminarNoticiaDePendientes(int noticiaId) async {
     final url = Uri.parse('$baseUrl/update_pendiente_noticia.php');
 
@@ -146,6 +235,7 @@ class ApiService {
     }
   }
 
+  // 🔹 Cambiar ubicación de una noticia
   static Future<void> actualizarUbicacionNoticia({
     required int noticiaId,
     required double latitud,

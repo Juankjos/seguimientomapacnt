@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'screens/login_screen.dart';
 import 'theme_controller.dart';
@@ -20,6 +21,20 @@ class MyApp extends StatelessWidget {
       builder: (context, mode, _) {
         return MaterialApp(
           title: 'Seguimiento Mapa CNT',
+          debugShowCheckedModeBanner: false,
+
+          // 👇 Idioma principal de la app
+          locale: const Locale('es', 'MX'),
+          supportedLocales: const [
+            Locale('es', 'MX'),
+            Locale('en', ''), // opcional, fallback
+          ],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+
           themeMode: mode,
           theme: ThemeData(
             colorScheme: ColorScheme.fromSeed(
