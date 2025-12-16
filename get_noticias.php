@@ -51,15 +51,12 @@ if ($modo === 'admin') {
     exit;
 }
 
-// 🔹 MODO REPOR TER O (por defecto): requiere reportero_id y solo pendientes
-
+// 🔹 MODO REPORTERO
 $reporteroId = isset($_GET['reportero_id']) ? intval($_GET['reportero_id']) : 0;
+$incluyeCerradas = isset($_GET['incluye_cerradas']) && $_GET['incluye_cerradas'] == '1';
 
 if ($reporteroId <= 0) {
-    echo json_encode([
-        'success' => false,
-        'message' => 'reportero_id inválido',
-    ]);
+    echo json_encode(['success' => false, 'message' => 'reportero_id inválido']);
     exit;
 }
 
@@ -79,13 +76,20 @@ $sql = "
         n.llegada_latitud,
         n.llegada_longitud,
         n.pendiente,
-        n.ultima_mod 
+        n.ultima_mod
     FROM noticias n
-    LEFT JOIN clientes c   ON n.cliente_id  = c.id
+    LEFT JOIN clientes c ON n.cliente_id = c.id
     INNER JOIN reporteros r ON n.reportero_id = r.id
     WHERE n.reportero_id = ?
-        AND n.pendiente = 1
-    ORDER BY 
+";
+
+if (!$incluyeCerradas) {
+    $sql .= " AND n.pendiente = 1 ";
+}
+
+$sql .= "
+    ORDER BY
+        n.pendiente DESC,
         n.fecha_cita IS NULL,
         n.fecha_cita ASC,
         n.id ASC

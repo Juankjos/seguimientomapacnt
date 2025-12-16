@@ -168,7 +168,7 @@ class _AgendaPageState extends State<AgendaPage> {
     try {
       final noticias = widget.esAdmin
         ? await ApiService.getNoticiasAdmin()
-        : await ApiService.getNoticias(widget.reporteroId);
+        : await ApiService.getNoticiasAgenda(widget.reporteroId);
 
       _eventosPorDia.clear();
 
@@ -381,7 +381,7 @@ class _AgendaPageState extends State<AgendaPage> {
                 icon: const Icon(Icons.chevron_left),
                 onPressed: () {
                   setState(() {
-                    _focusedDay = DateTime(year - 1, _focusedDay.month, 1);
+                    _focusedDay = DateTime(year - 1, _selectedMonthInYear, 1);
                   });
                 },
               ),
@@ -395,7 +395,7 @@ class _AgendaPageState extends State<AgendaPage> {
                 icon: const Icon(Icons.chevron_right),
                 onPressed: () {
                   setState(() {
-                    _focusedDay = DateTime(year + 1, _focusedDay.month, 1);
+                    _focusedDay = DateTime(year + 1, _selectedMonthInYear, 1);
                   });
                 },
               ),
@@ -686,27 +686,37 @@ class _AgendaPageState extends State<AgendaPage> {
                                   ? _formatearFechaCorta(n.fechaCita!)
                                   : 'Sin fecha';
 
-                              return ListTile(
-                                dense: true,
-                                title: Text(
-                                  n.noticia,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              child: Card(
+                                color: (n.pendiente == false) ? const Color(0xFFC1E59F) : null,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                child: ListTile(
+                                  dense: true,
+                                  title: Text(
+                                    n.noticia,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: Text(
+                                    fecha,
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  trailing: (n.pendiente == false)
+                                      ? const Text('Cerrada', style: TextStyle(fontWeight: FontWeight.w600))
+                                      : null,
+                                  onTap: () {
+                                    if (n.fechaCita == null) return;
+                                    setState(() {
+                                      final d = _soloFecha(n.fechaCita!);
+                                      _selectedDay = d;
+                                      _focusedDay = d;
+                                      _selectedMonthInYear = d.month;
+                                      _vista = AgendaView.day;
+                                    });
+                                  },
+                                  ),
                                 ),
-                                subtitle: Text(
-                                  fecha,
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                                onTap: () {
-                                  if (n.fechaCita == null) return;
-                                  setState(() {
-                                    final d = _soloFecha(n.fechaCita!);
-                                    _selectedDay = d;
-                                    _focusedDay = d;
-                                    _selectedMonthInYear = d.month;
-                                    _vista = AgendaView.day;
-                                  });
-                                },
                               );
                             },
                           ),
@@ -765,13 +775,20 @@ class _AgendaPageState extends State<AgendaPage> {
                   itemCount: eventos.length,
                   itemBuilder: (context, index) {
                     final n = eventos[index];
+
+                    final bool cerrada = (n.pendiente == false);
+                    final Color? bg = cerrada ? const Color(0xFFC1E59F) : null;
+
                     final fecha = n.fechaCita != null
                         ? _formatearFechaCorta(n.fechaCita!)
                         : 'Sin fecha';
 
                     return Card(
+                      color: bg,
                       margin: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -780,12 +797,39 @@ class _AgendaPageState extends State<AgendaPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              n.noticia,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                              ),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    n.noticia,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                                if (cerrada) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.08),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: const Text(
+                                      'Cerrada',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                             const SizedBox(height: 4),
                             Text(
@@ -804,20 +848,18 @@ class _AgendaPageState extends State<AgendaPage> {
                             Align(
                               alignment: Alignment.centerRight,
                               child: OutlinedButton.icon(
-                                icon: const Icon(
-                                  Icons.open_in_new,
-                                  size: 16,
-                                ),
+                                icon: const Icon(Icons.open_in_new, size: 16),
                                 label: const Text('Ir a detalles'),
                                 onPressed: () async {
                                   await Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (_) =>
-                                          NoticiaDetallePage(noticia: n),
+                                          NoticiaDetallePage(
+                                            noticia: n,
+                                            soloLectura: (n.pendiente == false),)
                                     ),
                                   );
-                                  // Al volver, recargamos la agenda
                                   await _cargarNoticias();
                                 },
                               ),

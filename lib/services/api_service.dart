@@ -63,6 +63,28 @@ class ApiService {
     }
   }
 
+  // 🔹 Obtener noticias completadas
+  static Future<List<Noticia>> getNoticiasAgenda(int reporteroId) async {
+    final url = Uri.parse(
+      '$baseUrl/get_noticias.php?reportero_id=$reporteroId&incluye_cerradas=1',
+    );
+
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+
+      if (data['success'] == true) {
+        final List<dynamic> list = data['data'] ?? [];
+        return list.map((e) => Noticia.fromJson(e)).toList();
+      } else {
+        throw Exception(data['message'] ?? 'Error al obtener agenda');
+      }
+    } else {
+      throw Exception('Error en el servidor (${response.statusCode})');
+    }
+  }
+
   // 🔹 Obtener todas las noticias (modo admin) usando get_noticias.php
   static Future<List<Noticia>> getNoticiasAdmin() async {
     // Llamamos al mismo script, pero con ?modo=admin

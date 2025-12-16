@@ -7,11 +7,17 @@ import '../models/noticia.dart';
 import '../services/api_service.dart';
 import 'mapa_ubicacion_page.dart';
 import 'trayecto_ruta_page.dart';
+import 'mapa_completo_page.dart';
 
 class NoticiaDetallePage extends StatefulWidget {
   final Noticia noticia;
+  final bool soloLectura;
 
-  const NoticiaDetallePage({super.key, required this.noticia});
+  const NoticiaDetallePage({
+    super.key,
+    required this.noticia,
+    this.soloLectura = false,
+  });
 
   @override
   State<NoticiaDetallePage> createState() => _NoticiaDetallePageState();
@@ -20,10 +26,16 @@ class NoticiaDetallePage extends StatefulWidget {
 class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   late Noticia _noticia;
   bool _eliminando = false;
+  bool get _soloLectura => widget.soloLectura || _noticia.pendiente == false;
 
   String _formatearFechaHora(DateTime dt) {
-    // Asegúrate de tener intl inicializado en main con es_MX
     return DateFormat("d 'de' MMMM 'de' y, HH:mm", 'es_MX').format(dt);
+  }
+
+  String _formatearFechaCitaAmPm(DateTime dt) {
+    final fecha = DateFormat("d 'de' MMMM 'del' y", 'es_MX').format(dt);
+    final hora = DateFormat("h:mm a", 'en_US').format(dt).toLowerCase(); // am/pm
+    return '$fecha, $hora';
   }
 
   @override
@@ -217,7 +229,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                       const SizedBox(height: 8),
                       Text(
                         'Fecha de cita: '
-                        '${_noticia.fechaCita != null ? _formatearFecha(_noticia.fechaCita!) : 'Sin fecha de cita'}',
+                        '${_noticia.fechaCita != null ? _formatearFechaCitaAmPm(_noticia.fechaCita!) : 'Sin fecha de cita'}',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w600,
                             ),
@@ -228,7 +240,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: _abrirMapaUbicacion,
+                      onPressed: _soloLectura ? null : _abrirMapaUbicacion,
                       icon: Icon(
                         tieneCoordenadas
                             ? Icons.edit_location_alt
@@ -241,53 +253,64 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                       ),
                     ),
                   ),
-                  if (widget.noticia.latitud != null && widget.noticia.longitud != null)
+                  if (_soloLectura) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Esta noticia está cerrada.',
+                      style: TextStyle(fontStyle: FontStyle.italic),
+                    ),
+                  ],
+                  if (widget.noticia.latitud != null && widget.noticia.longitud != null)...[
                     const SizedBox(height: 8),
 
-                  if (widget.noticia.latitud != null && widget.noticia.longitud != null)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.directions),
-                        label: const Text('Ir a destino ahora'),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => TrayectoRutaPage(
-                                noticia: widget.noticia,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-
-                    // Mostrar sólo si ya tiene llegada_latitud y llegada_longitud
-                    if (widget.noticia.llegadaLatitud != null &&
-                        widget.noticia.llegadaLongitud != null) ...[
+                    if (_noticia.latitud != null && _noticia.longitud != null) ...[
                       const SizedBox(height: 8),
                       SizedBox(
                         width: double.infinity,
-                        child: OutlinedButton.icon(
-                          icon: _eliminando
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.check_circle_outline),
-                          label: Text(
-                            _eliminando
-                                ? 'Eliminando...'
-                                : 'Eliminar de mis pendientes',
-                          ),
-                          onPressed: _eliminando ? null : _onEliminarPendientePressed,
+                        child: ElevatedButton.icon(
+                          icon: Icon(_soloLectura ? Icons.map : Icons.directions),
+                          label: Text(_soloLectura ? 'Mostrar mapa completo' : 'Ir a destino ahora'),
+                          onPressed: () {
+                            if (_soloLectura) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => MapaCompletoPage(noticia: _noticia),
+                                ),
+                              );
+                            } else {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => TrayectoRutaPage(noticia: _noticia),
+                                ),
+                              );
+                            }
+                          },
                         ),
                       ),
                     ],
+
+                    // Mostrar sólo si ya tiene llegada_latitud y llegada_longitud
+                    if (!_soloLectura &&
+                      _noticia.llegadaLatitud != null &&
+                      _noticia.llegadaLongitud != null) ...[
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: _eliminando
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.check_circle_outline),
+                            label: Text(_eliminando ? 'Eliminando...' : 'Eliminar de mis pendientes'),
+                            onPressed: _eliminando ? null : _onEliminarPendientePressed,
+                          ),
+                        ),
+                      ],
 
                       const SizedBox(height: 8),
                       if (!tieneCoordenadas)
@@ -295,6 +318,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                           'No hay coordenadas para mostrar en el mapa.',
                           style: TextStyle(color: Colors.red),
                         ),
+                      ],
                     ],
                   ),
                 ),
@@ -330,6 +354,16 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                   Icons.location_on,
                                   size: 40,
                                   color: Colors.red,
+                                ),
+                              ),
+                              if (_noticia.llegadaLatitud != null && _noticia.llegadaLongitud != null)
+                              Marker(
+                                point: latlng.LatLng(_noticia.llegadaLatitud!, _noticia.llegadaLongitud!),
+                                width: 80,
+                                height: 80,
+                                child: const Icon(
+                                  Icons.no_crash_sharp,
+                                  size: 38,
                                 ),
                               ),
                             ],
