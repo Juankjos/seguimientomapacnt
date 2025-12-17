@@ -32,6 +32,8 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
 
   final DateFormat _fmtFechaHora = DateFormat('dd/MM/yyyy HH:mm');
 
+  DateTime _soloFecha(DateTime d) => DateTime(d.year, d.month, d.day);
+
   @override
   void dispose() {
     _noticiaCtrl.dispose();
@@ -42,14 +44,17 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
   }
 
   Future<void> _seleccionarFecha() async {
-    final hoy = DateTime.now();
-    final inicial = _fechaSeleccionada ?? hoy;
+    final hoy = _soloFecha(DateTime.now());
+
+    final inicial = (_fechaSeleccionada != null && !_soloFecha(_fechaSeleccionada!).isBefore(hoy))
+        ? _fechaSeleccionada!
+        : hoy;
 
     final picked = await showDatePicker(
       context: context,
       initialDate: inicial,
-      firstDate: DateTime(hoy.year - 1),
-      lastDate: DateTime(hoy.year + 2),
+      firstDate: hoy, // ✅ NO permite fechas pasadas
+      lastDate: DateTime(hoy.year + 2, 12, 31),
       locale: const Locale('es', 'MX'),
     );
 
@@ -120,6 +125,14 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
 
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
+
+    final hoy = _soloFecha(DateTime.now());
+    if (_fechaSeleccionada != null && _soloFecha(_fechaSeleccionada!).isBefore(hoy)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No puedes crear noticias en fechas pasadas.')),
+      );
+      return;
+    }
 
     setState(() {
       _guardando = true;
@@ -216,10 +229,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Reportero asignado:',
-                    style: theme.textTheme.bodyMedium,
-                  ),
+                  Text('Reportero asignado:', style: theme.textTheme.bodyMedium),
                   Text(
                     _reporteroNombreSeleccionado ?? 'Ninguno',
                     style: theme.textTheme.bodyMedium?.copyWith(
@@ -274,9 +284,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
                           )
                         : null,
                   ),
-                  onChanged: (value) {
-                    _buscarReporteros(value);
-                  },
+                  onChanged: _buscarReporteros,
                 ),
                 const SizedBox(height: 8),
                 if (_buscandoReporteros)
@@ -309,10 +317,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
               const SizedBox(height: 16),
 
               // -------- Fecha y hora de cita --------
-              Text(
-                'Fecha y hora de cita:',
-                style: theme.textTheme.bodyMedium,
-              ),
+              Text('Fecha y hora de cita:', style: theme.textTheme.bodyMedium),
               const SizedBox(height: 4),
               Text(
                 textoFechaCita,
@@ -348,8 +353,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
                           height: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         )
                       : const Icon(Icons.save),
