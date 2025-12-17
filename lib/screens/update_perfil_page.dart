@@ -108,7 +108,7 @@ class _UpdatePerfilPageState extends State<UpdatePerfilPage> {
                 TextField(
                   controller: _nombreCtrl,
                   decoration: const InputDecoration(
-                    labelText: 'Nombre de reportero',
+                    labelText: 'Nombre',
                     border: OutlineInputBorder(),
                   ),
                 ),

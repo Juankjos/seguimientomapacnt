@@ -5,6 +5,8 @@ import '../models/noticia.dart';
 import '../services/api_service.dart';
 import 'noticia_detalle_page.dart';
 import 'crear_noticia_page.dart';
+import 'login_screen.dart';
+import 'update_perfil_page.dart';
 
 enum AgendaView { year, month, day }
 
@@ -149,15 +151,95 @@ class _AgendaPageState extends State<AgendaPage> {
 
   // Último mes visitado (para marcar en vista Año)
   late int _selectedMonthInYear;
+  late String _nombreActual;
 
   @override
   void initState() {
     super.initState();
+    _nombreActual = widget.reporteroNombre;
     _selectedMonthInYear = _focusedDay.month;
     _cargarNoticias();
   }
 
   DateTime _soloFecha(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
+
+  Future<void> _abrirPerfilAdmin() async {
+    Navigator.pop(context); // cierra drawer
+
+    final nuevoNombre = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UpdatePerfilPage(
+          reporteroId: widget.reporteroId,
+          nombreActual: _nombreActual,
+        ),
+      ),
+    );
+
+    if (nuevoNombre != null && nuevoNombre.trim().isNotEmpty && mounted) {
+      setState(() => _nombreActual = nuevoNombre.trim());
+    }
+  }
+
+  void _confirmarCerrarSesion() {
+    Navigator.pop(context); // cierra drawer
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Cerrar sesión'),
+        content: const Text('¿Estás seguro que deseas Cerrar Sesión?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context); // cierra dialog
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (_) => false,
+              );
+            },
+            child: const Text('Cerrar Sesión'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDrawerAdmin() {
+    return Drawer(
+      child: Column(
+        children: [
+          UserAccountsDrawerHeader(
+            accountName: Text(_nombreActual),
+            accountEmail: const Text('Admin'),
+            currentAccountPicture: CircleAvatar(
+              child: Text(
+                _nombreActual.isNotEmpty ? _nombreActual[0].toUpperCase() : 'A',
+              ),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.person),
+            title: const Text('Perfil'),
+            onTap: _abrirPerfilAdmin,
+          ),
+          const Spacer(),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.red),
+            title: const Text('Cerrar Sesión', style: TextStyle(color: Colors.red)),
+            onTap: _confirmarCerrarSesion,
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
 
   Future<void> _cargarNoticias() async {
     setState(() {
@@ -256,6 +338,7 @@ class _AgendaPageState extends State<AgendaPage> {
           ),
         ],
       ),
+      drawer: widget.esAdmin ? _buildDrawerAdmin() : null, 
       body: _buildBody(),
       floatingActionButton: widget.esAdmin
       ? FloatingActionButton.extended(
