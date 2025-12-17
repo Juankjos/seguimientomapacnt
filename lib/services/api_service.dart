@@ -257,6 +257,44 @@ class ApiService {
     }
   }
 
+  // 🔹 Actualizar campos de noticia
+  static Future<Noticia> actualizarNoticia({
+    required int noticiaId,
+    required String role, // 'admin' o 'reportero'
+    String? titulo,
+    String? descripcion,
+    DateTime? fechaCita,
+  }) async {
+    final url = Uri.parse('$baseUrl/update_noticia.php');
+
+    String? fechaCitaStr;
+    if (fechaCita != null) {
+      fechaCitaStr = fechaCita.toIso8601String().substring(0, 19).replaceFirst('T', ' ');
+    }
+
+    final body = <String, String>{
+      'noticia_id': noticiaId.toString(),
+      'role': role,
+    };
+
+    if (titulo != null) body['noticia'] = titulo;
+    if (descripcion != null) body['descripcion'] = descripcion;
+    if (fechaCita != null) body['fecha_cita'] = fechaCitaStr!;
+    // Si quieres permitir borrar fecha: manda 'fecha_cita' = '' desde admin
+
+    final response = await http.post(url, body: body);
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      if (data['success'] == true) {
+        return Noticia.fromJson(data['data']);
+      }
+      throw Exception(data['message'] ?? 'Error al actualizar noticia');
+    } else {
+      throw Exception('Error en el servidor (${response.statusCode})');
+    }
+  }
+
   // 🔹 Cambiar ubicación de una noticia
   static Future<void> actualizarUbicacionNoticia({
     required int noticiaId,

@@ -56,6 +56,7 @@ class _LoginScreenState extends State<LoginScreen> {
             builder: (_) => NoticiasPage( // o HomeScreen si es como lo tienes
               reporteroId: reporteroId,
               reporteroNombre: nombre,
+              role: role,
             ),
           ),
         );

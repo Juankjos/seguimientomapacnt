@@ -12,11 +12,13 @@ import 'agenda_page.dart';
 class NoticiasPage extends StatefulWidget {
   final int reporteroId;
   final String reporteroNombre;
+  final String role;
 
   const NoticiasPage({
     super.key,
     required this.reporteroId,
     required this.reporteroNombre,
+    required this.role,
   });
 
   @override
@@ -271,7 +273,11 @@ class _NoticiasPageState extends State<NoticiasPage> {
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => NoticiaDetallePage(noticia: n),
+                        builder: (_) => NoticiaDetallePage(
+                          noticia: n,
+                          role: widget.role,
+                          soloLectura: (n.pendiente == false),
+                          ),
                       ),
                     );
 

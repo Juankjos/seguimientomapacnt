@@ -6,6 +6,8 @@ class Noticia {
   final String? domicilio;  
   final String reportero;
   final DateTime? fechaCita;
+  final DateTime? fechaCitaAnterior;
+  final int fechaCitaCambios;
   final DateTime? fechaPago;
   final double? latitud;
   final double? longitud;
@@ -25,6 +27,8 @@ class Noticia {
     this.cliente,
     this.domicilio,
     this.fechaCita,
+    this.fechaCitaAnterior,
+    required this.fechaCitaCambios,
     this.fechaPago,
     this.latitud,
     this.longitud,
@@ -52,6 +56,15 @@ class Noticia {
       return s == '1' || s.toLowerCase() == 'true';
     }
 
+    DateTime? _parseDateTime(dynamic v) {
+      if (v == null || v == '') return null;
+      final s = v.toString().replaceFirst(' ', 'T');
+      return DateTime.tryParse(s);
+    }
+
+    int _parseInt(dynamic v) => int.tryParse(v?.toString() ?? '') ?? 0;
+
+
     return Noticia(
       id: int.parse(json['id'].toString()),
       noticia: json['noticia'] ?? '',
@@ -60,6 +73,8 @@ class Noticia {
       domicilio: json['domicilio'],
       reportero: json['reportero'] ?? '',
       fechaCita: _parseDate(json['fecha_cita']),
+      fechaCitaAnterior: _parseDateTime(json['fecha_cita_anterior']),
+      fechaCitaCambios: _parseInt(json['fecha_cita_cambios']),
       fechaPago: _parseDate(json['fecha_pago']),
       latitud: _parseDouble(json['latitud']),
       longitud: _parseDouble(json['longitud']),

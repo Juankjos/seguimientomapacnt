@@ -8,15 +8,18 @@ import '../services/api_service.dart';
 import 'mapa_ubicacion_page.dart';
 import 'trayecto_ruta_page.dart';
 import 'mapa_completo_page.dart';
+import 'editar_noticia_page.dart';
 
 class NoticiaDetallePage extends StatefulWidget {
   final Noticia noticia;
   final bool soloLectura;
+  final String role;
 
   const NoticiaDetallePage({
     super.key,
     required this.noticia,
     this.soloLectura = false,
+    required this.role,
   });
 
   @override
@@ -42,11 +45,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   void initState() {
     super.initState();
     _noticia = widget.noticia;
-  }
-
-  String _formatearFecha(DateTime fecha) {
-    final formatter = DateFormat("d 'de' MMMM 'del' y", 'es_MX');
-    return formatter.format(fecha);
   }
 
   bool get _tieneCoordenadas =>
@@ -80,6 +78,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
             domicilio: domicilio ?? _noticia.domicilio,
             reportero: _noticia.reportero,
             fechaCita: _noticia.fechaCita,
+            fechaCitaAnterior: _noticia.fechaCitaAnterior,
+            fechaCitaCambios: _noticia.fechaCitaCambios,
             fechaPago: _noticia.fechaPago,
             latitud: lat,
             longitud: lon,
@@ -162,6 +162,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   @override
   Widget build(BuildContext context) {
     final tieneCoordenadas = _tieneCoordenadas;
+    final int cambios = _noticia.fechaCitaCambios ?? 0;
+    final bool limiteCambiosFecha = (widget.role == 'reportero') && cambios >= 2;
 
     latlng.LatLng? punto;
     if (tieneCoordenadas) {
@@ -234,9 +236,57 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                               fontWeight: FontWeight.w600,
                             ),
                       ),
-                      const SizedBox(height: 4),
 
-                      // Botón Agregar/Editar ubicación
+                  const SizedBox(height: 4),
+                    if (_noticia.fechaCitaAnterior != null &&
+                        _noticia.fechaCita != null &&
+                        _noticia.fechaCitaAnterior!.toIso8601String() != _noticia.fechaCita!.toIso8601String()) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Fecha de cita anterior: ${_formatearFechaHora(_noticia.fechaCitaAnterior!)}',
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.edit_note),
+                      label: const Text('Editar noticia'),
+                      onPressed: (_soloLectura || limiteCambiosFecha)
+                          ? null
+                          : () async {
+                              final updated = await Navigator.push<Noticia>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => EditarNoticiaPage(
+                                    noticia: _noticia,
+                                    role: widget.role,
+                                  ),
+                                ),
+                              );
+
+                              if (updated != null && mounted) {
+                                setState(() => _noticia = updated);
+                              }
+                            },
+                    ),
+                  ),
+
+                  if (limiteCambiosFecha) ...[
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Límite alcanzado: ya no puedes cambiar la fecha de cita.',
+                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+
+                  const SizedBox(height: 8),
+
+                  // Botón Agregar/Editar ubicación
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
@@ -260,7 +310,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                       style: TextStyle(fontStyle: FontStyle.italic),
                     ),
                   ],
-                  if (widget.noticia.latitud != null && widget.noticia.longitud != null)...[
+                  if (_noticia.latitud != null && _noticia.longitud != null) ...[
                     const SizedBox(height: 8),
 
                     if (_noticia.latitud != null && _noticia.longitud != null) ...[

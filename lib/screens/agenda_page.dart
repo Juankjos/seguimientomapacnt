@@ -857,7 +857,8 @@ class _AgendaPageState extends State<AgendaPage> {
                                       builder: (_) =>
                                           NoticiaDetallePage(
                                             noticia: n,
-                                            soloLectura: (n.pendiente == false),)
+                                            soloLectura: (n.pendiente == false),
+                                            role: widget.esAdmin ? 'admin' : 'reportero',)
                                     ),
                                   );
                                   await _cargarNoticias();
