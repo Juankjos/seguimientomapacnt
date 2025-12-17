@@ -8,6 +8,7 @@ import 'login_screen.dart';
 import 'noticia_detalle_page.dart';
 import 'tomar_noticias_page.dart';
 import 'agenda_page.dart';
+import 'update_perfil_page.dart';
 
 class NoticiasPage extends StatefulWidget {
   final int reporteroId;
@@ -27,30 +28,35 @@ class NoticiasPage extends StatefulWidget {
 
 class _NoticiasPageState extends State<NoticiasPage> {
   late Future<List<Noticia>> _futureNoticias;
+  late String _nombreReportero;
 
   @override
   void initState() {
     super.initState();
+    _nombreReportero = widget.reporteroNombre;
     _futureNoticias = ApiService.getNoticias(widget.reporteroId);
   }
 
   // ---------- DIALOGOS Y ACCIONES DEL MENÚ ----------
 
-  void _mostrarPerfil() {
-    Navigator.pop(context); // cierra el drawer
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Perfil'),
-        content: Text('Reportero: ${widget.reporteroNombre}'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar'),
-          ),
-        ],
+  void _mostrarPerfil() async {
+    Navigator.pop(context); // cierra drawer
+
+    final nuevoNombre = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UpdatePerfilPage(
+          reporteroId: widget.reporteroId,
+          nombreActual: _nombreReportero,
+        ),
       ),
     );
+
+    if (nuevoNombre != null && nuevoNombre.trim().isNotEmpty && mounted) {
+      setState(() {
+        _nombreReportero = nuevoNombre.trim();
+      });
+    }
   }
 
   void _tomarNoticias() async {

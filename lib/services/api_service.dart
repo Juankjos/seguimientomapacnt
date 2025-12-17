@@ -106,6 +106,7 @@ class ApiService {
     }
   }
 
+  // 🔹 Crear noticia (admin)
   static Future<void> crearNoticia({
     required String noticia,
     String? descripcion,
@@ -139,6 +140,36 @@ class ApiService {
       }
     } else {
       throw Exception('Error en el servidor al crear noticia (${response.statusCode})');
+    }
+  }
+
+  // 🔹 Actualizar perfil
+  static Future<Map<String, dynamic>> updatePerfil({
+    required int reporteroId,
+    String? nombre,
+    String? password,
+  }) async {
+    final url = Uri.parse('$baseUrl/update_perfil.php');
+
+    final body = <String, String>{
+      'reportero_id': reporteroId.toString(),
+    };
+
+    if (nombre != null && nombre.trim().isNotEmpty) {
+      body['nombre'] = nombre.trim();
+    }
+    if (password != null && password.trim().isNotEmpty) {
+      body['password'] = password.trim();
+    }
+
+    final response = await http.post(url, body: body);
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+      if (data['success'] == true) return data;
+      throw Exception(data['message'] ?? 'No se pudo actualizar el perfil');
+    } else {
+      throw Exception('Error en el servidor (${response.statusCode})');
     }
   }
 
