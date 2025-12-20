@@ -61,7 +61,6 @@ if ($reporteroId <= 0) {
     echo json_encode(['success' => false, 'message' => 'reportero_id inválido']);
     exit;
 }
-
 $sql = "
     SELECT
         n.id,

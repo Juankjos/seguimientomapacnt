@@ -6,16 +6,23 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as latlng;
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
+import '../services/tracking_task_handler.dart';
 
 class TrayectoRutaPage extends StatefulWidget {
   final Noticia noticia;
+  final String wsToken;
+  final String wsBaseUrl;
 
   const TrayectoRutaPage({
     super.key,
     required this.noticia,
+    required this.wsToken,
+    required this.wsBaseUrl,
   });
 
   @override
@@ -38,11 +45,83 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
   // Seguimiento de la ubicación del usuario
   bool _seguirUsuario = false;
   StreamSubscription<Position>? _posicionSub;
+  bool _streamIniciado = false;
 
   // Zoom cercano para ver calles
   static const double _zoomSeguir = 17.0;
 
   bool _enviandoLlegada = false;
+
+  Future<bool> _confirmarCancelarTrayecto() async {
+    final res = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Cancelar ruta'),
+          content: const Text('¿Estás seguro que quieres cancelar la ruta?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Volver a trayecto'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Sí Cancelar trayecto'),
+            ),
+          ],
+        );
+      },
+    );
+    return res == true;
+  }
+
+  Future<void> _cancelarTrackingYSalir() async {
+    // Detén seguimiento visual local (si está activo)
+    _posicionSub?.cancel();
+    _posicionSub = null;
+    _seguirUsuario = false;
+
+    // Detén el tracking en segundo plano (Foreground Service)
+    if (!kIsWeb) {
+      try {
+        await FlutterForegroundTask.stopService();
+      } catch (_) {}
+    }
+
+    if (mounted) {
+      Navigator.pop(context);
+    }
+  }
+
+  Future<void> _onBackRequested() async {
+    final confirmar = await _confirmarCancelarTrayecto();
+    if (!confirmar) return;
+    await _cancelarTrackingYSalir();
+  }
+Future<void> _iniciarTrackingForeground() async {
+  if (kIsWeb) return; // solo Android
+
+  // 1) Guardar payload para el TaskHandler
+  final payload = {
+    'ws_url': widget.wsBaseUrl, // ej: ws://167.99.163.209:3001
+    'token': widget.wsToken,
+    'noticia_id': widget.noticia.id,
+    'save_history': false, // o true si lo quieres
+  };
+
+  await FlutterForegroundTask.saveData(
+    key: 'tracking_payload',
+    value: jsonEncode(payload),
+  );
+
+  // 2) Iniciar el servicio (esto dispara startCallback -> TrackingTaskHandler)
+  await FlutterForegroundTask.startService(
+    notificationTitle: 'Trayecto en curso',
+    notificationText: 'Enviando ubicación cada 15s',
+    callback: startCallback, // <- IMPORTANTE: el callback de tracking_task_handler.dart
+  );
+}
 
   @override
   void initState() {
@@ -79,6 +158,9 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       }
 
       _origen = latlng.LatLng(origenPos.latitude, origenPos.longitude);
+      await _iniciarTrackingForeground();
+      _iniciarStreamUbicacion();
+      _seguirUsuario = true;
 
       final puntos = await _solicitarRutaOSRM(_origen!, _destino);
 
@@ -103,7 +185,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     if (!servicioHabilitado) {
       return null;
     }
-
     LocationPermission permiso = await Geolocator.checkPermission();
     if (permiso == LocationPermission.denied) {
       permiso = await Geolocator.requestPermission();
@@ -162,6 +243,37 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
 
     return puntos;
   }
+
+  void _iniciarStreamUbicacion() {
+  if (_streamIniciado) return;
+  _streamIniciado = true;
+
+  _posicionSub?.cancel();
+
+  final settings = kIsWeb
+      ? const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 5,
+        )
+      : AndroidSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 5,
+          intervalDuration: const Duration(seconds: 15),
+        );
+
+  _posicionSub = Geolocator.getPositionStream(
+    locationSettings: settings,
+  ).listen((pos) {
+    _origen = latlng.LatLng(pos.latitude, pos.longitude);
+
+    if (_mapIsReady && _seguirUsuario && _origen != null) {
+      _mapController.move(_origen!, _zoomSeguir);
+    }
+
+    if (mounted) setState(() {});
+  });
+}
+
 
   // Se llama cuando el mapa ya está listo
   void _moverMapaInicial() {
@@ -259,6 +371,8 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
         longitud: lon,
       );
 
+      await FlutterForegroundTask.stopService();
+
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -288,14 +402,11 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
   // --------- Seguimiento de usuario (centrar cerca) ---------
 
   Future<void> _toggleSeguirUsuario() async {
-    if (_seguirUsuario) {
-      // Apagar seguimiento
-      setState(() {
-        _seguirUsuario = false;
-      });
-      _posicionSub?.cancel();
-      _posicionSub = null;
-      return;
+    setState(() {
+      _seguirUsuario = !_seguirUsuario;
+    });
+    if (_seguirUsuario && _mapIsReady && _origen != null) {
+      _mapController.move(_origen!, _zoomSeguir);
     }
 
     // Encender seguimiento
@@ -363,23 +474,27 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Ruta hacia el destino'),
-      ),
-      body: _cargando
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      _error!,
-                      textAlign: TextAlign.center,
+    return PopScope(
+      canPop: false, 
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        unawaited(_onBackRequested()); 
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Ruta hacia el destino'),
+        ),
+        body: _cargando
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(_error!, textAlign: TextAlign.center),
                     ),
-                  ),
-                )
-              : _buildMapa(theme),
+                  )
+                : _buildMapa(theme),
+      ),
     );
   }
   Widget _buildMapa(ThemeData theme) {

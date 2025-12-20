@@ -33,6 +33,8 @@ class _LoginScreenState extends State<LoginScreen> {
         final int reporteroId = int.parse(data['reportero_id'].toString());
         final String nombre = data['nombre'] ?? '';
         final String role = data['role']?.toString() ?? 'reportero';
+        final String wsToken = data['ws_token']?.toString() ?? '';
+        ApiService.wsToken = wsToken;
 
       if (!mounted) return;
 
@@ -57,6 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
               reporteroId: reporteroId,
               reporteroNombre: nombre,
               role: role,
+              wsToken: wsToken,
             ),
           ),
         );

@@ -19,7 +19,10 @@ class ReporteroBusqueda {
 }
 
 class ApiService {
-  static const String baseUrl = 'http://localhost/seguimientomapacnt';
+
+  static const String baseUrl = 'http://167.99.163.209:8080/seguimientomapacnt';
+  static const String wsBaseUrl = 'ws://167.99.163.209:3001';
+  static String wsToken = '';
 
   // 🔹 Login
   static Future<Map<String, dynamic>> login(

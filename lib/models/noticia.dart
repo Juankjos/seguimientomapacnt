@@ -40,29 +40,29 @@ class Noticia {
   });
 
   factory Noticia.fromJson(Map<String, dynamic> json) {
-    double? _parseDouble(dynamic v) {
+    double? parseDouble(dynamic v) {
       if (v == null || v == '') return null;
       return double.tryParse(v.toString());
     }
 
-    DateTime? _parseDate(dynamic v) {
+    DateTime? parseDate(dynamic v) {
       if (v == null || v == '') return null;
       return DateTime.tryParse(v.toString());
     }
 
-    bool _parseBool(dynamic v) {
+    bool parseBool(dynamic v) {
       if (v == null) return true;
       final s = v.toString();
       return s == '1' || s.toLowerCase() == 'true';
     }
 
-    DateTime? _parseDateTime(dynamic v) {
+    DateTime? parseDateTime(dynamic v) {
       if (v == null || v == '') return null;
       final s = v.toString().replaceFirst(' ', 'T');
       return DateTime.tryParse(s);
     }
 
-    int _parseInt(dynamic v) => int.tryParse(v?.toString() ?? '') ?? 0;
+    int parseInt(dynamic v) => int.tryParse(v?.toString() ?? '') ?? 0;
 
 
     return Noticia(
@@ -72,17 +72,17 @@ class Noticia {
       cliente: json['cliente'],
       domicilio: json['domicilio'],
       reportero: json['reportero'] ?? '',
-      fechaCita: _parseDate(json['fecha_cita']),
-      fechaCitaAnterior: _parseDateTime(json['fecha_cita_anterior']),
-      fechaCitaCambios: _parseInt(json['fecha_cita_cambios']),
-      fechaPago: _parseDate(json['fecha_pago']),
-      latitud: _parseDouble(json['latitud']),
-      longitud: _parseDouble(json['longitud']),
-      horaLlegada: _parseDate(json['hora_llegada']),
-      llegadaLatitud: _parseDouble(json['llegada_latitud']),
-      llegadaLongitud: _parseDouble(json['llegada_longitud']),
-      pendiente: _parseBool(json['pendiente']),
-      ultimaMod: _parseDate(json['ultima_mod']), 
+      fechaCita: parseDate(json['fecha_cita']),
+      fechaCitaAnterior: parseDateTime(json['fecha_cita_anterior']),
+      fechaCitaCambios: parseInt(json['fecha_cita_cambios']),
+      fechaPago: parseDate(json['fecha_pago']),
+      latitud: parseDouble(json['latitud']),
+      longitud: parseDouble(json['longitud']),
+      horaLlegada: parseDate(json['hora_llegada']),
+      llegadaLatitud: parseDouble(json['llegada_latitud']),
+      llegadaLongitud: parseDouble(json['llegada_longitud']),
+      pendiente: parseBool(json['pendiente']),
+      ultimaMod: parseDate(json['ultima_mod']), 
     );
   }
 }

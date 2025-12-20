@@ -9,6 +9,7 @@ import 'mapa_ubicacion_page.dart';
 import 'trayecto_ruta_page.dart';
 import 'mapa_completo_page.dart';
 import 'editar_noticia_page.dart';
+import 'espectador_ruta_page.dart';
 
 class NoticiaDetallePage extends StatefulWidget {
   final Noticia noticia;
@@ -164,6 +165,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     final tieneCoordenadas = _tieneCoordenadas;
     final int cambios = _noticia.fechaCitaCambios ?? 0;
     final bool limiteCambiosFecha = (widget.role == 'reportero') && cambios >= 2;
+    final bool esAdmin = widget.role == 'admin';
 
     latlng.LatLng? punto;
     if (tieneCoordenadas) {
@@ -318,9 +320,29 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          icon: Icon(_soloLectura ? Icons.map : Icons.directions),
-                          label: Text(_soloLectura ? 'Mostrar mapa completo' : 'Ir a destino ahora'),
+                          icon: Icon(esAdmin ? Icons.visibility : (_soloLectura ? Icons.map : Icons.directions)),
+                          label: Text(
+                            esAdmin
+                              ? 'Ser espectador de ruta'
+                              : (_soloLectura ? 'Mostrar mapa completo' : 'Ir a destino ahora'),
+                          ),
                           onPressed: () {
+                            if (esAdmin) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => EspectadorRutaPage(
+                                    noticiaId: _noticia.id,
+                                    destinoLat: _noticia.latitud!,
+                                    destinoLon: _noticia.longitud!,
+                                    wsUrl: ApiService.wsBaseUrl,       // ej: "ws://TU_IP:8080"
+                                    wsToken: ApiService.wsToken,           // pásalo al detalle
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+
                             if (_soloLectura) {
                               Navigator.push(
                                 context,
@@ -332,7 +354,11 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => TrayectoRutaPage(noticia: _noticia),
+                                  builder: (_) => TrayectoRutaPage(
+                                  noticia: _noticia,
+                                  wsToken: ApiService.wsToken,
+                                  wsBaseUrl: ApiService.wsBaseUrl,
+                                  ),
                                 ),
                               );
                             }

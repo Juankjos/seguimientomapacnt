@@ -14,12 +14,14 @@ class NoticiasPage extends StatefulWidget {
   final int reporteroId;
   final String reporteroNombre;
   final String role;
+  final String wsToken;
 
   const NoticiasPage({
     super.key,
     required this.reporteroId,
     required this.reporteroNombre,
     required this.role,
+    required this.wsToken,
   });
 
   @override
