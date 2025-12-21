@@ -42,15 +42,16 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
 
   bool _mapIsReady = false;
 
-  // Seguimiento de la ubicación del usuario
-  bool _seguirUsuario = false;
   StreamSubscription<Position>? _posicionSub;
   bool _streamIniciado = false;
 
-  // Zoom cercano para ver calles
+  bool _followCamera = true;
+
   static const double _zoomSeguir = 17.0;
 
   bool _enviandoLlegada = false;
+
+  // ------------------- Navegación / salir -------------------
 
   Future<bool> _confirmarCancelarTrayecto() async {
     final res = await showDialog<bool>(
@@ -77,10 +78,8 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
   }
 
   Future<void> _cancelarTrackingYSalir() async {
-    // Detén seguimiento visual local (si está activo)
     _posicionSub?.cancel();
     _posicionSub = null;
-    _seguirUsuario = false;
 
     // Detén el tracking en segundo plano (Foreground Service)
     if (!kIsWeb) {
@@ -99,36 +98,36 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     if (!confirmar) return;
     await _cancelarTrackingYSalir();
   }
-Future<void> _iniciarTrackingForeground() async {
-  if (kIsWeb) return; // solo Android
 
-  // 1) Guardar payload para el TaskHandler
-  final payload = {
-    'ws_url': widget.wsBaseUrl, // ej: ws://167.99.163.209:3001
-    'token': widget.wsToken,
-    'noticia_id': widget.noticia.id,
-    'save_history': false, // o true si lo quieres
-  };
+  Future<void> _iniciarTrackingForeground() async {
+    if (kIsWeb) return;
 
-  await FlutterForegroundTask.saveData(
-    key: 'tracking_payload',
-    value: jsonEncode(payload),
-  );
+    final payload = {
+      'ws_url': widget.wsBaseUrl,
+      'token': widget.wsToken,
+      'noticia_id': widget.noticia.id,
+      'save_history': false,
+    };
 
-  // 2) Iniciar el servicio (esto dispara startCallback -> TrackingTaskHandler)
-  await FlutterForegroundTask.startService(
-    notificationTitle: 'Trayecto en curso',
-    notificationText: 'Enviando ubicación cada 15s',
-    callback: startCallback, // <- IMPORTANTE: el callback de tracking_task_handler.dart
-  );
-}
+    await FlutterForegroundTask.saveData(
+      key: 'tracking_payload',
+      value: jsonEncode(payload),
+    );
+
+    await FlutterForegroundTask.startService(
+      notificationTitle: 'Trayecto en curso',
+      notificationText: 'Enviando ubicación cada 15s',
+      callback: startCallback,
+    );
+  }
+
+  // ------------------- ciclo de vida -------------------
 
   @override
   void initState() {
     super.initState();
 
-    if (widget.noticia.latitud == null ||
-        widget.noticia.longitud == null) {
+    if (widget.noticia.latitud == null || widget.noticia.longitud == null) {
       _error = 'La noticia no tiene coordenadas de destino.';
       _cargando = false;
     } else {
@@ -158,9 +157,15 @@ Future<void> _iniciarTrackingForeground() async {
       }
 
       _origen = latlng.LatLng(origenPos.latitude, origenPos.longitude);
+
+      // Tracking real (WS) siempre activo
       await _iniciarTrackingForeground();
+
+      // Stream visual siempre activo
       _iniciarStreamUbicacion();
-      _seguirUsuario = true;
+
+      // Sígueme (cámara)
+      _followCamera = true;
 
       final puntos = await _solicitarRutaOSRM(_origen!, _destino);
 
@@ -180,28 +185,56 @@ Future<void> _iniciarTrackingForeground() async {
     }
   }
 
+  // ------------------- ubicación -------------------
+
   Future<Position?> _obtenerUbicacionActual() async {
-    bool servicioHabilitado = await Geolocator.isLocationServiceEnabled();
-    if (!servicioHabilitado) {
-      return null;
-    }
+    final servicioHabilitado = await Geolocator.isLocationServiceEnabled();
+    if (!servicioHabilitado) return null;
+
     LocationPermission permiso = await Geolocator.checkPermission();
     if (permiso == LocationPermission.denied) {
       permiso = await Geolocator.requestPermission();
-      if (permiso == LocationPermission.denied) {
-        return null;
-      }
+      if (permiso == LocationPermission.denied) return null;
     }
 
-    if (permiso == LocationPermission.deniedForever) {
-      return null;
-    }
+    if (permiso == LocationPermission.deniedForever) return null;
 
-    final pos = await Geolocator.getCurrentPosition(
+    return Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
     );
-    return pos;
   }
+
+  void _iniciarStreamUbicacion() {
+    if (_streamIniciado) return;
+    _streamIniciado = true;
+
+    _posicionSub?.cancel();
+
+    final settings = kIsWeb
+        ? const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+          )
+        : AndroidSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+            intervalDuration: const Duration(seconds: 15),
+          );
+
+    _posicionSub = Geolocator.getPositionStream(
+      locationSettings: settings,
+    ).listen((pos) {
+      _origen = latlng.LatLng(pos.latitude, pos.longitude);
+
+      if (_mapIsReady && _followCamera && _origen != null) {
+        _mapController.move(_origen!, _zoomSeguir);
+      }
+
+      if (mounted) setState(() {});
+    });
+  }
+
+  // ------------------- ruta OSRM -------------------
 
   Future<List<latlng.LatLng>> _solicitarRutaOSRM(
     latlng.LatLng origen,
@@ -244,54 +277,21 @@ Future<void> _iniciarTrackingForeground() async {
     return puntos;
   }
 
-  void _iniciarStreamUbicacion() {
-  if (_streamIniciado) return;
-  _streamIniciado = true;
+  // ------------------- mapa / cámara -------------------
 
-  _posicionSub?.cancel();
-
-  final settings = kIsWeb
-      ? const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 5,
-        )
-      : AndroidSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 5,
-          intervalDuration: const Duration(seconds: 15),
-        );
-
-  _posicionSub = Geolocator.getPositionStream(
-    locationSettings: settings,
-  ).listen((pos) {
-    _origen = latlng.LatLng(pos.latitude, pos.longitude);
-
-    if (_mapIsReady && _seguirUsuario && _origen != null) {
-      _mapController.move(_origen!, _zoomSeguir);
-    }
-
-    if (mounted) setState(() {});
-  });
-}
-
-
-  // Se llama cuando el mapa ya está listo
   void _moverMapaInicial() {
     if (!_mapIsReady || _origen == null) return;
 
     if (_rutaPuntos.isNotEmpty) {
       _ajustarMapaBounds();
     } else {
-      final center = latlng.LatLng(
-        (_origen!.latitude + _destino.latitude) / 2,
-        (_origen!.longitude + _destino.longitude) / 2,
-      );
-      _mapController.move(center, 13);
+      _mapController.move(_origen!, 13);
     }
   }
 
   void _ajustarMapaBounds() {
     if (_origen == null) return;
+
     final allPoints = [..._rutaPuntos, _origen!, _destino];
 
     double minLat = allPoints.first.latitude;
@@ -314,6 +314,37 @@ Future<void> _iniciarTrackingForeground() async {
     _mapController.move(center, 13);
   }
 
+  void _centrarEnMiUbicacion() {
+    if (!_mapIsReady || _origen == null) return;
+    setState(() => _followCamera = true);
+    _mapController.move(_origen!, _zoomSeguir);
+  }
+
+  void _verRutaCompleta() {
+    if (!_mapIsReady) return;
+    if (_origen == null && _rutaPuntos.isEmpty) return;
+
+    setState(() => _followCamera = false);
+
+    if (_rutaPuntos.isNotEmpty) {
+      _ajustarMapaBounds();
+    } else if (_origen != null) {
+      final center = latlng.LatLng(
+        (_origen!.latitude + _destino.latitude) / 2,
+        (_origen!.longitude + _destino.longitude) / 2,
+      );
+      _mapController.move(center, 13);
+    }
+  }
+
+  void _centrarEnDestino() {
+    if (!_mapIsReady) return;
+    setState(() => _followCamera = false);
+    _mapController.move(_destino, _zoomSeguir);
+  }
+
+  // ------------------- finalizar trayecto -------------------
+
   Future<void> _onFinalizarTrayectoPressed() async {
     if (_enviandoLlegada) return;
 
@@ -322,9 +353,7 @@ Future<void> _iniciarTrackingForeground() async {
       builder: (context) {
         return AlertDialog(
           title: const Text('Finalizar ruta'),
-          content: const Text(
-            '¿Seguro que deseas finalizar la ruta?',
-          ),
+          content: const Text('¿Seguro que deseas finalizar la ruta?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -350,25 +379,23 @@ Future<void> _iniciarTrackingForeground() async {
     });
 
     try {
-      // Tomamos la ubicación actual real al momento de finalizar
       final pos = await _obtenerUbicacionActual();
       if (pos == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No se pudo obtener la ubicación actual para registrar la llegada.'),
+            content: Text(
+              'No se pudo obtener la ubicación actual para registrar la llegada.',
+            ),
           ),
         );
         return;
       }
 
-      final lat = pos.latitude;
-      final lon = pos.longitude;
-
       await ApiService.registrarLlegadaNoticia(
         noticiaId: widget.noticia.id,
-        latitud: lat,
-        longitud: lon,
+        latitud: pos.latitude,
+        longitud: pos.longitude,
       );
 
       await FlutterForegroundTask.stopService();
@@ -381,14 +408,11 @@ Future<void> _iniciarTrackingForeground() async {
         ),
       );
 
-      // Opcional: regresar a la pantalla anterior (detalle de noticia)
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al registrar llegada: $e'),
-        ),
+        SnackBar(content: Text('Error al registrar llegada: $e')),
       );
     } finally {
       if (mounted) {
@@ -399,86 +423,17 @@ Future<void> _iniciarTrackingForeground() async {
     }
   }
 
-  // --------- Seguimiento de usuario (centrar cerca) ---------
-
-  Future<void> _toggleSeguirUsuario() async {
-    setState(() {
-      _seguirUsuario = !_seguirUsuario;
-    });
-    if (_seguirUsuario && _mapIsReady && _origen != null) {
-      _mapController.move(_origen!, _zoomSeguir);
-    }
-
-    // Encender seguimiento
-    if (_origen == null) {
-      final pos = await _obtenerUbicacionActual();
-      if (pos == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No se pudo obtener la ubicación actual.'),
-          ),
-        );
-        return;
-      }
-      _origen = latlng.LatLng(pos.latitude, pos.longitude);
-    }
-
-    setState(() {
-      _seguirUsuario = true;
-    });
-
-    // Centrar inmediatamente con zoom cercano
-    if (_mapIsReady && _origen != null) {
-      _mapController.move(_origen!, _zoomSeguir);
-    }
-
-    // Iniciar stream de posición
-    _posicionSub?.cancel();
-    _posicionSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.best,
-        distanceFilter: 5, // metros para actualizar
-      ),
-    ).listen((pos) {
-      _origen = latlng.LatLng(pos.latitude, pos.longitude);
-      if (_mapIsReady && _seguirUsuario && _origen != null) {
-        // Seguimos al usuario con zoom cercano
-        _mapController.move(_origen!, _zoomSeguir);
-      }
-      setState(() {}); // para redibujar marker de origen
-    });
-  }
-
-  void _verRutaCompleta() {
-    if (!_mapIsReady) return;
-    if (_origen == null && _rutaPuntos.isEmpty) return;
-
-    if (_rutaPuntos.isNotEmpty) {
-      _ajustarMapaBounds();
-    } else if (_origen != null) {
-      final center = latlng.LatLng(
-        (_origen!.latitude + _destino.latitude) / 2,
-        (_origen!.longitude + _destino.longitude) / 2,
-      );
-      _mapController.move(center, 13);
-    }
-  }
-
-  void _centrarEnDestino() {
-    if (!_mapIsReady) return;
-    _mapController.move(_destino, _zoomSeguir);
-  }
+  // ------------------- UI -------------------
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return PopScope(
-      canPop: false, 
+      canPop: false,
       onPopInvoked: (didPop) {
         if (didPop) return;
-        unawaited(_onBackRequested()); 
+        unawaited(_onBackRequested());
       },
       child: Scaffold(
         appBar: AppBar(
@@ -506,7 +461,6 @@ Future<void> _iniciarTrackingForeground() async {
 
     return Column(
       children: [
-        // Mapa ocupa casi toda la pantalla
         Expanded(
           child: Stack(
             children: [
@@ -519,20 +473,21 @@ Future<void> _iniciarTrackingForeground() async {
                     _mapIsReady = true;
                     _moverMapaInicial();
                   },
-                  interactionOptions: InteractionOptions(
-                    flags: _seguirUsuario
-                        ? InteractiveFlag.pinchZoom |
-                            InteractiveFlag.doubleTapZoom |
-                            InteractiveFlag.scrollWheelZoom
-                        : InteractiveFlag.all,
+
+                  onPositionChanged: (pos, hasGesture) {
+                    if (hasGesture && _followCamera) {
+                      setState(() => _followCamera = false);
+                    }
+                  },
+
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.all,
                   ),
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName:
-                        'com.example.seguimientomapacnt',
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.example.seguimientomapacnt',
                   ),
                   PolylineLayer(
                     polylines: [
@@ -546,17 +501,16 @@ Future<void> _iniciarTrackingForeground() async {
                   ),
                   MarkerLayer(
                     markers: [
-                      if (_origen != null)
-                        Marker(
-                          point: _origen!,
-                          width: 40,
-                          height: 40,
-                          child: const Icon(
-                            Icons.my_location,
-                            color: Colors.blue,
-                            size: 30,
-                          ),
+                      Marker(
+                        point: _origen!,
+                        width: 40,
+                        height: 40,
+                        child: const Icon(
+                          Icons.my_location,
+                          color: Colors.blue,
+                          size: 30,
                         ),
+                      ),
                       Marker(
                         point: _destino,
                         width: 40,
@@ -572,51 +526,70 @@ Future<void> _iniciarTrackingForeground() async {
                 ],
               ),
 
+              Positioned(
+                top: 12,
+                left: 12,
+                right: 12,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.62),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _followCamera ? Icons.gps_fixed : Icons.touch_app,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _followCamera ? 'Siguiendo tu ubicación' : 'Explorando mapa',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
               // Botones flotantes
               Positioned(
                 top: 16,
                 right: 16,
                 child: Column(
                   children: [
-                    // CENTRAR / SEGUIR
+                    // ✅ MI UBICACIÓN (no “activar/desactivar tracking”)
                     FloatingActionButton.small(
                       heroTag: 'centrar_btn',
-                      onPressed: _toggleSeguirUsuario,
-                      tooltip: _seguirUsuario
-                          ? 'Desactivar seguimiento'
-                          : 'Centrar y seguir ubicación',
-                      child: Icon(
-                        _seguirUsuario ? Icons.gps_off : Icons.gps_fixed,
-                      ),
+                      onPressed: _centrarEnMiUbicacion,
+                      tooltip: _followCamera ? 'Mi ubicación (siguiendo)' : 'Mi ubicación',
+                      child: Icon(_followCamera ? Icons.gps_fixed : Icons.gps_not_fixed),
                     ),
                     const SizedBox(height: 8),
 
-                    // VER RUTA COMPLETA
+                    // ✅ VER RUTA COMPLETA (siempre disponible)
                     FloatingActionButton.small(
                       heroTag: 'ruta_btn',
-                      onPressed: _seguirUsuario ? null : _verRutaCompleta,
+                      onPressed: _verRutaCompleta,
                       tooltip: 'Ver ruta completa',
-                      backgroundColor: _seguirUsuario
-                          ? theme.disabledColor.withOpacity(0.3)
-                          : null,
-                      foregroundColor: _seguirUsuario
-                          ? theme.disabledColor
-                          : null,
                       child: const Icon(Icons.alt_route),
                     ),
                     const SizedBox(height: 8),
 
-                    // UBICAR DESTINO
+                    // ✅ UBICAR DESTINO (siempre disponible)
                     FloatingActionButton.small(
                       heroTag: 'destino_btn',
-                      onPressed: _seguirUsuario ? null : _centrarEnDestino,
+                      onPressed: _centrarEnDestino,
                       tooltip: 'Ubicar destino',
-                      backgroundColor: _seguirUsuario
-                          ? theme.disabledColor.withOpacity(0.3)
-                          : null,
-                      foregroundColor: _seguirUsuario
-                          ? theme.disabledColor
-                          : null,
                       child: const Icon(Icons.place),
                     ),
                   ],
@@ -626,7 +599,6 @@ Future<void> _iniciarTrackingForeground() async {
           ),
         ),
 
-        // Botón FINALIZAR TRAYECTO abajo
         SafeArea(
           top: false,
           child: Padding(
@@ -640,14 +612,11 @@ Future<void> _iniciarTrackingForeground() async {
                         height: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
                     : const Icon(Icons.flag),
-                label: Text(
-                  _enviandoLlegada ? 'Guardando...' : 'Finalizar trayecto',
-                ),
+                label: Text(_enviandoLlegada ? 'Guardando...' : 'Finalizar trayecto'),
                 onPressed: _enviandoLlegada ? null : _onFinalizarTrayectoPressed,
               ),
             ),

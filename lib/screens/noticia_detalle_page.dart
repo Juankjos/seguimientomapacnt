@@ -403,7 +403,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
           ),
 
           SizedBox(
-            height: 500,
+            height: 200,
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: ClipRRect(

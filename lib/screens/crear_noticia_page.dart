@@ -330,13 +330,13 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
                 children: [
                   OutlinedButton.icon(
                     icon: const Icon(Icons.calendar_today),
-                    label: const Text('Seleccionar fecha'),
+                    label: const Text('Fecha Cita'),
                     onPressed: _seleccionarFecha,
                   ),
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.access_time),
-                    label: const Text('Seleccionar hora'),
+                    label: const Text('Hora Cita'),
                     onPressed: _seleccionarHora,
                   ),
                 ],

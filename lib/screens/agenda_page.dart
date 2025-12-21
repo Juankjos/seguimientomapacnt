@@ -486,6 +486,7 @@ class _AgendaPageState extends State<AgendaPage> {
           ),
         ),
         const SizedBox(height: 8),
+
         Expanded(
           child: GridView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -493,7 +494,7 @@ class _AgendaPageState extends State<AgendaPage> {
               crossAxisCount: 3,
               mainAxisSpacing: 10,
               crossAxisSpacing: 10,
-              childAspectRatio: 1.1,
+              childAspectRatio: 0.95, // <- antes 1.1 (más alto = menos overflow)
             ),
             itemCount: 12,
             itemBuilder: (context, index) {
@@ -509,7 +510,7 @@ class _AgendaPageState extends State<AgendaPage> {
                   setState(() {
                     _focusedDay = DateTime(year, month, 1);
                     _vista = AgendaView.month;
-                    _selectedMonthInYear = month; // marcar último mes visitado
+                    _selectedMonthInYear = month;
                   });
                 },
                 child: AnimatedContainer(
@@ -519,8 +520,7 @@ class _AgendaPageState extends State<AgendaPage> {
                     color: esSeleccionado
                         ? theme.colorScheme.primaryContainer
                         : tieneEventos
-                            ? theme.colorScheme.primaryContainer
-                                .withOpacity(0.8)
+                            ? theme.colorScheme.primaryContainer.withOpacity(0.8)
                             : theme.colorScheme.surface,
                     border: Border.all(
                       color: esSeleccionado
@@ -534,8 +534,8 @@ class _AgendaPageState extends State<AgendaPage> {
                       BoxShadow(
                         blurRadius: esSeleccionado ? 6 : 4,
                         offset: const Offset(0, 2),
-                        color: Colors.black.withOpacity(
-                            esSeleccionado ? 0.15 : 0.08),
+                        color:
+                            Colors.black.withOpacity(esSeleccionado ? 0.15 : 0.08),
                       )
                     ],
                   ),
@@ -550,11 +550,11 @@ class _AgendaPageState extends State<AgendaPage> {
                           return Tooltip(
                             message: efem.tooltip,
                             child: CircleAvatar(
-                              radius: 18,
+                              radius: 16, // <- un poquito menor ayuda en pantallas chicas
                               backgroundColor: efem.color,
                               child: Icon(
                                 efem.icon,
-                                size: 20,
+                                size: 18,
                                 color: Colors.white,
                               ),
                             ),
@@ -562,27 +562,41 @@ class _AgendaPageState extends State<AgendaPage> {
                         },
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        nombreMes,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
+
+                      // Mes (protegido contra overflow por fuentes grandes)
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          nombreMes,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
-                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 6),
-                      Text(
-                        tieneEventos ? '$count noticias' : 'Sin noticias',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: tieneEventos
-                              ? theme.colorScheme.primary
-                              : Colors.grey,
-                          fontWeight: tieneEventos || esSeleccionado
-                              ? FontWeight.w600
-                              : FontWeight.normal,
+
+                      // "X noticias / Sin noticias" (protegido)
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          tieneEventos ? '$count noticias' : 'Sin noticias',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: tieneEventos
+                                ? theme.colorScheme.primary
+                                : Colors.grey,
+                            fontWeight: tieneEventos || esSeleccionado
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
-                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),
@@ -601,229 +615,284 @@ class _AgendaPageState extends State<AgendaPage> {
     final theme = Theme.of(context);
     final eventosMes = _eventosDelMes(_focusedDay);
 
-    return Column(
-      children: [
-        // Calendario dentro de tarjeta
-        Expanded(
-          flex: 2,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const double calendarFactor = 0.55; // 55% calendario, 45% noticias
+
+        final double totalH = constraints.maxHeight;
+        final double calendarH = totalH * calendarFactor;
+        final double listH = totalH - calendarH - 8;
+
+        return Column(
+          children: [
+            // ---------------- CALENDARIO ----------------
+            SizedBox(
+              height: calendarH,
               child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: TableCalendar<Noticia>(
-                  locale: 'es_MX',
-                  firstDay: DateTime.utc(2000, 1, 1),
-                  lastDay: DateTime.utc(2100, 12, 31),
-                  focusedDay: _focusedDay,
-                  startingDayOfWeek: StartingDayOfWeek.monday,
-                  calendarFormat: CalendarFormat.month,
-                  selectedDayPredicate: (day) =>
-                      _selectedDay != null &&
-                      _soloFecha(day) == _soloFecha(_selectedDay!),
-                  eventLoader: _eventosDeDia,
-                  onDaySelected: (selectedDay, focusedDay) {
-                    setState(() {
-                      _selectedDay = _soloFecha(selectedDay);
-                      _focusedDay = focusedDay;
-                      _selectedMonthInYear = focusedDay.month;
-                      _vista = AgendaView.day;
-                    });
-                  },
-                  onPageChanged: (focusedDay) {
-                    setState(() {
-                      _focusedDay = focusedDay;
-                      _selectedMonthInYear = focusedDay.month;
-                    });
-                  },
-                  calendarStyle: CalendarStyle(
-                    todayDecoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withOpacity(0.7),
-                      shape: BoxShape.circle,
-                    ),
-                    todayTextStyle: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    selectedDecoration: BoxDecoration(
-                      color: theme.colorScheme.secondary,
-                      shape: BoxShape.circle,
-                    ),
-                    selectedTextStyle: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    weekendTextStyle: TextStyle(
-                      color: theme.colorScheme.error,
-                    ),
-                    outsideDaysVisible: false,
-                    markersAlignment: Alignment.bottomRight,
-                    markersMaxCount: 1,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  headerStyle: HeaderStyle(
-                    formatButtonVisible: false,
-                    titleCentered: true,
-                    titleTextStyle: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    titleTextFormatter: (date, locale) {
-                      final mes = _nombreMes(date.month);
-                      return '$mes ${date.year}';
-                    },
-                    leftChevronIcon: const Icon(Icons.chevron_left),
-                    rightChevronIcon: const Icon(Icons.chevron_right),
-                  ),
-                  daysOfWeekStyle: DaysOfWeekStyle(
-                    weekdayStyle: TextStyle(
-                      color: theme.colorScheme.onSurface.withOpacity(0.7),
-                      fontWeight: FontWeight.w600,
-                    ),
-                    weekendStyle: TextStyle(
-                      color:
-                          theme.colorScheme.error.withOpacity(0.9),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  calendarBuilders: CalendarBuilders(
-                    markerBuilder: (context, day, events) {
-                      if (events.isEmpty) return const SizedBox.shrink();
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: LayoutBuilder(
+                      builder: (context, calConstraints) {
+                        const double headerAndWeekdaysApprox = 92.0;
+                        const int rows = 6;
 
-                      final count = events.length;
+                        final double computedRowHeight =
+                            (calConstraints.maxHeight - headerAndWeekdaysApprox) /
+                                rows;
 
-                      return Positioned(
-                        bottom: 2,
-                        right: 2,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            '$count',
-                            style: const TextStyle(
+                        final double rowHeight = computedRowHeight
+                            .clamp(32.0, 46.0);
+
+                        return TableCalendar<Noticia>(
+                          locale: 'es_MX',
+                          firstDay: DateTime.utc(2000, 1, 1),
+                          lastDay: DateTime.utc(2100, 12, 31),
+                          focusedDay: _focusedDay,
+                          startingDayOfWeek: StartingDayOfWeek.monday,
+                          calendarFormat: CalendarFormat.month,
+
+                          rowHeight: rowHeight,
+                          daysOfWeekHeight: 18,
+
+                          selectedDayPredicate: (day) =>
+                              _selectedDay != null &&
+                              _soloFecha(day) == _soloFecha(_selectedDay!),
+
+                          eventLoader: _eventosDeDia,
+
+                          onDaySelected: (selectedDay, focusedDay) {
+                            setState(() {
+                              _selectedDay = _soloFecha(selectedDay);
+                              _focusedDay = focusedDay;
+                              _selectedMonthInYear = focusedDay.month;
+                              _vista = AgendaView.day;
+                            });
+                          },
+
+                          onPageChanged: (focusedDay) {
+                            setState(() {
+                              _focusedDay = focusedDay;
+                              _selectedMonthInYear = focusedDay.month;
+                            });
+                          },
+
+                          calendarStyle: CalendarStyle(
+                            todayDecoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withOpacity(0.7),
+                              shape: BoxShape.circle,
+                            ),
+                            todayTextStyle: const TextStyle(
                               color: Colors.white,
-                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            selectedDecoration: BoxDecoration(
+                              color: theme.colorScheme.secondary,
+                              shape: BoxShape.circle,
+                            ),
+                            selectedTextStyle: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            weekendTextStyle: TextStyle(
+                              color: theme.colorScheme.error,
+                            ),
+                            outsideDaysVisible: false,
+                            markersAlignment: Alignment.bottomRight,
+                            markersMaxCount: 1,
+                          ),
+
+                          headerStyle: HeaderStyle(
+                            formatButtonVisible: false,
+                            titleCentered: true,
+                            titleTextStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            titleTextFormatter: (date, locale) {
+                              final mes = _nombreMes(date.month);
+                              return '$mes ${date.year}';
+                            },
+                            leftChevronIcon: const Icon(Icons.chevron_left),
+                            rightChevronIcon: const Icon(Icons.chevron_right),
+                            headerPadding:
+                                const EdgeInsets.symmetric(vertical: 6),
+                          ),
+
+                          daysOfWeekStyle: DaysOfWeekStyle(
+                            weekdayStyle: TextStyle(
+                              color: theme.colorScheme.onSurface.withOpacity(0.7),
+                              fontWeight: FontWeight.w600,
+                            ),
+                            weekendStyle: TextStyle(
+                              color: theme.colorScheme.error.withOpacity(0.9),
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
 
-        // Lista de noticias del mes
-        Expanded(
-          flex: 2,
-          child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: Card(
-              elevation: 1,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer,
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(16),
-                      ),
-                    ),
-                    child: Text(
-                      'Noticias de ${_nombreMes(_focusedDay.month)}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: eventosMes.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'No hay noticias programadas este mes.',
-                              style: TextStyle(fontSize: 13),
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: eventosMes.length,
-                            itemBuilder: (context, index) {
-                              final n = eventosMes[index];
-                              final fecha = n.fechaCita != null
-                                  ? _formatearFechaCorta(n.fechaCita!)
-                                  : 'Sin fecha';
+                          calendarBuilders: CalendarBuilders(
+                            markerBuilder: (context, day, events) {
+                              if (events.isEmpty) return const SizedBox.shrink();
+                              final count = events.length;
 
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              child: Card(
-                                color: (n.pendiente == false) ? const Color(0xFFC1E59F) : null,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                child: ListTile(
-                                  dense: true,
-                                  title: Text(
-                                    n.noticia,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                              return Positioned(
+                                bottom: 2,
+                                right: 2,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 1,
                                   ),
-                                  subtitle: Text(
-                                    fecha,
-                                    style: const TextStyle(fontSize: 11),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary,
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
-                                  trailing: (n.pendiente == false)
-                                      ? const Text('Cerrada', style: TextStyle(fontWeight: FontWeight.w600))
-                                      : null,
-                                  onTap: () {
-                                    if (n.fechaCita == null) return;
-                                    setState(() {
-                                      final d = _soloFecha(n.fechaCita!);
-                                      _selectedDay = d;
-                                      _focusedDay = d;
-                                      _selectedMonthInYear = d.month;
-                                      _vista = AgendaView.day;
-                                    });
-                                  },
+                                  child: Text(
+                                    '$count',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                    ),
                                   ),
                                 ),
                               );
                             },
                           ),
+                        );
+                      },
+                    ),
                   ),
-                ],
+                ),
               ),
             ),
-          ),
-        ),
 
-        // Footer
-        Container(
-          width: double.infinity,
-          color: Colors.grey.shade200,
-          padding: const EdgeInsets.all(8),
-          child: Text(
-            '${_nombreMes(_focusedDay.month)} ${_focusedDay.year}',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
+            const SizedBox(height: 8),
+
+            // ---------------- NOTICIAS DEL MES (altura fija) ----------------
+            SizedBox(
+              height: listH < 0 ? 0 : listH,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${_nombreMes(_focusedDay.month)} ${_focusedDay.year}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                '${eventosMes.length} noticias',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: theme.colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: eventosMes.isEmpty
+                            ? const Center(
+                                child:
+                                    Text('No hay noticias registradas en este mes.'),
+                              )
+                            : ListView.separated(
+                                padding: const EdgeInsets.symmetric(vertical: 6),
+                                itemCount: eventosMes.length,
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (context, index) {
+                                  final n = eventosMes[index];
+                                  final fecha = n.fechaCita != null
+                                      ? _formatearFechaCorta(n.fechaCita!)
+                                      : 'Sin fecha';
+                                  final bool cerrada = (n.pendiente == false);
+
+                                  return ListTile(
+                                    dense: true,
+                                    leading: Icon(
+                                      cerrada
+                                          ? Icons.check_circle
+                                          : Icons.schedule,
+                                      color: cerrada
+                                          ? Colors.green
+                                          : theme.colorScheme.primary,
+                                    ),
+                                    title: Text(
+                                      n.noticia,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      'Fecha: $fecha',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    trailing: const Icon(Icons.chevron_right),
+                                    onTap: () async {
+                                      await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => NoticiaDetallePage(
+                                            noticia: n,
+                                            soloLectura: (n.pendiente == false),
+                                            role: widget.esAdmin
+                                                ? 'admin'
+                                                : 'reportero',
+                                          ),
+                                        ),
+                                      );
+                                      await _cargarNoticias();
+                                    },
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 
