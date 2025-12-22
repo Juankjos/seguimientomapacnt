@@ -18,6 +18,12 @@ class ReporteroNoticiasPage extends StatefulWidget {
 class _ReporteroNoticiasPageState extends State<ReporteroNoticiasPage> {
   bool _cargando = true;
   String? _error;
+  bool _reasignando = false;
+
+  Future<void> _onReasignarPressed() async {
+    if (_reasignando) return; // por seguridad
+    await _abrirMenuReasignar();
+  }
 
   List<Noticia> _items = [];
 
@@ -117,6 +123,10 @@ class _ReporteroNoticiasPageState extends State<ReporteroNoticiasPage> {
       return;
     }
 
+    if (_reasignando) return;
+
+    setState(() => _reasignando = true);
+
     try {
       await ApiService.reasignarNoticias(
         noticiaIds: _seleccion.toList(),
@@ -146,6 +156,8 @@ class _ReporteroNoticiasPageState extends State<ReporteroNoticiasPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
+    } finally {
+      if (mounted) setState(() => _reasignando = false);
     }
   }
 
@@ -211,6 +223,7 @@ class _ReporteroNoticiasPageState extends State<ReporteroNoticiasPage> {
   @override
   Widget build(BuildContext context) {
     final titulo = 'Noticias • ${widget.reportero.nombre}';
+    final canReasignar = _seleccion.isNotEmpty && !_reasignando;
 
     return Scaffold(
       appBar: AppBar(
@@ -234,9 +247,17 @@ class _ReporteroNoticiasPageState extends State<ReporteroNoticiasPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _abrirMenuReasignar,
-        icon: const Icon(Icons.swap_horiz),
-        label: Text(_modoSeleccion ? 'Reasignar (${_seleccion.length})' : 'Reasignar'),
+        onPressed: canReasignar ? _onReasignarPressed : null,
+        backgroundColor: canReasignar ? null : Colors.grey.shade400,
+        foregroundColor: canReasignar ? null : Colors.grey.shade800,
+        icon: _reasignando
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.swap_horiz),
+        label: Text(_reasignando ? 'Reasignando…' : 'Reasignar'),
       ),
       body: _cargando
           ? const Center(child: CircularProgressIndicator())

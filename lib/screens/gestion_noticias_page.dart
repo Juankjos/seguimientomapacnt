@@ -4,6 +4,7 @@ import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
 import '../services/api_service.dart';
 import 'reportero_noticias_page.dart';
+import 'noticias_sin_asignar_page.dart';
 
 class GestionNoticiasPage extends StatefulWidget {
   const GestionNoticiasPage({super.key});
@@ -101,6 +102,22 @@ class _GestionNoticiasPageState extends State<GestionNoticiasPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        icon: const Icon(Icons.assignment_late_outlined),
+        label: const Text('Noticias sin asignar'),
+        onPressed: () async {
+          final changed = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(builder: (_) => const NoticiasSinAsignarPage()),
+          );
+
+          // Si asignaste algo, refresca tu vista de Gestión Noticias (conteos)
+          if (changed == true) {
+            // ajusta esto al método que uses para recargar en tu GestionNoticiasPage
+            await _cargar();
+          }
+        },
+      ),
       appBar: AppBar(
         title: const Text('Gestión Noticias'),
         actions: [
