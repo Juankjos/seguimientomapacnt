@@ -7,6 +7,7 @@ import 'noticia_detalle_page.dart';
 import 'crear_noticia_page.dart';
 import 'login_screen.dart';
 import 'update_perfil_page.dart';
+import 'gestion_reporteros_page.dart';
 
 enum AgendaView { year, month, day }
 
@@ -227,6 +228,17 @@ class _AgendaPageState extends State<AgendaPage> {
             leading: const Icon(Icons.person),
             title: const Text('Perfil'),
             onTap: _abrirPerfilAdmin,
+          ),
+          ListTile(
+            leading: const Icon(Icons.manage_accounts),
+            title: const Text('Gestión'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const GestionReporterosPage()),
+              );
+            },
           ),
           const Spacer(),
           const Divider(),

@@ -1,6 +1,8 @@
 <?php
 require 'config.php';
 
+header('Content-Type: application/json; charset=utf-8');
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['success' => false, 'message' => 'Método no permitido']);
@@ -16,8 +18,7 @@ if ($reporteroId <= 0) {
     exit;
 }
 
-// Normalizar opcionales
-$nombre = ($nombre !== null && $nombre !== '') ? $nombre : null;
+$nombre   = ($nombre !== null && $nombre !== '') ? $nombre : null;
 $password = ($password !== null && $password !== '') ? $password : null;
 
 if ($nombre === null && $password === null) {
@@ -26,7 +27,6 @@ if ($nombre === null && $password === null) {
 }
 
 try {
-    // Validaciones mínimas
     if ($password !== null && strlen($password) < 6) {
         echo json_encode(['success' => false, 'message' => 'La contraseña debe tener al menos 6 caracteres']);
         exit;
@@ -41,12 +41,6 @@ try {
     }
 
     if ($password !== null) {
-        // Si usas password_hash, cambia a:
-        // $passwordHash = password_hash($password, PASSWORD_BCRYPT);
-        // $updates[] = "password = :password";
-        // $params[':password'] = $passwordHash;
-
-        // (Tu app hoy usa password plano)
         $updates[] = "password = :password";
         $params[':password'] = $password;
     }
@@ -55,7 +49,6 @@ try {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
 
-    // Regresar datos actualizados
     $stmt2 = $pdo->prepare("SELECT id, nombre, role FROM reporteros WHERE id = ? LIMIT 1");
     $stmt2->execute([$reporteroId]);
     $row = $stmt2->fetch();
@@ -65,7 +58,7 @@ try {
         'message' => 'Perfil actualizado',
         'data' => $row,
     ]);
-} catch (Exception $e) {
+    } catch (Exception $e) {
     http_response_code(500);
     echo json_encode([
         'success' => false,

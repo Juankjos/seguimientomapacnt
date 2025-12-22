@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/noticia.dart';
+import '../models/reportero_admin.dart';
+
 class ReporteroBusqueda {
   final int id;
   final String nombre;
@@ -143,6 +145,104 @@ class ApiService {
       }
     } else {
       throw Exception('Error en el servidor al crear noticia (${response.statusCode})');
+    }
+  }
+
+  // 🔹 Crear reportero (nuevo) - requiere create_reportero.php
+  static Future<ReporteroAdmin> createReportero({
+    required String nombre,
+    required String password,
+  }) async {
+    final url = Uri.parse('$baseUrl/create_reportero.php');
+
+    final resp = await http.post(url, body: {
+      'nombre': nombre.trim(),
+      'password': password.trim(),
+    });
+
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
+
+    final Map<String, dynamic> data = json.decode(resp.body);
+    if (data['success'] != true) {
+      throw Exception(data['message'] ?? 'No se pudo crear el reportero');
+    }
+
+    return ReporteroAdmin.fromJson(data['data'] as Map<String, dynamic>);
+  }
+
+  // 🔹 Actualizar reportero (nombre/password)
+  static Future<ReporteroAdmin> updateReporteroAdmin({
+    required int reporteroId,
+    String? nombre,
+    String? password,
+  }) async {
+    final url = Uri.parse('$baseUrl/update_perfil.php');
+
+    final body = <String, String>{
+      'reportero_id': reporteroId.toString(),
+    };
+
+    if (nombre != null && nombre.trim().isNotEmpty) {
+      body['nombre'] = nombre.trim();
+    }
+    if (password != null && password.trim().isNotEmpty) {
+      body['password'] = password.trim();
+    }
+
+    final resp = await http.post(url, body: body);
+
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
+
+    final Map<String, dynamic> data = json.decode(resp.body);
+    if (data['success'] != true) {
+      throw Exception(data['message'] ?? 'No se pudo actualizar');
+    }
+
+    return ReporteroAdmin.fromJson(data['data'] as Map<String, dynamic>);
+  }
+
+  // 🔹 Listar reporteros para gestión
+  static Future<List<ReporteroAdmin>> getReporterosAdmin({String q = ''}) async {
+    final url = Uri.parse(
+      '$baseUrl/search_reporteros.php?q=${Uri.encodeQueryComponent(q)}',
+    );
+
+    final resp = await http.get(url);
+
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
+
+    final Map<String, dynamic> data = json.decode(resp.body);
+    if (data['success'] != true) {
+      throw Exception(data['message'] ?? 'Error al listar reporteros');
+    }
+
+    final List list = (data['data'] as List?) ?? [];
+    return list
+        .map((e) => ReporteroAdmin.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  // 🔹 Borrar reportero
+  static Future<void> deleteReportero({required int reporteroId}) async {
+    final url = Uri.parse('$baseUrl/delete_reportero.php');
+
+    final resp = await http.post(url, body: {
+      'reportero_id': reporteroId.toString(),
+    });
+
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
+
+    final Map<String, dynamic> data = json.decode(resp.body);
+    if (data['success'] != true) {
+      throw Exception(data['message'] ?? 'No se pudo borrar el reportero');
     }
   }
 
