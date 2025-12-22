@@ -321,6 +321,51 @@ class ApiService {
     }
   }
 
+  // 🔹 Noticias de un reportero (incluye cerradas opcional)
+  static Future<List<Noticia>> getNoticiasPorReportero({
+    required int reporteroId,
+    bool incluyeCerradas = true,
+  }) async {
+    final url = Uri.parse(
+      '$baseUrl/get_noticias.php?reportero_id=$reporteroId&incluye_cerradas=${incluyeCerradas ? 1 : 0}',
+    );
+
+    final resp = await http.get(url);
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
+
+    final Map<String, dynamic> data = json.decode(resp.body);
+    if (data['success'] != true) {
+      throw Exception(data['message'] ?? 'Error al obtener noticias');
+    }
+
+    final List list = (data['data'] as List?) ?? [];
+    return list.map((e) => Noticia.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  // 🔹 Reasignar / desasignar noticias (admin)
+  static Future<void> reasignarNoticias({
+    required List<int> noticiaIds,
+    int? nuevoReporteroId, // null => desasignar (reportero_id = NULL)
+  }) async {
+    final url = Uri.parse('$baseUrl/reassign_noticias.php');
+
+    final resp = await http.post(url, body: {
+      'noticia_ids': json.encode(noticiaIds),
+      'nuevo_reportero_id': (nuevoReporteroId ?? '').toString(),
+    });
+
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
+
+    final Map<String, dynamic> data = json.decode(resp.body);
+    if (data['success'] != true) {
+      throw Exception(data['message'] ?? 'No se pudo reasignar');
+    }
+  }
+
   // 🔹 Buscar reportero a una noticia
   static Future<List<ReporteroBusqueda>> buscarReporteros(String query) async {
     final url = Uri.parse('$baseUrl/search_reporteros.php?q=${Uri.encodeQueryComponent(query)}');

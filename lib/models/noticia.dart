@@ -4,6 +4,7 @@ class Noticia {
   final String? descripcion;
   final String? cliente;
   final String? domicilio;  
+  final int? reporteroId;
   final String reportero;
   final DateTime? fechaCita;
   final DateTime? fechaCitaAnterior;
@@ -26,6 +27,7 @@ class Noticia {
     this.descripcion,
     this.cliente,
     this.domicilio,
+    this.reporteroId,
     this.fechaCita,
     this.fechaCitaAnterior,
     required this.fechaCitaCambios,
@@ -64,6 +66,10 @@ class Noticia {
 
     int parseInt(dynamic v) => int.tryParse(v?.toString() ?? '') ?? 0;
 
+    int? parseNullableInt(dynamic v) {
+      if (v == null || v.toString().isEmpty) return null;
+      return int.tryParse(v.toString());
+    }
 
     return Noticia(
       id: int.parse(json['id'].toString()),
@@ -71,6 +77,7 @@ class Noticia {
       descripcion: json['descripcion'],
       cliente: json['cliente'],
       domicilio: json['domicilio'],
+      reporteroId: parseNullableInt(json['reportero_id']),
       reportero: json['reportero'] ?? '',
       fechaCita: parseDate(json['fecha_cita']),
       fechaCitaAnterior: parseDateTime(json['fecha_cita_anterior']),
