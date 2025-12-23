@@ -103,7 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
             TextField(
               controller: _nombreController,
               decoration: const InputDecoration(
-                labelText: 'Usuario (reportero)',
+                labelText: 'Usuario',
               ),
             ),
             const SizedBox(height: 16),
