@@ -52,7 +52,7 @@ class _ReporteroNoticiasPageState extends State<ReporteroNoticiasPage> {
     try {
       final noticias = await ApiService.getNoticiasPorReportero(
         reporteroId: widget.reportero.id,
-        incluyeCerradas: true,
+        incluyeCerradas: false,
       );
 
       // para el selector de reasignación

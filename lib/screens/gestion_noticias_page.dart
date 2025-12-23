@@ -69,6 +69,7 @@ class _GestionNoticiasPageState extends State<GestionNoticiasPage> {
 
       final Map<int, int> conteo = {};
       for (final n in todas) {
+        if (!n.pendiente) continue;
         final rid = n.reporteroId;
         if (rid == null) continue;
         conteo[rid] = (conteo[rid] ?? 0) + 1;
@@ -215,7 +216,7 @@ class _GestionNoticiasPageState extends State<GestionNoticiasPage> {
                                         color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
                                       ),
                                       child: Text(
-                                        '$count noticias',
+                                        '$count Noticias',
                                         style: TextStyle(
                                           fontWeight: FontWeight.w700,
                                           color: Theme.of(context).colorScheme.primary,
