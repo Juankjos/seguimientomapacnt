@@ -148,6 +148,24 @@ class ApiService {
     }
   }
 
+  // 🔹 Borrar noticia (admin)
+  static Future<void> deleteNoticiaSinAsignar({required int noticiaId}) async {
+    final url = Uri.parse('$baseUrl/delete_noticia_sin_asignar.php');
+
+    final resp = await http.post(url, body: {
+      'noticia_id': noticiaId.toString(),
+    });
+
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
+
+    final Map<String, dynamic> data = json.decode(resp.body);
+    if (data['success'] != true) {
+      throw Exception(data['message'] ?? 'No se pudo borrar la noticia');
+    }
+  }
+
   // 🔹 Crear reportero (nuevo) - requiere create_reportero.php
   static Future<ReporteroAdmin> createReportero({
     required String nombre,

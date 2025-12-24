@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart' as latlng;
+import 'package:flutter/services.dart';
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
@@ -166,6 +167,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     final int cambios = _noticia.fechaCitaCambios ?? 0;
     final bool limiteCambiosFecha = (widget.role == 'reportero') && cambios >= 2;
     final bool esAdmin = widget.role == 'admin';
+    final domicilio = (_noticia.domicilio ?? '').trim();
+    final domicilioTxt = domicilio.isNotEmpty ? domicilio : 'Sin domicilio';
 
     final nombreReportero = (_noticia.reportero.trim().isNotEmpty)
         ? _noticia.reportero.trim()
@@ -225,10 +228,43 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                         'Cliente: ${_noticia.cliente}',
                       ),
                       const SizedBox(height: 4),
-                      Text('Domicilio: ${_noticia.domicilio ?? 'Sin domicilio'}',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onLongPress: domicilio.isEmpty
+                                  ? null
+                                  : () async {
+                                      await Clipboard.setData(ClipboardData(text: domicilio));
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Domicilio copiado')),
+                                      );
+                                    },
+                              child: Text(
+                                'Domicilio: $domicilioTxt',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            tooltip: 'Copiar domicilio',
+                            icon: const Icon(Icons.copy, size: 20),
+                            onPressed: domicilio.isEmpty
+                                ? null
+                                : () async {
+                                    await Clipboard.setData(ClipboardData(text: domicilio));
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Domicilio copiado')),
+                                    );
+                                  },
+                          ),
+                        ],
                       ),
 
                       if (_noticia.ultimaMod != null) ...[

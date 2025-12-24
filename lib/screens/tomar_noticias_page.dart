@@ -1,9 +1,11 @@
+//lib/screens/tomar_noticias_page.dart
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
@@ -111,7 +113,7 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
     }
   }
 
-  // ------------ Carga de noticias desde backend ------------
+  // ------------ Carga de noticias desde back ------------
 
   Future<void> _cargarNoticias() async {
     setState(() {
@@ -163,6 +165,25 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
       });
     }
   }
+
+  String _fmtFechaHoraCita(DateTime? dt) {
+    if (dt == null) return 'Sin fecha';
+
+    // Fecha: DD/Mes_textual/YYYY (Mes con inicial mayúscula)
+    final fechaRaw = DateFormat('dd/MMMM/yyyy', 'es_MX').format(dt); // 24/diciembre/2025
+    final parts = fechaRaw.split('/');
+    final mes = parts.length >= 2 && parts[1].isNotEmpty
+        ? '${parts[1][0].toUpperCase()}${parts[1].substring(1)}'
+        : '';
+    final fecha = parts.length == 3 ? '${parts[0]}/$mes/${parts[2]}' : fechaRaw;
+
+    // Hora: HH:MM a.m./p.m.
+    var hora = DateFormat('hh:mm a', 'en_US').format(dt).toLowerCase(); // 03:30 pm
+    hora = hora.replaceAll('am', 'a.m.').replaceAll('pm', 'p.m.');
+
+    return '$fecha $hora';
+  }
+
 
   // ------------ Lógica para tomar noticias ------------
 
@@ -299,11 +320,13 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (n.descripcion != null &&
-                    n.descripcion!.trim().isNotEmpty)
+                if (n.descripcion != null && n.descripcion!.trim().isNotEmpty) ...[
                   Text(n.descripcion!),
-                if (n.cliente != null &&
-                    n.cliente!.trim().isNotEmpty)
+                  Text('Cita: ${_fmtFechaHoraCita(n.fechaCita)}'),
+                ] else ...[
+                  Text('Cita: ${_fmtFechaHoraCita(n.fechaCita)}'),
+                ],
+                if (n.cliente != null && n.cliente!.trim().isNotEmpty)
                   Text('Cliente: ${n.cliente}'),
               ],
             ),

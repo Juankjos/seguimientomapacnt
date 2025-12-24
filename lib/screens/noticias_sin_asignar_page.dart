@@ -30,6 +30,89 @@ class _NoticiasSinAsignarPageState extends State<NoticiasSinAsignarPage> {
     return DateFormat("d MMM y, h:mm a", 'es_MX').format(dt);
   }
 
+  bool _borrando = false;
+
+  Future<void> _borrarSeleccion() async {
+    if (_borrando || _asignando) return;
+
+    if (_seleccion.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona al menos una noticia')),
+      );
+      return;
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Borrar noticia(s)'),
+        content: Text(
+          '¿Seguro que deseas borrar ${_seleccion.length} noticia(s)?\n'
+          'Solo se borrarán las que sigan sin reportero asignado.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Borrar'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    setState(() => _borrando = true);
+
+    // loader modal
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    int okCount = 0;
+    int failCount = 0;
+    final fails = <String>[];
+
+    final ids = _seleccion.toList();
+
+    try {
+      for (final noticiaId in ids) {
+        try {
+          await ApiService.deleteNoticiaSinAsignar(noticiaId: noticiaId);
+          okCount++;
+        } catch (e) {
+          failCount++;
+          fails.add('#$noticiaId');
+        }
+      }
+    } finally {
+      if (mounted) Navigator.pop(context); // cierra loader
+      if (mounted) setState(() => _borrando = false);
+    }
+
+    if (!mounted) return;
+
+    if (okCount > 0) _huboCambios = true;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          failCount == 0
+              ? 'Borradas: $okCount'
+              : 'Borradas: $okCount • Fallaron: $failCount (${fails.take(5).join(", ")}${fails.length > 5 ? "…" : ""})',
+        ),
+      ),
+    );
+
+    _limpiarSeleccion();
+    await _cargar();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -298,7 +381,9 @@ class _NoticiasSinAsignarPageState extends State<NoticiasSinAsignarPage> {
 
   @override
   Widget build(BuildContext context) {
-    final canAsignar = _seleccion.isNotEmpty && !_asignando;
+    final canAsignar = _seleccion.isNotEmpty && !_asignando && !_borrando;
+    final canBorrar  = _seleccion.isNotEmpty && !_borrando && !_asignando;
+
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) {
@@ -334,18 +419,48 @@ class _NoticiasSinAsignarPageState extends State<NoticiasSinAsignarPage> {
               ),
           ],
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: canAsignar ? _asignarSeleccion : null,
-          backgroundColor: canAsignar ? null : Colors.grey.shade400,
-          foregroundColor: canAsignar ? null : Colors.grey.shade800,
-          icon: _asignando
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.person_add_alt_1),
-          label: Text(_asignando ? 'Asignando…' : 'Asignar'),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+        floatingActionButton: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: FloatingActionButton.extended(
+                    heroTag: 'fab_borrar',
+                    onPressed: canBorrar ? _borrarSeleccion : null,
+                    backgroundColor: canBorrar ? Colors.red : Colors.grey.shade400,
+                    foregroundColor: canBorrar ? Colors.white : Colors.grey.shade800,
+                    icon: _borrando
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.delete),
+                    label: Text(_borrando ? 'Borrando…' : 'Borrar noticia'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FloatingActionButton.extended(
+                    heroTag: 'fab_asignar',
+                    onPressed: canAsignar ? _asignarSeleccion : null,
+                    backgroundColor: canAsignar ? null : Colors.grey.shade400,
+                    foregroundColor: canAsignar ? null : Colors.grey.shade800,
+                    icon: _asignando
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.person_add_alt_1),
+                    label: Text(_asignando ? 'Asignando…' : 'Asignar'),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
         body: _cargando
             ? const Center(child: CircularProgressIndicator())
