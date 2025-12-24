@@ -124,7 +124,7 @@ MesEfemeride efemerideMes(int month, ThemeData theme) {
 class AgendaPage extends StatefulWidget {
   final int reporteroId;
   final String reporteroNombre;
-  final bool esAdmin; // 👈
+  final bool esAdmin;
 
   const AgendaPage({
     super.key,
@@ -639,9 +639,27 @@ class _AgendaPageState extends State<AgendaPage> {
     final theme = Theme.of(context);
     final eventosMes = _eventosDelMes(_focusedDay);
 
+    int _cmpFecha(Noticia a, Noticia b) {
+      // null al final
+      final da = a.fechaCita ?? DateTime(9999);
+      final db = b.fechaCita ?? DateTime(9999);
+
+      final c = da.compareTo(db);
+      if (c != 0) return c;
+
+      // desempate estable
+      return a.id.compareTo(b.id);
+    }
+
+    final pendientes = eventosMes.where((n) => n.pendiente == true).toList()..sort(_cmpFecha);
+    final cerradas   = eventosMes.where((n) => n.pendiente == false).toList()..sort(_cmpFecha);
+
+    // Pendientes primero, luego cerradas
+    final eventosMesOrdenados = [...pendientes, ...cerradas];
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        const double calendarFactor = 0.55; // 55% calendario, 45% noticias
+        const double calendarFactor = 0.55;
 
         final double totalH = constraints.maxHeight;
         final double calendarH = totalH * calendarFactor;
@@ -837,7 +855,7 @@ class _AgendaPageState extends State<AgendaPage> {
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: Text(
-                                '${eventosMes.length} noticias',
+                                '${eventosMesOrdenados.length} noticias',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   color: theme.colorScheme.onPrimaryContainer,
@@ -856,11 +874,11 @@ class _AgendaPageState extends State<AgendaPage> {
                               )
                             : ListView.separated(
                                 padding: const EdgeInsets.symmetric(vertical: 6),
-                                itemCount: eventosMes.length,
+                                itemCount: eventosMesOrdenados.length,
                                 separatorBuilder: (_, __) =>
                                     const Divider(height: 1),
                                 itemBuilder: (context, index) {
-                                  final n = eventosMes[index];
+                                  final n = eventosMesOrdenados[index];
                                   final fecha = n.fechaCita != null
                                       ? _formatearFechaCorta(n.fechaCita!)
                                       : 'Sin fecha';

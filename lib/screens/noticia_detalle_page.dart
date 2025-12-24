@@ -167,6 +167,10 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     final bool limiteCambiosFecha = (widget.role == 'reportero') && cambios >= 2;
     final bool esAdmin = widget.role == 'admin';
 
+    final nombreReportero = (_noticia.reportero.trim().isNotEmpty)
+        ? _noticia.reportero.trim()
+        : 'Sin reportero asignado';
+
     latlng.LatLng? punto;
     if (tieneCoordenadas) {
       punto = latlng.LatLng(_noticia.latitud!, _noticia.longitud!);
@@ -195,6 +199,14 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                       Text(
                         _noticia.noticia,
                         style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 8),
+
+                      Text(
+                        'Reportero: $nombreReportero',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
                       ),
                       const SizedBox(height: 8),
 
@@ -306,17 +318,23 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                     ),
                   ),
                   if (_soloLectura) ...[
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Esta noticia está cerrada.',
-                      style: TextStyle(fontStyle: FontStyle.italic),
+                    const SizedBox(height: 10),
+                    Center(
+                      child: Text(
+                        'Esta noticia está cerrada.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontStyle: FontStyle.italic,
+                              color: Colors.grey[700],
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
                     ),
                   ],
                   if (_noticia.latitud != null && _noticia.longitud != null) ...[
                     const SizedBox(height: 8),
 
-                    if (_noticia.latitud != null && _noticia.longitud != null) ...[
-                      const SizedBox(height: 8),
+                    if (!(esAdmin && _soloLectura))
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
@@ -335,8 +353,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                     noticiaId: _noticia.id,
                                     destinoLat: _noticia.latitud!,
                                     destinoLon: _noticia.longitud!,
-                                    wsUrl: ApiService.wsBaseUrl,       // ej: "ws://TU_IP:8080"
-                                    wsToken: ApiService.wsToken,           // pásalo al detalle
+                                    wsUrl: ApiService.wsBaseUrl, 
+                                    wsToken: ApiService.wsToken,
                                   ),
                                 ),
                               );
@@ -365,7 +383,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                           },
                         ),
                       ),
-                    ],
 
                     // Mostrar sólo si ya tiene llegada_latitud y llegada_longitud
                     if (!_soloLectura &&
