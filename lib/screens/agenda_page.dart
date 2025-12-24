@@ -614,7 +614,7 @@ class _AgendaPageState extends State<AgendaPage> {
                             fontSize: 11,
                             color: tieneEventos
                                 ? theme.colorScheme.primary
-                                : Colors.grey,
+                                : theme.colorScheme.onSurface.withOpacity(0.70),
                             fontWeight: tieneEventos || esSeleccionado
                                 ? FontWeight.w600
                                 : FontWeight.normal,
@@ -891,7 +891,7 @@ class _AgendaPageState extends State<AgendaPage> {
                                           ? Icons.check_circle
                                           : Icons.schedule,
                                       color: cerrada
-                                          ? Colors.green
+                                          ? theme.colorScheme.secondary 
                                           : theme.colorScheme.primary,
                                     ),
                                     title: Text(
@@ -943,19 +943,22 @@ class _AgendaPageState extends State<AgendaPage> {
   Widget _buildVistaDay() {
     final dia = _selectedDay ?? _soloFecha(DateTime.now());
     final eventos = _eventosDeDia(dia);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          color: Colors.grey.shade200,
+          color: isDark ? theme.colorScheme.surfaceVariant : Colors.grey.shade200,
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           child: Text(
             '${_nombreMes(dia.month)} ${dia.day}, ${dia.year}',
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 16,
+              color: theme.colorScheme.onSurface,
             ),
             textAlign: TextAlign.center,
           ),
@@ -971,7 +974,14 @@ class _AgendaPageState extends State<AgendaPage> {
                     final n = eventos[index];
 
                     final bool cerrada = (n.pendiente == false);
-                    final Color? bg = cerrada ? const Color(0xFFC1E59F) : null;
+                    final theme = Theme.of(context);
+                    final isDark = theme.brightness == Brightness.dark;
+
+                    final Color? bg = cerrada
+                        ? (isDark
+                            ? theme.colorScheme.secondary.withOpacity(0.18)
+                            : theme.colorScheme.secondary.withOpacity(0.12))
+                        : null;
 
                     final fecha = n.fechaCita != null
                         ? _formatearFechaCorta(n.fechaCita!)
@@ -1033,9 +1043,9 @@ class _AgendaPageState extends State<AgendaPage> {
                             const SizedBox(height: 2),
                             Text(
                               'Fecha: $fecha',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
-                                color: Colors.grey,
+                                color: theme.colorScheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 8),

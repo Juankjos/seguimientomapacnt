@@ -78,11 +78,38 @@ class MyApp extends StatelessWidget {
             useMaterial3: true,
           ),
           darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.dark,
-            ),
             useMaterial3: true,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF3B82F6), // azul tipo “modern”
+              brightness: Brightness.dark,
+            ).copyWith(
+              // superficies más agradables (menos negro puro)
+              surface: const Color(0xFF0B1220),
+              surfaceVariant: const Color(0xFF162238),
+
+              // acentos
+              primary: const Color(0xFF60A5FA),
+              secondary: const Color(0xFF34D399),
+              error: const Color(0xFFF87171),
+            ),
+            scaffoldBackgroundColor: const Color(0xFF0B1220),
+
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Color(0xFF0B1220),
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
+            cardTheme: CardThemeData(
+              color: const Color(0xFF121B2F),
+              elevation: 1,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            dividerTheme: const DividerThemeData(
+              color: Colors.white12,
+              thickness: 1,
+            ),
           ),
           home: const LoginScreen(),
         );
