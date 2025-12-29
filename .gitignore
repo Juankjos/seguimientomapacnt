@@ -49,3 +49,14 @@ ca-certificate.crt
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Clave de notificaciones
+/secrets
+
+# pasos si no se tiene vendor:
+# php --ini y a la carpeta y descomentar extension=openssl extension=curl extension=zip
+# composer install,  composer require google/auth
+/vendor
+
+# Datos de firebase
+firebase.json

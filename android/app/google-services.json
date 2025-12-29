@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "813832519846",
+    "project_id": "seguimientomapacnt",
+    "storage_bucket": "seguimientomapacnt.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:813832519846:android:e2e3a87c5f911dd751f467",
+        "android_client_info": {
+          "package_name": "com.example.seguimientomapacnt"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDmGYbMS5T2_R0t55N6s6vBDNRjiIy481s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

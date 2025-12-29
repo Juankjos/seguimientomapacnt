@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_service.dart';
 import 'noticias_page.dart';
@@ -16,6 +18,35 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _loading = false;
   String? _errorMessage;
+
+  Future<void> configurarTopicsFCM({
+    required String role,
+    required int reporteroId,
+  }) async {
+    final fcm = FirebaseMessaging.instance;
+
+    await fcm.requestPermission(alert: true, badge: true, sound: true);
+
+    final prefs = await SharedPreferences.getInstance();
+    final lastReporteroId = prefs.getInt('last_reportero_id');
+    final lastRole = prefs.getString('last_role');
+
+    // 1) Limpia suscripciones previas si existían
+    if (lastRole == 'reportero' && lastReporteroId != null) {
+      await fcm.unsubscribeFromTopic('rol_reportero');
+      await fcm.unsubscribeFromTopic('reportero_$lastReporteroId');
+    }
+
+    // 2) Aplica suscripción actual
+    if (role == 'reportero') {
+      await fcm.subscribeToTopic('rol_reportero');
+      await fcm.subscribeToTopic('reportero_$reporteroId');
+    }
+
+    // 3) Guarda estado actual
+    await prefs.setInt('last_reportero_id', reporteroId);
+    await prefs.setString('last_role', role);
+  }
 
   Future<void> _doLogin() async {
     setState(() {
@@ -36,40 +67,38 @@ class _LoginScreenState extends State<LoginScreen> {
         final String wsToken = data['ws_token']?.toString() ?? '';
         ApiService.wsToken = wsToken;
 
-      if (!mounted) return;
+        await configurarTopicsFCM(role: role, reporteroId: reporteroId);
+        if (!mounted) return;
 
-      if (role == 'admin') {
-        // Admin: la página principal es agenda con vista global
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => AgendaPage(
-              reporteroId: reporteroId,
-              reporteroNombre: nombre,
-              esAdmin: true, // 👈 nuevo parámetro
+        if (role == 'admin') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AgendaPage(
+                reporteroId: reporteroId,
+                reporteroNombre: nombre,
+                esAdmin: true,
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => NoticiasPage(
+                reporteroId: reporteroId,
+                reporteroNombre: nombre,
+                role: role,
+                wsToken: wsToken,
+              ),
+            ),
+          );
+        }
       } else {
-        // Reportero normal: flujo que ya tenías (noticias_page / home)
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => NoticiasPage( // o HomeScreen si es como lo tienes
-              reporteroId: reporteroId,
-              reporteroNombre: nombre,
-              role: role,
-              wsToken: wsToken,
-            ),
-          ),
-        );
+        setState(() {
+          _errorMessage = data['message']?.toString() ?? 'Error de login';
+        });
       }
-    } else {
-      setState(() {
-        _errorMessage = data['message']?.toString() ?? 'Error de login';
-      });
-    }
-
     } catch (e) {
       setState(() {
         _errorMessage = 'Error al conectar con el servidor: $e';
