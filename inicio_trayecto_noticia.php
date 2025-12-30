@@ -22,43 +22,15 @@ $json = json_decode($raw ?: '', true);
 $in = is_array($json) ? $json : $_POST;
 
 $noticiaId = isset($in['noticia_id']) ? (int)$in['noticia_id'] : 0;
-$latitud   = isset($in['latitud']) ? trim((string)$in['latitud']) : '';
-$longitud  = isset($in['longitud']) ? trim((string)$in['longitud']) : '';
-
-if ($noticiaId <= 0 || $latitud === '' || $longitud === '') {
-    echo json_encode([
-        'success' => false,
-        'message' => 'Parámetros inválidos (noticia_id, latitud, longitud)',
-    ]);
+if ($noticiaId <= 0) {
+    echo json_encode(['success' => false, 'message' => 'noticia_id inválido']);
     exit;
 }
 
 $debug = (isset($_GET['debug_fcm']) && $_GET['debug_fcm'] === '1');
 
 try {
-    $sql = "
-        UPDATE noticias
-        SET
-        hora_llegada = NOW(),
-        llegada_latitud = :lat,
-        llegada_longitud = :lon
-        WHERE id = :id
-        LIMIT 1
-    ";
-
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-        ':lat' => $latitud,
-        ':lon' => $longitud,
-        ':id'  => $noticiaId,
-    ]);
-
-    if ($stmt->rowCount() === 0) {
-        echo json_encode(['success' => false, 'message' => 'No se encontró la noticia o no hubo cambios']);
-        exit;
-    }
-
-    // Trae info para mensaje (título noticia + nombre reportero si existe)
+    // Trae noticia + reportero asignado (si existe)
     $q = $pdo->prepare("
         SELECT n.noticia, r.nombre AS reportero_nombre
         FROM noticias n
@@ -67,12 +39,16 @@ try {
         LIMIT 1
     ");
     $q->execute([':id' => $noticiaId]);
-    $row = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+    $row = $q->fetch(PDO::FETCH_ASSOC);
 
-    $tituloNoticia = isset($row['noticia']) ? (string)$row['noticia'] : 'Noticia';
+    if (!$row) {
+        echo json_encode(['success' => false, 'message' => 'No existe la noticia']);
+        exit;
+    }
+
+    $tituloNoticia = (string)$row['noticia'];
     $nombreRep = isset($row['reportero_nombre']) ? trim((string)$row['reportero_nombre']) : '';
 
-    // ----------- Notificación FCM a Admins -----------
     $fcmRes = null;
     $fcmErr = null;
 
@@ -81,50 +57,44 @@ try {
         if (!file_exists($fcmPath)) {
         throw new Exception("No existe fcm.php en {$fcmPath}");
         }
-
         require_once $fcmPath;
 
         $body = $nombreRep !== ''
-        ? "El reportero {$nombreRep} se encuentra en el destino."
-        : "El reportero se encuentra en el destino.";
+        ? "El reportero {$nombreRep} está en camino al destino."
+        : "El reportero está en camino al destino.";
 
         $fcmRes = fcm_send_topic([
         'topic' => 'rol_admin',
         'title' => 'Reporte de trayecto',
         'body'  => $body . " ($tituloNoticia)",
         'data'  => [
-            'tipo' => 'llegada_destino',
+            'tipo' => 'inicio_trayecto',
             'noticia_id' => (string)$noticiaId,
         ],
         ]);
 
-        error_log("FCM llegada_destino rol_admin result=" . json_encode($fcmRes));
+        error_log("FCM inicio_trayecto rol_admin result=" . json_encode($fcmRes));
     } catch (Throwable $e) {
         $fcmErr = $e->getMessage();
-        error_log("FCM llegada_destino error: " . $fcmErr);
+        error_log("FCM inicio_trayecto error: " . $fcmErr);
     }
 
     if ($debug) {
         echo json_encode([
         'success' => true,
-        'message' => 'Llegada registrada + debug FCM',
-        'hora_llegada' => date('Y-m-d H:i:s'),
+        'message' => 'Inicio trayecto + debug FCM',
         'fcm' => $fcmRes,
         'fcm_error' => $fcmErr,
         ]);
         exit;
     }
 
-    echo json_encode([
-        'success' => true,
-        'message' => 'Hora y coordenadas de llegada registradas correctamente',
-        'hora_llegada' => date('Y-m-d H:i:s'),
-    ]);
+    echo json_encode(['success' => true, 'message' => 'Notificación enviada a admins']);
     exit;
 
 } catch (Throwable $e) {
     http_response_code(500);
-    error_log("update_llegada_noticia.php error: " . $e->getMessage());
-    echo json_encode(['success' => false, 'message' => 'Error al actualizar llegada']);
+    error_log("inicio_trayecto_noticia.php error: " . $e->getMessage());
+    echo json_encode(['success' => false, 'message' => 'Error interno']);
     exit;
 }

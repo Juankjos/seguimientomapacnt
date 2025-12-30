@@ -32,15 +32,21 @@ class _LoginScreenState extends State<LoginScreen> {
     final lastRole = prefs.getString('last_role');
 
     // 1) Limpia suscripciones previas si existían
-    if (lastRole == 'reportero' && lastReporteroId != null) {
+    if (lastRole == 'reportero') {
       await fcm.unsubscribeFromTopic('rol_reportero');
-      await fcm.unsubscribeFromTopic('reportero_$lastReporteroId');
+      if (lastReporteroId != null) {
+        await fcm.unsubscribeFromTopic('reportero_$lastReporteroId');
+      }
+    } else if (lastRole == 'admin') {
+      await fcm.unsubscribeFromTopic('rol_admin');
     }
 
     // 2) Aplica suscripción actual
     if (role == 'reportero') {
       await fcm.subscribeToTopic('rol_reportero');
       await fcm.subscribeToTopic('reportero_$reporteroId');
+    } else if (role == 'admin') {
+      await fcm.subscribeToTopic('rol_admin');
     }
 
     // 3) Guarda estado actual

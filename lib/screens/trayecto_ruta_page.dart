@@ -51,6 +51,34 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
 
   bool _enviandoLlegada = false;
 
+  bool _notificacionInicioEnviada = false;
+
+  // Notificación a admin para inicio de trayecto
+  Future<void> _notificarInicioTrayecto() async {
+    if (_notificacionInicioEnviada) return;
+    _notificacionInicioEnviada = true;
+
+    try {
+      final url = Uri.parse('${ApiService.baseUrl}/inicio_trayecto_noticia.php');
+
+      final resp = await http.post(url, body: {
+        'noticia_id': widget.noticia.id.toString(),
+      });
+
+      if (resp.statusCode != 200) {
+        debugPrint('⚠️ inicio_trayecto_noticia: HTTP ${resp.statusCode} ${resp.body}');
+        return;
+      }
+
+      final data = jsonDecode(resp.body);
+      if (data is Map && data['success'] != true) {
+        debugPrint('⚠️ inicio_trayecto_noticia error: ${data['message']}');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error notificando inicio trayecto: $e');
+    }
+  }
+
   // ------------------- Navegación / salir -------------------
 
   Future<bool> _confirmarCancelarTrayecto() async {
@@ -160,6 +188,9 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
 
       // Tracking real (WS) siempre activo
       await _iniciarTrackingForeground();
+
+      // Notifica a admins: "en camino"
+      unawaited(_notificarInicioTrayecto());
 
       // Stream visual siempre activo
       _iniciarStreamUbicacion();
