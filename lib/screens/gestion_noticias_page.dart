@@ -169,11 +169,11 @@ class _GestionNoticiasPageState extends State<GestionNoticiasPage> {
                         onRefresh: () => _cargar(q: _searchCtrl.text.trim()),
                         child: GridView.builder(
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: MediaQuery.of(context).size.width < 380 ? 2 : 3,
                             crossAxisSpacing: 12,
                             mainAxisSpacing: 12,
-                            childAspectRatio: 0.82,
+                            childAspectRatio: MediaQuery.of(context).size.width < 380 ? 0.78 : 0.82,
                           ),
                           itemCount: _reporteros.length,
                           itemBuilder: (context, i) {
