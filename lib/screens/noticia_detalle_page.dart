@@ -368,120 +368,138 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                     ),
                   ],
                   if (_noticia.latitud != null && _noticia.longitud != null) ...[
-                    const SizedBox(height: 8),
-
-                    if (!(esAdmin && _soloLectura))
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          icon: Icon(esAdmin ? Icons.visibility : (_soloLectura ? Icons.map : Icons.directions)),
-                          label: Text(
-                            esAdmin
-                              ? 'Ser espectador de ruta'
-                              : (_soloLectura ? 'Mostrar mapa completo' : 'Ir a destino ahora'),
-                          ),
-                          onPressed: () async {
-                            if (esAdmin) {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => EspectadorRutaPage(
-                                    noticiaId: _noticia.id,
-                                    destinoLat: _noticia.latitud!,
-                                    destinoLon: _noticia.longitud!,
-                                    wsUrl: ApiService.wsBaseUrl, 
-                                    wsToken: ApiService.wsToken,
-                                  ),
-                                ),
-                              );
-                              return;
-                            }
-
-                            if (_soloLectura) {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => MapaCompletoPage(noticia: _noticia),
-                                ),
-                              );
-                              return;
-                            }
-
-                            final result = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => TrayectoRutaPage(
-                                  noticia: _noticia,
-                                  wsToken: ApiService.wsToken,
-                                  wsBaseUrl: ApiService.wsBaseUrl,
-                                ),
-                              ),
-                            );
-
-                            if (!mounted) return;
-
-                            if (result is Map) {
-                              final lat = (result['llegadaLatitud'] as num?)?.toDouble();
-                              final lon = (result['llegadaLongitud'] as num?)?.toDouble();
-
-                              if (lat != null && lon != null) {
-                                setState(() {
-                                  _noticia = Noticia(
-                                    id: _noticia.id,
-                                    noticia: _noticia.noticia,
-                                    descripcion: _noticia.descripcion,
-                                    cliente: _noticia.cliente,
-                                    domicilio: _noticia.domicilio,
-                                    reportero: _noticia.reportero,
-                                    fechaCita: _noticia.fechaCita,
-                                    fechaCitaAnterior: _noticia.fechaCitaAnterior,
-                                    fechaCitaCambios: _noticia.fechaCitaCambios,
-                                    fechaPago: _noticia.fechaPago,
-                                    latitud: _noticia.latitud,
-                                    longitud: _noticia.longitud,
-
-                                    // ✅ esto hace que aparezca "Eliminar de mis pendientes"
-                                    horaLlegada: DateTime.now(),
-                                    llegadaLatitud: lat,
-                                    llegadaLongitud: lon,
-
-                                    pendiente: _noticia.pendiente,
-                                    ultimaMod: DateTime.now(),
-                                  );
-                                });
-                              }
-                            }
-                          },
-                        ),
-                      ),
-
-                    // Mostrar sólo si ya tiene llegada_latitud y llegada_longitud
-                    if (!_soloLectura &&
-                      _noticia.llegadaLatitud != null &&
-                      _noticia.llegadaLongitud != null) ...[
                         const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            icon: _eliminando
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : const Icon(Icons.check_circle_outline),
-                            label: Text(_eliminando ? 'Eliminando...' : 'Eliminar de mis pendientes'),
-                            onPressed: _eliminando ? null : _onEliminarPendientePressed,
-                          ),
-                        ),
-                      ],
 
-                      const SizedBox(height: 8),
-                      if (!tieneCoordenadas)
-                        const Text(
-                          'No hay coordenadas para mostrar en el mapa.',
-                          style: TextStyle(color: Colors.red),
-                        ),
+                        if (esAdmin) ...[
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              icon: const Icon(Icons.visibility),
+                              label: const Text('Ser espectador de ruta'),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => EspectadorRutaPage(
+                                      noticiaId: _noticia.id,
+                                      destinoLat: _noticia.latitud!,
+                                      destinoLon: _noticia.longitud!,
+                                      wsUrl: ApiService.wsBaseUrl,
+                                      wsToken: ApiService.wsToken,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.map),
+                              label: const Text('Mostrar mapa completo'),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => MapaCompletoPage(noticia: _noticia),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ]
+
+                        else ...[
+                          if (!(_soloLectura && esAdmin))
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                icon: Icon(_soloLectura ? Icons.map : Icons.directions),
+                                label: Text(_soloLectura ? 'Mostrar mapa completo' : 'Ir a destino ahora'),
+                                onPressed: () async {
+                                  if (_soloLectura) {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => MapaCompletoPage(noticia: _noticia),
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  final result = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => TrayectoRutaPage(
+                                        noticia: _noticia,
+                                        wsToken: ApiService.wsToken,
+                                        wsBaseUrl: ApiService.wsBaseUrl,
+                                      ),
+                                    ),
+                                  );
+
+                                  if (!mounted) return;
+
+                                  if (result is Map) {
+                                    final lat = (result['llegadaLatitud'] as num?)?.toDouble();
+                                    final lon = (result['llegadaLongitud'] as num?)?.toDouble();
+
+                                    if (lat != null && lon != null) {
+                                      setState(() {
+                                        _noticia = Noticia(
+                                          id: _noticia.id,
+                                          noticia: _noticia.noticia,
+                                          descripcion: _noticia.descripcion,
+                                          cliente: _noticia.cliente,
+                                          domicilio: _noticia.domicilio,
+                                          reportero: _noticia.reportero,
+                                          fechaCita: _noticia.fechaCita,
+                                          fechaCitaAnterior: _noticia.fechaCitaAnterior,
+                                          fechaCitaCambios: _noticia.fechaCitaCambios,
+                                          fechaPago: _noticia.fechaPago,
+                                          latitud: _noticia.latitud,
+                                          longitud: _noticia.longitud,
+                                          horaLlegada: DateTime.now(),
+                                          llegadaLatitud: lat,
+                                          llegadaLongitud: lon,
+                                          pendiente: _noticia.pendiente,
+                                          ultimaMod: DateTime.now(),
+                                        );
+                                      });
+                                    }
+                                  }
+                                },
+                              ),
+                            ),
+                        ],
+
+                        if (!_soloLectura &&
+                            _noticia.llegadaLatitud != null &&
+                            _noticia.llegadaLongitud != null) ...[
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              icon: _eliminando
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.check_circle_outline),
+                              label: Text(_eliminando ? 'Eliminando...' : 'Eliminar de mis pendientes'),
+                              onPressed: _eliminando ? null : _onEliminarPendientePressed,
+                            ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 8),
+                        if (!tieneCoordenadas)
+                          const Text(
+                            'No hay coordenadas para mostrar en el mapa.',
+                            style: TextStyle(color: Colors.red),
+                          ),
                       ],
                     ],
                   ),
