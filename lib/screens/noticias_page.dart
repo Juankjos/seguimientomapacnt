@@ -1,4 +1,4 @@
-//lib/screens/noticias_page.dart
+// lib/screens/noticias_page.dart
 import 'package:flutter/material.dart';
 
 import '../models/noticia.dart';
@@ -39,6 +39,20 @@ class _NoticiasPageState extends State<NoticiasPage> {
     _futureNoticias = ApiService.getNoticias(widget.reporteroId);
   }
 
+  // ✅ Refresca la lista (lo usa el botón y el pull-to-refresh)
+  Future<void> _refrescar() async {
+    setState(() {
+      _futureNoticias = ApiService.getNoticias(widget.reporteroId);
+    });
+
+    // Para que RefreshIndicator "espere" a que termine el Future actual:
+    try {
+      await _futureNoticias;
+    } catch (_) {
+      // FutureBuilder ya muestra el error, aquí no hacemos nada.
+    }
+  }
+
   // ---------- DIALOGOS Y ACCIONES DEL MENÚ ----------
 
   void _mostrarPerfil() async {
@@ -73,9 +87,7 @@ class _NoticiasPageState extends State<NoticiasPage> {
       ),
     );
 
-    setState(() {
-      _futureNoticias = ApiService.getNoticias(widget.reporteroId);
-    });
+    await _refrescar();
   }
 
   void _mostrarAjustes() {
@@ -131,22 +143,18 @@ class _NoticiasPageState extends State<NoticiasPage> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Cerrar sesión'),
-        content: const Text(
-          '¿Estás seguro que deseas Cerrar Sesión?',
-        ),
+        content: const Text('¿Estás seguro que deseas Cerrar Sesión?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context), // Cancelar
+            onPressed: () => Navigator.pop(context),
             child: const Text('Cancelar'),
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context); // cierra el dialog
+              Navigator.pop(context);
               Navigator.pushAndRemoveUntil(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const LoginScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
                 (route) => false,
               );
             },
@@ -188,8 +196,8 @@ class _NoticiasPageState extends State<NoticiasPage> {
               ListTile(
                 leading: const Icon(Icons.calendar_today),
                 title: const Text('Agenda'),
-              onTap: () {
-                  Navigator.pop(context); // cierra el drawer
+                onTap: () {
+                  Navigator.pop(context);
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -201,7 +209,6 @@ class _NoticiasPageState extends State<NoticiasPage> {
                   );
                 },
               ),
-
               ListTile(
                 leading: Icon(
                   modoActual == ThemeMode.light
@@ -211,16 +218,11 @@ class _NoticiasPageState extends State<NoticiasPage> {
                 title: const Text('Color de App'),
                 onTap: _mostrarAjustes,
               ),
-              // ----------------------------------------------
-
               const Spacer(),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.red),
-                title: const Text(
-                  'Salir',
-                  style: TextStyle(color: Colors.red),
-                ),
+                title: const Text('Salir', style: TextStyle(color: Colors.red)),
                 onTap: _confirmarSalir,
               ),
               const SizedBox(height: 16),
@@ -231,7 +233,6 @@ class _NoticiasPageState extends State<NoticiasPage> {
     );
   }
 
-
   // ---------- UI PRINCIPAL ----------
 
   @override
@@ -239,66 +240,96 @@ class _NoticiasPageState extends State<NoticiasPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Tareas de ${widget.reporteroNombre}'),
+        actions: [
+          IconButton(
+            tooltip: 'Actualizar',
+            icon: const Icon(Icons.refresh),
+            onPressed: _refrescar,
+          ),
+        ],
       ),
       drawer: _buildDrawer(),
-      body: FutureBuilder<List<Noticia>>(
-        future: _futureNoticias,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Text('Error: ${snapshot.error}'),
-            );
-          }
-
-          final noticias = snapshot.data ?? [];
-
-          if (noticias.isEmpty) {
-            return const Center(
-              child: Text('No hay tareas asignadas.'),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(8.0),
-            itemCount: noticias.length,
-            itemBuilder: (context, index) {
-              final n = noticias[index];
-
-              return Card(
-                margin: const EdgeInsets.symmetric(vertical: 6.0),
-                child: ListTile(
-                  title: Text(
-                    n.noticia,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () async {
-                    // Abrimos el detalle y esperamos a que el usuario regrese
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => NoticiaDetallePage(
-                          noticia: n,
-                          role: widget.role,
-                          soloLectura: (n.pendiente == false),
-                          ),
-                      ),
-                    );
-
-                    // Al volver del detalle, recargamos las noticias desde el backend
-                    setState(() {
-                      _futureNoticias = ApiService.getNoticias(widget.reporteroId);
-                    });
-                  },
-                ),
+      // ✅ Pull-to-refresh
+      body: RefreshIndicator(
+        onRefresh: _refrescar,
+        child: FutureBuilder<List<Noticia>>(
+          future: _futureNoticias,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              // RefreshIndicator necesita un scrollable para funcionar
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 220),
+                  Center(child: CircularProgressIndicator()),
+                ],
               );
-            },
-          );
-        },
+            }
+
+            if (snapshot.hasError) {
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Text('Error: ${snapshot.error}'),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: _refrescar,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Reintentar'),
+                  ),
+                ],
+              );
+            }
+
+            final noticias = snapshot.data ?? [];
+
+            if (noticias.isEmpty) {
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 220),
+                  Center(child: Text('No hay tareas asignadas.')),
+                ],
+              );
+            }
+
+            return ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(8.0),
+              itemCount: noticias.length,
+              itemBuilder: (context, index) {
+                final n = noticias[index];
+
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 6.0),
+                  child: ListTile(
+                    title: Text(
+                      n.noticia,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => NoticiaDetallePage(
+                            noticia: n,
+                            role: widget.role,
+                            soloLectura: (n.pendiente == false),
+                          ),
+                        ),
+                      );
+
+                      await _refrescar();
+                    },
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

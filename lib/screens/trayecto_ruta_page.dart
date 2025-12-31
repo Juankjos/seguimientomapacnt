@@ -439,7 +439,11 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
         ),
       );
 
-      Navigator.pop(context);
+      Navigator.pop(context, {
+        'llegadaLatitud': pos.latitude,
+        'llegadaLongitud': pos.longitude,
+        'horaLlegada': DateTime.now().toIso8601String(),
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

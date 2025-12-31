@@ -380,7 +380,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                               ? 'Ser espectador de ruta'
                               : (_soloLectura ? 'Mostrar mapa completo' : 'Ir a destino ahora'),
                           ),
-                          onPressed: () {
+                          onPressed: () async {
                             if (esAdmin) {
                               Navigator.push(
                                 context,
@@ -404,17 +404,52 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                   builder: (_) => MapaCompletoPage(noticia: _noticia),
                                 ),
                               );
-                            } else {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => TrayectoRutaPage(
+                              return;
+                            }
+
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => TrayectoRutaPage(
                                   noticia: _noticia,
                                   wsToken: ApiService.wsToken,
                                   wsBaseUrl: ApiService.wsBaseUrl,
-                                  ),
                                 ),
-                              );
+                              ),
+                            );
+
+                            if (!mounted) return;
+
+                            if (result is Map) {
+                              final lat = (result['llegadaLatitud'] as num?)?.toDouble();
+                              final lon = (result['llegadaLongitud'] as num?)?.toDouble();
+
+                              if (lat != null && lon != null) {
+                                setState(() {
+                                  _noticia = Noticia(
+                                    id: _noticia.id,
+                                    noticia: _noticia.noticia,
+                                    descripcion: _noticia.descripcion,
+                                    cliente: _noticia.cliente,
+                                    domicilio: _noticia.domicilio,
+                                    reportero: _noticia.reportero,
+                                    fechaCita: _noticia.fechaCita,
+                                    fechaCitaAnterior: _noticia.fechaCitaAnterior,
+                                    fechaCitaCambios: _noticia.fechaCitaCambios,
+                                    fechaPago: _noticia.fechaPago,
+                                    latitud: _noticia.latitud,
+                                    longitud: _noticia.longitud,
+
+                                    // ✅ esto hace que aparezca "Eliminar de mis pendientes"
+                                    horaLlegada: DateTime.now(),
+                                    llegadaLatitud: lat,
+                                    llegadaLongitud: lon,
+
+                                    pendiente: _noticia.pendiente,
+                                    ultimaMod: DateTime.now(),
+                                  );
+                                });
+                              }
                             }
                           },
                         ),
