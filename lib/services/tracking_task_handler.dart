@@ -25,10 +25,11 @@ class TrackingTaskHandler extends TaskHandler {
 
   bool _reconnecting = false;
 
-  // Ahorro de datos: manda si se movió >= 10m o si pasó >= 45s.
   DateTime? _lastSentAt;
   double? _lastLat;
   double? _lastLon;
+
+  Completer<void>? _authedCompleter;
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -44,13 +45,13 @@ class TrackingTaskHandler extends TaskHandler {
     _saveHistory = (payload['save_history'] as bool?) ?? false;
 
     await _connectWs();
-    await _sendStart();
 
-    // Primer tick (por si el servidor responde rápido)
+    await _waitAuthed();
+
+    await _sendStart();
     await _tickSendLocation();
   }
 
-  //  v9: se llama según ForegroundTaskOptions.eventAction
   @override
   void onRepeatEvent(DateTime timestamp) {
     _tickSendLocation();
@@ -71,12 +72,12 @@ class TrackingTaskHandler extends TaskHandler {
   }
 
   @override
-  void onReceiveData(Object data) {
-    // no-op
-  }
+  void onReceiveData(Object data) {}
 
   Future<void> _connectWs() async {
     if (_wsUrl == null || _token == null) return;
+
+    _authedCompleter = Completer<void>();
 
     try {
       final uri = Uri.parse(_wsUrl!);
@@ -86,25 +87,48 @@ class TrackingTaskHandler extends TaskHandler {
       });
 
       _ws = WebSocketChannel.connect(withToken);
-
-      // ✅ IMPORTANTÍSIMO: esperar handshake
-      await _ws!.ready; // :contentReference[oaicite:1]{index=1}
+      await _ws!.ready;
 
       _wsSub = _ws!.stream.listen(
         (event) {
           try {
             final msg = jsonDecode(event as String) as Map<String, dynamic>;
+
+            if (msg['type'] == 'authed') {
+              if (_authedCompleter != null && !_authedCompleter!.isCompleted) {
+                _authedCompleter!.complete();
+              }
+              return;
+            }
+
             if (msg['type'] == 'tracking_started') {
               _sessionId = (msg['session_id'] as num).toInt();
+              return;
             }
-            // (Opcional) loguear authed/error para diagnóstico
+
+            // Si quieres, aquí puedes loguear errores del server:
+            // if (msg['type'] == 'error') { ... }
+
           } catch (_) {}
         },
         onError: (e) => _scheduleReconnect(),
         onDone: () => _scheduleReconnect(),
         cancelOnError: true,
       );
-    } catch (e) {
+    } catch (_) {
+      _scheduleReconnect();
+    }
+  }
+
+  Future<void> _waitAuthed() async {
+    final c = _authedCompleter;
+    if (c == null) return;
+
+    try {
+      // timeout para evitar bloqueo si el WS no responde
+      await c.future.timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Si no se pudo authed, forzamos reconexión
       _scheduleReconnect();
     }
   }
@@ -117,8 +141,8 @@ class TrackingTaskHandler extends TaskHandler {
       _reconnecting = false;
       await _disposeWs();
       await _connectWs();
+      await _waitAuthed();
 
-      // Si no hay sesión, pedirla otra vez
       if (_sessionId == null) {
         await _sendStart();
       }
@@ -143,8 +167,8 @@ class TrackingTaskHandler extends TaskHandler {
       return;
     }
 
-    // Si todavía no hay session_id, insiste en start (sin spamear)
     if (_sessionId == null) {
+      // Si aún no hay session_id, intenta start (pero ya con authed hecho)
       await _sendStart();
       return;
     }
@@ -174,9 +198,7 @@ class TrackingTaskHandler extends TaskHandler {
         'heading': pos.heading,
         'ts': now.toIso8601String(),
       }));
-    } catch (_) {
-      // Si falla GPS, no tronamos el servicio.
-    }
+    } catch (_) {}
   }
 
   bool _shouldSend(DateTime now, double lat, double lon) {
@@ -199,5 +221,8 @@ class TrackingTaskHandler extends TaskHandler {
 
     _ws = null;
     _sessionId = null;
+
+    // reinicia authed (se recalcula en connect)
+    _authedCompleter = null;
   }
 }
