@@ -440,10 +440,14 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                   );
 
                                   if (!mounted) return;
+                                  if (result == null) return;
+                                  final Map<String, dynamic> r = Map<String, dynamic>.from(result as Map);
 
                                   if (result is Map) {
                                     final lat = (result['llegadaLatitud'] as num?)?.toDouble();
                                     final lon = (result['llegadaLongitud'] as num?)?.toDouble();
+                                    final horaStr = r['horaLlegada']?.toString();
+                                    final hora = DateTime.tryParse(horaStr ?? '') ?? DateTime.now();
 
                                     if (lat != null && lon != null) {
                                       setState(() {
@@ -460,7 +464,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                           fechaPago: _noticia.fechaPago,
                                           latitud: _noticia.latitud,
                                           longitud: _noticia.longitud,
-                                          horaLlegada: DateTime.now(),
+                                          horaLlegada: hora,
                                           llegadaLatitud: lat,
                                           llegadaLongitud: lon,
                                           pendiente: _noticia.pendiente,
@@ -516,7 +520,9 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                 borderRadius: BorderRadius.circular(12),
                 child: tieneCoordenadas && punto != null
                     ? FlutterMap(
-                        key: ValueKey('${_noticia.latitud}-${_noticia.longitud}'),
+                        key: ValueKey(
+                          '${_noticia.latitud}-${_noticia.longitud}-${_noticia.llegadaLatitud}-${_noticia.llegadaLongitud}',
+                        ),
                         options: MapOptions(
                           initialCenter: punto,
                           initialZoom: 16,
