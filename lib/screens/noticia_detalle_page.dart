@@ -353,20 +353,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                       ),
                     ),
                   ),
-                  if (_soloLectura) ...[
-                    const SizedBox(height: 10),
-                    Center(
-                      child: Text(
-                        'Esta noticia está cerrada.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontStyle: FontStyle.italic,
-                              color: Colors.grey[700],
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                    ),
-                  ],
                   if (_noticia.latitud != null && _noticia.longitud != null) ...[
                         const SizedBox(height: 8),
 
@@ -376,22 +362,40 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                             child: ElevatedButton.icon(
                               icon: const Icon(Icons.visibility),
                               label: const Text('Ser espectador de ruta'),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => EspectadorRutaPage(
-                                      noticiaId: _noticia.id,
-                                      destinoLat: _noticia.latitud!,
-                                      destinoLon: _noticia.longitud!,
-                                      wsUrl: ApiService.wsBaseUrl,
-                                      wsToken: ApiService.wsToken,
-                                    ),
-                                  ),
-                                );
-                              },
+                              onPressed: _soloLectura
+                                  ? null
+                                  : () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => EspectadorRutaPage(
+                                            noticiaId: _noticia.id,
+                                            destinoLat: _noticia.latitud!,
+                                            destinoLon: _noticia.longitud!,
+                                            wsUrl: ApiService.wsBaseUrl,
+                                            wsToken: ApiService.wsToken,
+                                          ),
+                                        ),
+                                      );
+                                    },
                             ),
                           ),
+
+                          if (_soloLectura) ...[
+                            const SizedBox(height: 6),
+                            Center(
+                              child: Text(
+                                'Esta noticia está cerrada.',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      fontStyle: FontStyle.italic,
+                                      color: Colors.grey[700],
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ),
+                          ],
+
                           const SizedBox(height: 8),
                           SizedBox(
                             width: double.infinity,

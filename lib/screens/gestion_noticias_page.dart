@@ -199,28 +199,36 @@ class _GestionNoticiasPageState extends State<GestionNoticiasPage> {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    _avatarDefault(id: r.id, nombre: r.nombre, radius: 36),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      r.nombre,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(fontWeight: FontWeight.w600),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(999),
-                                        color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
-                                      ),
+                                    _avatarDefault(id: r.id, nombre: r.nombre, radius: 34), // opcional bajar un poquito
+                                    const SizedBox(height: 6),
+
+                                    Flexible( // ⬅️ clave
                                       child: Text(
-                                        '$count Noticias',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          color: Theme.of(context).colorScheme.primary,
-                                          fontSize: 12,
+                                        r.nombre,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 6),
+
+                                    FittedBox( // ⬅️ clave (evita overflow del “chip”)
+                                      fit: BoxFit.scaleDown,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(999),
+                                          color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                                        ),
+                                        child: Text(
+                                          '$count Noticias',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            color: Theme.of(context).colorScheme.primary,
+                                            fontSize: 12,
+                                          ),
                                         ),
                                       ),
                                     ),
