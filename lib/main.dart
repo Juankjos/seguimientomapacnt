@@ -59,7 +59,7 @@ Future<void> _initFirebaseAndNotifications() async {
 
   // 1) Inicializa Local Notifications
   const initSettings = fln.InitializationSettings(
-    android: fln.AndroidInitializationSettings('@mipmap/ic_launcher'),
+    android: fln.AndroidInitializationSettings('ic_stat_notification'),
     iOS: fln.DarwinInitializationSettings(),
   );
 
@@ -116,8 +116,8 @@ Future<void> _initFirebaseAndNotifications() async {
           channelDescription: _newsChannel.description,
           importance: fln.Importance.max,
           priority: fln.Priority.high,
-          visibility: fln.NotificationVisibility.public, // lockscreen
-          icon: message.notification?.android?.smallIcon ?? '@mipmap/ic_launcher',
+          visibility: fln.NotificationVisibility.public,
+          icon: 'ic_stat_notification',
         ),
         iOS: const fln.DarwinNotificationDetails(),
       ),
