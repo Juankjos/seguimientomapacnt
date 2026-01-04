@@ -15,10 +15,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_options.dart';
 import 'theme_controller.dart';
-
+import 'screens/tomar_noticias_page.dart';
 import 'models/noticia.dart';
 import 'services/api_service.dart';
-
 import 'screens/login_screen.dart';
 import 'screens/noticia_detalle_page.dart';
 
@@ -203,6 +202,20 @@ Future<void> _openNoticiaFromData(Map<String, dynamic> data) async {
     role: role,
     reporteroId: reporteroId,
   );
+
+  final tipo = data['tipo']?.toString() ?? '';
+
+  if (role != 'admin' && tipo == 'noticia_sin_asignar') {
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => TomarNoticiasPage(
+          reporteroId: reporteroId,
+          reporteroNombre: '',
+        ),
+      ),
+    );
+    return;
+  }
 
   if (noticia == null) {
     final ctx = navigatorKey.currentContext;
