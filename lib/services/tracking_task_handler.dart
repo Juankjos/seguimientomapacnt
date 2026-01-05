@@ -205,10 +205,10 @@ class TrackingTaskHandler extends TaskHandler {
     if (_lastSentAt == null || _lastLat == null || _lastLon == null) return true;
 
     final seconds = now.difference(_lastSentAt!).inSeconds;
-    if (seconds >= 45) return true;
+    if (seconds >= 7) return true;
 
     final meters = Geolocator.distanceBetween(_lastLat!, _lastLon!, lat, lon);
-    return meters >= 10;
+    return meters >= 3;
   }
 
   Future<void> _disposeWs() async {

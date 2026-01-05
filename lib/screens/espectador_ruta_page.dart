@@ -1,3 +1,5 @@
+// lib/screens/espectador_ruta_page.dart
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -10,8 +12,8 @@ class EspectadorRutaPage extends StatefulWidget {
   final double destinoLat;
   final double destinoLon;
 
-  final String wsUrl;   // ej: ws://167.99.163.209:3001
-  final String wsToken; // token del login
+  final String wsUrl; // ej: ws://167.99.163.209:3001
+  final String wsToken; // token del login (admin)
 
   const EspectadorRutaPage({
     super.key,
@@ -30,13 +32,18 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
   final MapController _map = MapController();
 
   WebSocketChannel? _ws;
+  StreamSubscription? _wsSub;
+
+  Timer? _pollTimer;
+  Timer? _reconnectTimer;
+  bool _reconnecting = false;
 
   bool _conectado = false;
   String? _error;
 
   // Estado “ruta en curso”
   bool _hayRutaEnCurso = false;
-  int? _sessionId; // session actual para esa noticia
+  int? _sessionId;
 
   // Para no spamear diálogos
   bool _dialogNoRutaMostrado = false;
@@ -47,200 +54,283 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
 
   bool _seguirReportero = true;
 
+  DateTime? _lastLocationAt;
+
   @override
   void initState() {
     super.initState();
     _destino = latlng.LatLng(widget.destinoLat, widget.destinoLon);
-    _connect();
+    unawaited(_connect());
   }
 
   @override
   void dispose() {
-    try { _ws?.sink.close(); } catch (_) {}
-    _ws = null;
+    _pollTimer?.cancel();
+    _reconnectTimer?.cancel();
+    unawaited(_disposeWs());
     super.dispose();
   }
 
-  void _connect() {
+  Future<void> _disposeWs() async {
+    await _wsSub?.cancel();
+    _wsSub = null;
+
+    try {
+      await _ws?.sink.close();
+    } catch (_) {}
+
+    _ws = null;
+    if (mounted) {
+      setState(() => _conectado = false);
+    }
+  }
+
+  Future<void> _connect() async {
+    _reconnectTimer?.cancel();
+    _pollTimer?.cancel();
+
+    await _disposeWs();
+
+    if (!mounted) return;
     setState(() {
       _error = null;
       _conectado = false;
+
       _hayRutaEnCurso = false;
       _sessionId = null;
+
       _puntos.clear();
       _ultimo = null;
+
       _dialogNoRutaMostrado = false;
+      _lastLocationAt = null;
     });
 
     try {
       final base = Uri.parse(widget.wsUrl);
-
-      // conserva query existente y agrega token
       final uri = base.replace(queryParameters: {
         ...base.queryParameters,
         'token': widget.wsToken,
       });
 
-      _ws = WebSocketChannel.connect(uri);
+      final ch = WebSocketChannel.connect(uri);
+      _ws = ch;
 
-      _ws!.stream.listen(
-        (event) {
-          Map<String, dynamic>? msg;
-          try {
-            msg = jsonDecode(event as String) as Map<String, dynamic>;
-          } catch (_) {
-            return;
-          }
+      // ✅ Esperar handshake socket (si falla, reconecta)
+      await ch.ready.timeout(const Duration(seconds: 8));
 
-          final type = msg['type']?.toString();
+      // ✅ Poll: re-suscribe cada 10s para “auto-recuperación”
+      _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+        if (_ws != null) _sendSubscribeAll();
+        _watchdog();
+      });
 
-          // 1) Confirmar conexión real (authed)
-          if (type == 'authed') {
-            setState(() {
-              _conectado = true;
-            });
-
-            // 2) Pedir sesiones activas
-            _sendSubscribeAll();
-            return;
-          }
-
-          // 3) Lista inicial de sesiones activas
-          if (type == 'active_sessions') {
-            final sessions = (msg['sessions'] as List?) ?? [];
-
-            final match = sessions.cast<dynamic>().map((e) {
-              return (e as Map).map((k, v) => MapEntry(k.toString(), v));
-            }).firstWhere(
-              (s) => (s['noticia_id'] as num?)?.toInt() == widget.noticiaId,
-              orElse: () => <String, dynamic>{},
-            );
-
-            if (match.isNotEmpty) {
-              final sid = (match['session_id'] as num?)?.toInt();
-              final lastLat = (match['last_lat'] as num?)?.toDouble();
-              final lastLon = (match['last_lon'] as num?)?.toDouble();
-
-              setState(() {
-                _hayRutaEnCurso = true;
-                _sessionId = sid;
-                _dialogNoRutaMostrado = false;
-              });
-
-              // Sembrar última posición (si existe)
-              if (lastLat != null && lastLon != null) {
-                final p = latlng.LatLng(lastLat, lastLon);
-                _puntos.add(p);
-                _ultimo = p;
-                _moveIfFollowing(p);
-                setState(() {});
-              }
-            } else {
-              setState(() {
-                _hayRutaEnCurso = false;
-                _sessionId = null;
-              });
-              _mostrarDialogNoRutaSiAplica();
-            }
-
-            return;
-          }
-
-          // 4) Cuando el reportero inicia trayecto (llega a TODOS los admins)
-          if (type == 'tracking_started') {
-            final noticiaId = (msg['noticia_id'] as num?)?.toInt();
-            if (noticiaId != widget.noticiaId) return;
-
-            final sid = (msg['session_id'] as num?)?.toInt();
-
-            setState(() {
-              _hayRutaEnCurso = true;
-              _sessionId = sid;
-              _puntos.clear();
-              _ultimo = null;
-            });
-
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Reportero con trayecto en curso')),
-              );
-            }
-            return;
-          }
-
-          // 5) Ubicación en vivo (llega a TODOS los admins) → filtrar por session_id/noticia_id
-          if (type == 'tracking_location') {
-            // preferente por session_id (más exacto)
-            final sid = (msg['session_id'] as num?)?.toInt();
-            final noticiaId = (msg['noticia_id'] as num?)?.toInt();
-
-            if (_sessionId != null) {
-              if (sid != _sessionId) return;
-            } else {
-              // fallback: si aún no tengo sessionId, filtro por noticiaId
-              if (noticiaId != widget.noticiaId) return;
-            }
-
-            final lat = (msg['lat'] as num?)?.toDouble();
-            final lon = (msg['lon'] as num?)?.toDouble();
-            if (lat == null || lon == null) return;
-
-            final p = latlng.LatLng(lat, lon);
-
-            if (_puntos.isNotEmpty) {
-              final last = _puntos.last;
-              if (last.latitude == p.latitude && last.longitude == p.longitude) {
-                return;
-              }
-            }
-
-            // si empieza a llegar ubicación, definitivamente hay ruta
-            if (!_hayRutaEnCurso) {
-              setState(() => _hayRutaEnCurso = true);
-            }
-
-            _puntos.add(p);
-            _ultimo = p;
-
-            if (_puntos.length > 800) {
-              _puntos.removeRange(0, _puntos.length - 800);
-            }
-
-            _moveIfFollowing(p);
-            setState(() {});
-            return;
-          }
-
-          // 6) Fin del trayecto
-          if (type == 'tracking_stopped') {
-            final sid = (msg['session_id'] as num?)?.toInt();
-            if (_sessionId != null && sid != _sessionId) return;
-
-            setState(() {
-              _hayRutaEnCurso = false;
-              _sessionId = null;
-            });
-
-            _mostrarDialogNoRutaSiAplica();
-            return;
-          }
-        },
-        onError: (e) {
-          setState(() => _error = 'WS error: $e');
-        },
-        onDone: () {
-          setState(() => _error = 'Conexión cerrada');
-        },
+      _wsSub = ch.stream.listen(
+        _onWsMessage,
+        onError: (e) => _scheduleReconnect('WS error: $e'),
+        onDone: () => _scheduleReconnect('Conexión cerrada'),
+        cancelOnError: true,
       );
     } catch (e) {
-      setState(() => _error = 'No se pudo conectar: $e');
+      _scheduleReconnect('No se pudo conectar: $e');
     }
+  }
+
+  void _scheduleReconnect(String err) {
+    if (!mounted) return;
+    setState(() => _error = err);
+
+    if (_reconnecting) return;
+    _reconnecting = true;
+
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(const Duration(seconds: 3), () async {
+      _reconnecting = false;
+      if (!mounted) return;
+      await _connect();
+    });
   }
 
   void _sendSubscribeAll() {
     try {
       _ws?.sink.add(jsonEncode({'type': 'subscribe_all'}));
     } catch (_) {}
+  }
+
+  void _watchdog() {
+    if (!_conectado) return;
+    if (!_hayRutaEnCurso) return;
+
+    final last = _lastLocationAt;
+    if (last == null) return;
+
+    final secs = DateTime.now().difference(last).inSeconds;
+
+    // Si llevan 20s sin datos y la ruta está activa, pide estado otra vez
+    if (secs >= 20) {
+      _sendSubscribeAll();
+    }
+
+    // Si llevan 45s sin datos, reconecta (algo se colgó)
+    if (secs >= 45) {
+      _scheduleReconnect('Sin ubicación nueva (${secs}s). Reconectando…');
+    }
+  }
+
+  void _onWsMessage(dynamic event) {
+    Map<String, dynamic>? msg;
+    try {
+      msg = jsonDecode(event as String) as Map<String, dynamic>;
+    } catch (_) {
+      return;
+    }
+
+    final type = msg['type']?.toString();
+
+    // 1) Confirmar conexión real
+    if (type == 'authed') {
+      if (!mounted) return;
+      setState(() {
+        _conectado = true;
+        _error = null;
+      });
+
+      // 2) Pedir sesiones activas
+      _sendSubscribeAll();
+      return;
+    }
+
+    // 3) Lista inicial/actual de sesiones activas
+    if (type == 'active_sessions') {
+      final sessions = (msg['sessions'] as List?) ?? [];
+
+      final match = sessions.cast<dynamic>().map((e) {
+        return (e as Map).map((k, v) => MapEntry(k.toString(), v));
+      }).firstWhere(
+        (s) => (s['noticia_id'] as num?)?.toInt() == widget.noticiaId,
+        orElse: () => <String, dynamic>{},
+      );
+
+      if (match.isNotEmpty) {
+        final sid = (match['session_id'] as num?)?.toInt();
+        final lastLat = (match['last_lat'] as num?)?.toDouble();
+        final lastLon = (match['last_lon'] as num?)?.toDouble();
+
+        if (!mounted) return;
+        setState(() {
+          _hayRutaEnCurso = true;
+          _sessionId = sid;
+          _dialogNoRutaMostrado = false;
+        });
+
+        // Sembrar última posición (si existe)
+        if (lastLat != null && lastLon != null) {
+          final p = latlng.LatLng(lastLat, lastLon);
+          if (_puntos.isEmpty) {
+            _puntos.add(p);
+            _ultimo = p;
+            _moveIfFollowing(p);
+            setState(() {});
+          }
+        }
+      } else {
+        if (!mounted) return;
+        setState(() {
+          _hayRutaEnCurso = false;
+          _sessionId = null;
+        });
+        _mostrarDialogNoRutaSiAplica();
+      }
+      return;
+    }
+
+    // 4) Cuando el reportero inicia trayecto (broadcast a todos los admins)
+    if (type == 'tracking_started') {
+      final noticiaId = (msg['noticia_id'] as num?)?.toInt();
+      if (noticiaId != widget.noticiaId) return;
+
+      final sid = (msg['session_id'] as num?)?.toInt();
+
+      if (!mounted) return;
+      setState(() {
+        _hayRutaEnCurso = true;
+        _sessionId = sid;
+        _puntos.clear();
+        _ultimo = null;
+        _dialogNoRutaMostrado = false;
+        _lastLocationAt = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reportero con trayecto en curso')),
+      );
+      return;
+    }
+
+    // 5) Ubicación en vivo → filtrar por session_id (mejor) o noticia_id (fallback)
+    if (type == 'tracking_location') {
+      final sid = (msg['session_id'] as num?)?.toInt();
+      final noticiaId = (msg['noticia_id'] as num?)?.toInt();
+
+      if (_sessionId != null) {
+        if (sid != _sessionId) return;
+      } else {
+        if (noticiaId != widget.noticiaId) return;
+      }
+
+      final lat = (msg['lat'] as num?)?.toDouble();
+      final lon = (msg['lon'] as num?)?.toDouble();
+      if (lat == null || lon == null) return;
+
+      final p = latlng.LatLng(lat, lon);
+
+      if (_puntos.isNotEmpty) {
+        final last = _puntos.last;
+        if (last.latitude == p.latitude && last.longitude == p.longitude) {
+          return;
+        }
+      }
+
+      _lastLocationAt = DateTime.now();
+
+      if (!_hayRutaEnCurso) {
+        setState(() => _hayRutaEnCurso = true);
+      }
+
+      _puntos.add(p);
+      _ultimo = p;
+
+      // Limitar memoria
+      if (_puntos.length > 800) {
+        _puntos.removeRange(0, _puntos.length - 800);
+      }
+
+      _moveIfFollowing(p);
+      if (mounted) setState(() {});
+      return;
+    }
+
+    // 6) Fin del trayecto
+    if (type == 'tracking_stopped') {
+      final sid = (msg['session_id'] as num?)?.toInt();
+      if (_sessionId != null && sid != _sessionId) return;
+
+      if (!mounted) return;
+      setState(() {
+        _hayRutaEnCurso = false;
+        _sessionId = null;
+      });
+
+      _mostrarDialogNoRutaSiAplica();
+      return;
+    }
+
+    // Errores del server (si los mandas)
+    if (type == 'error') {
+      final m = msg['message']?.toString() ?? 'Error';
+      _scheduleReconnect(m);
+      return;
+    }
   }
 
   void _mostrarDialogNoRutaSiAplica() {
@@ -276,9 +366,7 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
   }
 
   void _toggleFollow() {
-    setState(() {
-      _seguirReportero = !_seguirReportero;
-    });
+    setState(() => _seguirReportero = !_seguirReportero);
     if (_seguirReportero && _ultimo != null) {
       _map.move(_ultimo!, 17.0);
     }
@@ -304,6 +392,7 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
     }
 
     final center = latlng.LatLng((minLat + maxLat) / 2, (minLon + maxLon) / 2);
+    setState(() => _seguirReportero = false);
     _map.move(center, 13.0);
   }
 
@@ -319,7 +408,9 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
     final subtitulo = !_conectado
         ? 'Conectando…'
         : (_hayRutaEnCurso
-            ? (_ultimo == null ? 'Esperando ubicación del reportero…' : 'En vivo • puntos: ${_puntos.length}')
+            ? (_ultimo == null
+                ? 'Esperando ubicación del reportero…'
+                : 'En vivo • puntos: ${_puntos.length}')
             : 'En espera');
 
     return Scaffold(
@@ -338,7 +429,7 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
           ),
           IconButton(
             tooltip: 'Reconectar',
-            onPressed: _connect,
+            onPressed: () => unawaited(_connect()),
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -347,7 +438,18 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text(_error!, textAlign: TextAlign.center),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_error!, textAlign: TextAlign.center),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: () => unawaited(_connect()),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Reintentar'),
+                    ),
+                  ],
+                ),
               ),
             )
           : Stack(
@@ -379,14 +481,22 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
                           point: destino,
                           width: 44,
                           height: 44,
-                          child: const Icon(Icons.location_on, color: Colors.red, size: 36),
+                          child: const Icon(
+                            Icons.location_on,
+                            color: Colors.red,
+                            size: 36,
+                          ),
                         ),
                         if (_ultimo != null)
                           Marker(
                             point: _ultimo!,
                             width: 44,
                             height: 44,
-                            child: const Icon(Icons.directions_run, color: Colors.blue, size: 34),
+                            child: const Icon(
+                              Icons.directions_run,
+                              color: Colors.blue,
+                              size: 34,
+                            ),
                           ),
                       ],
                     ),
@@ -409,12 +519,44 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
                       children: [
                         Text(
                           tituloEstado,
-                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           subtitulo,
                           style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // pequeño indicador “conectado”
+                Positioned(
+                  bottom: 12,
+                  left: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.55),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _conectado ? Icons.wifi : Icons.wifi_off,
+                          size: 14,
+                          color: _conectado ? Colors.greenAccent : Colors.redAccent,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _conectado ? 'Conectado' : 'Sin conexión',
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
                         ),
                       ],
                     ),

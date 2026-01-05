@@ -144,7 +144,7 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
 
     await FlutterForegroundTask.startService(
       notificationTitle: 'Trayecto en curso',
-      notificationText: 'Enviando ubicación cada 15s',
+      notificationText: 'Enviando ubicación cada 7s',
       callback: startCallback,
     );
   }
@@ -249,7 +249,7 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
         : AndroidSettings(
             accuracy: LocationAccuracy.high,
             distanceFilter: 5,
-            intervalDuration: const Duration(seconds: 15),
+            intervalDuration: const Duration(seconds: 7),
           );
 
     _posicionSub = Geolocator.getPositionStream(

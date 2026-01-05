@@ -129,7 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Login Seguimiento CNT'),
+        title: const Text('Noticias CNT'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),

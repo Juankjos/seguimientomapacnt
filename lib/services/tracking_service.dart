@@ -33,7 +33,7 @@ class TrackingService {
 
     await FlutterForegroundTask.startService(
       notificationTitle: 'Trayecto en curso',
-      notificationText: 'Rastreo activo cada 15 segundos',
+      notificationText: 'Rastreo activo cada 7 segundos',
       callback: startCallback,
     );
 

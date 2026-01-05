@@ -260,7 +260,7 @@ Future<void> main() async {
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(15000),
+        eventAction: ForegroundTaskEventAction.repeat(7000),
         autoRunOnBoot: false,
         autoRunOnMyPackageReplaced: false,
         allowWakeLock: true,
