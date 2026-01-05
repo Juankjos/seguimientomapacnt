@@ -9,6 +9,7 @@ import 'login_screen.dart';
 import 'update_perfil_page.dart';
 import 'gestion_reporteros_page.dart';
 import 'gestion_noticias_page.dart';
+import 'estadisticas_screen.dart';
 
 enum AgendaView { year, month, day }
 
@@ -238,6 +239,17 @@ class _AgendaPageState extends State<AgendaPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const GestionNoticiasPage()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.bar_chart),
+            title: const Text('Estadísticas'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const EstadisticasScreen()),
               );
             },
           ),

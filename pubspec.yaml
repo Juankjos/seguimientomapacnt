@@ -44,6 +44,7 @@ dependencies:
   geolocator: ^14.0.2
   web_socket_channel: ^3.0.3
   flutter_foreground_task: ^9.1.0
+  syncfusion_flutter_charts: ^32.1.21
 
   flutter_localizations:
     sdk: flutter
