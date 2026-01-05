@@ -1,3 +1,4 @@
+// login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -71,9 +72,21 @@ class _LoginScreenState extends State<LoginScreen> {
         final String nombre = data['nombre'] ?? '';
         final String role = data['role']?.toString() ?? 'reportero';
         final String wsToken = data['ws_token']?.toString() ?? '';
+
+        // deja token en memoria
         ApiService.wsToken = wsToken;
 
+        // guarda sesión para SessionGate
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('ws_token', wsToken);
+        await prefs.setInt('auth_reportero_id', reporteroId);
+        await prefs.setString('auth_nombre', nombre);
+        await prefs.setString('auth_role', role);
+        await prefs.setBool('auth_logged_in', true);
+
+        // topics FCM (y last_role/last_reportero_id)
         await configurarTopicsFCM(role: role, reporteroId: reporteroId);
+
         if (!mounted) return;
 
         if (role == 'admin') {
@@ -162,7 +175,11 @@ class _LoginScreenState extends State<LoginScreen> {
               child: ElevatedButton(
                 onPressed: _loading ? null : _doLogin,
                 child: _loading
-                    ? const CircularProgressIndicator()
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Text('Entrar'),
               ),
             ),

@@ -15,10 +15,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_options.dart';
 import 'theme_controller.dart';
-import 'screens/tomar_noticias_page.dart';
+
 import 'models/noticia.dart';
 import 'services/api_service.dart';
-import 'screens/login_screen.dart';
+
+import 'screens/session_gate.dart';
+import 'screens/tomar_noticias_page.dart';
 import 'screens/noticia_detalle_page.dart';
 
 // ------------------ Local Notifications (Foreground) ------------------
@@ -194,14 +196,23 @@ Future<void> _openNoticiaFromData(Map<String, dynamic> data) async {
   if (noticiaId == null) return;
 
   final prefs = await SharedPreferences.getInstance();
-  final role = prefs.getString('last_role') ?? 'reportero';
-  final reporteroId = prefs.getInt('last_reportero_id') ?? 0;
 
-  final noticia = await _buscarNoticiaPorId(
-    noticiaId: noticiaId,
-    role: role,
-    reporteroId: reporteroId,
-  );
+  // Restaura token en memoria
+  final wsToken = prefs.getString('ws_token') ?? '';
+  if (wsToken.isNotEmpty) {
+    ApiService.wsToken = wsToken;
+  }
+
+  // Usa auth_* como prioridad (sesión real). Fallback a last_*.
+  final role = prefs.getString('auth_role') ??
+      prefs.getString('last_role') ??
+      'reportero';
+
+  final reporteroId = prefs.getInt('auth_reportero_id') ??
+      prefs.getInt('last_reportero_id') ??
+      0;
+
+  final reporteroNombre = prefs.getString('auth_nombre') ?? '';
 
   final tipo = data['tipo']?.toString() ?? '';
 
@@ -210,12 +221,18 @@ Future<void> _openNoticiaFromData(Map<String, dynamic> data) async {
       MaterialPageRoute(
         builder: (_) => TomarNoticiasPage(
           reporteroId: reporteroId,
-          reporteroNombre: '',
+          reporteroNombre: reporteroNombre,
         ),
       ),
     );
     return;
   }
+
+  final noticia = await _buscarNoticiaPorId(
+    noticiaId: noticiaId,
+    role: role,
+    reporteroId: reporteroId,
+  );
 
   if (noticia == null) {
     final ctx = navigatorKey.currentContext;
@@ -290,7 +307,7 @@ class MyApp extends StatelessWidget {
       builder: (context, mode, _) {
         return MaterialApp(
           navigatorKey: navigatorKey,
-          title: 'Seguimiento Mapa CNT',
+          title: 'Noticias CNT',
           debugShowCheckedModeBanner: false,
           locale: const Locale('es', 'MX'),
           supportedLocales: const [
@@ -321,7 +338,8 @@ class MyApp extends StatelessWidget {
               brightness: Brightness.dark,
             ),
           ),
-          home: const LoginScreen(),
+
+          home: const SessionGate(),
         );
       },
     );

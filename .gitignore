@@ -61,3 +61,6 @@ ca-certificate.crt
 # Datos de firebase
 firebase.json
 */firebase_options.dart
+
+# Se genera archivo debug
+/android/build/reports

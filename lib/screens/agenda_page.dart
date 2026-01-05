@@ -512,119 +512,112 @@ class _AgendaPageState extends State<AgendaPage> {
         const SizedBox(height: 8),
 
         Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 0.95, // <- antes 1.1 (más alto = menos overflow)
-            ),
-            itemCount: 12,
-            itemBuilder: (context, index) {
-              final month = index + 1;
-              final count = eventosPorMes[month] ?? 0;
-              final nombreMes = _nombreMes(month);
-              final bool tieneEventos = count > 0;
-              final bool esSeleccionado = month == _selectedMonthInYear;
+          child: Builder(
+            builder: (context) {
+              final bottomSafe = MediaQuery.of(context).padding.bottom;
+              const fabClearance = 110.0;
 
-              return InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: () {
-                  setState(() {
-                    _focusedDay = DateTime(year, month, 1);
-                    _vista = AgendaView.month;
-                    _selectedMonthInYear = month;
-                  });
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    color: esSeleccionado
-                        ? theme.colorScheme.primaryContainer
-                        : tieneEventos
-                            ? theme.colorScheme.primaryContainer.withOpacity(0.8)
-                            : theme.colorScheme.surface,
-                    border: Border.all(
-                      color: esSeleccionado
-                          ? theme.colorScheme.primary
-                          : (tieneEventos
-                              ? theme.colorScheme.primary
-                              : theme.dividerColor),
-                      width: esSeleccionado ? 2.0 : (tieneEventos ? 1.4 : 0.8),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        blurRadius: esSeleccionado ? 6 : 4,
-                        offset: const Offset(0, 2),
-                        color:
-                            Colors.black.withOpacity(esSeleccionado ? 0.15 : 0.08),
-                      )
-                    ],
-                  ),
-                  padding: const EdgeInsets.all(8),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Ícono de efeméride del mes
-                      Builder(
-                        builder: (context) {
-                          final efem = efemerideMes(month, theme);
-                          return Tooltip(
-                            message: efem.tooltip,
-                            child: CircleAvatar(
-                              radius: 16, // <- un poquito menor ayuda en pantallas chicas
-                              backgroundColor: efem.color,
-                              child: Icon(
-                                efem.icon,
-                                size: 18,
-                                color: Colors.white,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 8),
-
-                      // Mes (protegido contra overflow por fuentes grandes)
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          nombreMes,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-
-                      // "X noticias / Sin noticias" (protegido)
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          tieneEventos ? '$count noticias' : 'Sin noticias',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: tieneEventos
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.onSurface.withOpacity(0.70),
-                            fontWeight: tieneEventos || esSeleccionado
-                                ? FontWeight.w600
-                                : FontWeight.normal,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-                  ),
+              return GridView.builder(
+                padding: EdgeInsets.fromLTRB(12, 8, 12, 8 + fabClearance + bottomSafe),
+                physics: const AlwaysScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 0.95,
                 ),
+                itemCount: 12,
+                itemBuilder: (context, index) {
+                  final month = index + 1;
+                  final count = eventosPorMes[month] ?? 0;
+                  final nombreMes = _nombreMes(month);
+                  final bool tieneEventos = count > 0;
+                  final bool esSeleccionado = month == _selectedMonthInYear;
+
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () {
+                      setState(() {
+                        _focusedDay = DateTime(year, month, 1);
+                        _vista = AgendaView.month;
+                        _selectedMonthInYear = month;
+                      });
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        color: esSeleccionado
+                            ? theme.colorScheme.primaryContainer
+                            : tieneEventos
+                                ? theme.colorScheme.primaryContainer.withOpacity(0.8)
+                                : theme.colorScheme.surface,
+                        border: Border.all(
+                          color: esSeleccionado
+                              ? theme.colorScheme.primary
+                              : (tieneEventos ? theme.colorScheme.primary : theme.dividerColor),
+                          width: esSeleccionado ? 2.0 : (tieneEventos ? 1.4 : 0.8),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            blurRadius: esSeleccionado ? 6 : 4,
+                            offset: const Offset(0, 2),
+                            color: Colors.black.withOpacity(esSeleccionado ? 0.15 : 0.08),
+                          )
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(8),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Builder(
+                            builder: (context) {
+                              final efem = efemerideMes(month, theme);
+                              return Tooltip(
+                                message: efem.tooltip,
+                                child: CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: efem.color,
+                                  child: Icon(efem.icon, size: 18, color: Colors.white),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 8),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              nombreMes,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              tieneEventos ? '$count noticias' : 'Sin noticias',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: tieneEventos
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.onSurface.withOpacity(0.70),
+                                fontWeight: tieneEventos || esSeleccionado
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               );
             },
           ),
@@ -969,6 +962,10 @@ class _AgendaPageState extends State<AgendaPage> {
                   child: Text('No hay noticias para este día.'),
                 )
               : ListView.builder(
+                  padding: EdgeInsets.only(
+                    bottom: 16 + (widget.esAdmin ? 110.0 : 0.0) + MediaQuery.of(context).padding.bottom,
+                  ),
+                  physics: const AlwaysScrollableScrollPhysics(),
                   itemCount: eventos.length,
                   itemBuilder: (context, index) {
                     final n = eventos[index];

@@ -1,3 +1,4 @@
+// gestion_noticias_page.dart
 import 'package:flutter/material.dart';
 
 import '../models/noticia.dart';
@@ -36,13 +37,23 @@ class _GestionNoticiasPageState extends State<GestionNoticiasPage> {
 
   Color _colorFromId(int id) {
     final colors = <Color>[
-      Colors.blue, Colors.green, Colors.orange, Colors.purple,
-      Colors.teal, Colors.indigo, Colors.red, Colors.brown,
+      Colors.blue,
+      Colors.green,
+      Colors.orange,
+      Colors.purple,
+      Colors.teal,
+      Colors.indigo,
+      Colors.red,
+      Colors.brown,
     ];
     return colors[id % colors.length];
   }
 
-  Widget _avatarDefault({required int id, required String nombre, double radius = 36}) {
+  Widget _avatarDefault({
+    required int id,
+    required String nombre,
+    double radius = 36,
+  }) {
     final letter = nombre.trim().isNotEmpty ? nombre.trim()[0].toUpperCase() : '?';
     final c = _colorFromId(id);
     return CircleAvatar(
@@ -50,7 +61,11 @@ class _GestionNoticiasPageState extends State<GestionNoticiasPage> {
       backgroundColor: c.withOpacity(0.18),
       child: Text(
         letter,
-        style: TextStyle(fontSize: radius * 0.65, fontWeight: FontWeight.w800, color: c),
+        style: TextStyle(
+          fontSize: radius * 0.65,
+          fontWeight: FontWeight.w800,
+          color: c,
+        ),
       ),
     );
   }
@@ -102,6 +117,8 @@ class _GestionNoticiasPageState extends State<GestionNoticiasPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
+    const fabClearance = 110.0; 
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.assignment_late_outlined),
@@ -112,10 +129,8 @@ class _GestionNoticiasPageState extends State<GestionNoticiasPage> {
             MaterialPageRoute(builder: (_) => const NoticiasSinAsignarPage()),
           );
 
-          // Si asignaste algo, refresca tu vista de Gestión Noticias (conteos)
           if (changed == true) {
-            // ajusta esto al método que uses para recargar en tu GestionNoticiasPage
-            await _cargar();
+            await _cargar(q: _searchCtrl.text.trim());
           }
         },
       ),
@@ -168,12 +183,19 @@ class _GestionNoticiasPageState extends State<GestionNoticiasPage> {
                     : RefreshIndicator(
                         onRefresh: () => _cargar(q: _searchCtrl.text.trim()),
                         child: GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                          padding: EdgeInsets.fromLTRB(
+                            16,
+                            12,
+                            16,
+                            16 + fabClearance + bottomSafe,
+                          ),
+                          physics: const AlwaysScrollableScrollPhysics(),
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: MediaQuery.of(context).size.width < 380 ? 2 : 3,
                             crossAxisSpacing: 12,
                             mainAxisSpacing: 12,
-                            childAspectRatio: MediaQuery.of(context).size.width < 380 ? 0.78 : 0.82,
+                            childAspectRatio:
+                                MediaQuery.of(context).size.width < 380 ? 0.78 : 0.82,
                           ),
                           itemCount: _reporteros.length,
                           itemBuilder: (context, i) {
@@ -199,10 +221,9 @@ class _GestionNoticiasPageState extends State<GestionNoticiasPage> {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    _avatarDefault(id: r.id, nombre: r.nombre, radius: 34), // opcional bajar un poquito
+                                    _avatarDefault(id: r.id, nombre: r.nombre, radius: 34),
                                     const SizedBox(height: 6),
-
-                                    Flexible( // ⬅️ clave
+                                    Flexible(
                                       child: Text(
                                         r.nombre,
                                         maxLines: 2,
@@ -211,16 +232,17 @@ class _GestionNoticiasPageState extends State<GestionNoticiasPage> {
                                         style: const TextStyle(fontWeight: FontWeight.w600),
                                       ),
                                     ),
-
                                     const SizedBox(height: 6),
-
-                                    FittedBox( // ⬅️ clave (evita overflow del “chip”)
+                                    FittedBox(
                                       fit: BoxFit.scaleDown,
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                         decoration: BoxDecoration(
                                           borderRadius: BorderRadius.circular(999),
-                                          color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                              .withOpacity(0.12),
                                         ),
                                         child: Text(
                                           '$count Noticias',
