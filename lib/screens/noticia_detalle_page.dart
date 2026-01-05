@@ -31,6 +31,7 @@ class NoticiaDetallePage extends StatefulWidget {
 class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   late Noticia _noticia;
   bool _eliminando = false;
+
   bool get _soloLectura => widget.soloLectura || _noticia.pendiente == false;
 
   String _formatearFechaHora(DateTime dt) {
@@ -49,8 +50,29 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     _noticia = widget.noticia;
   }
 
-  bool get _tieneCoordenadas =>
-      _noticia.latitud != null && _noticia.longitud != null;
+  bool get _tieneCoordenadas => _noticia.latitud != null && _noticia.longitud != null;
+
+  // ✅ Refresca la noticia (principalmente útil para admin cuando regresa de EspectadorRutaPage)
+  Future<void> _refrescarNoticia() async {
+    // Si no es admin, igual permitimos "pull-to-refresh" sin romper nada
+    if (widget.role != 'admin') return;
+
+    try {
+      final list = await ApiService.getNoticiasAdmin();
+      final updated = list.firstWhere(
+        (n) => n.id == _noticia.id,
+        orElse: () => _noticia,
+      );
+
+      if (!mounted) return;
+      setState(() => _noticia = updated);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo actualizar la noticia: $e')),
+      );
+    }
+  }
 
   Future<void> _abrirMapaUbicacion() async {
     final resultado = await Navigator.push<Map<String, dynamic>>(
@@ -104,9 +126,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
       builder: (context) {
         return AlertDialog(
           title: const Text('Eliminar de mis pendientes'),
-          content: const Text(
-            '¿Seguro que deseas eliminar este pendiente?',
-          ),
+          content: const Text('¿Seguro que deseas eliminar este pendiente?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -137,9 +157,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Noticia eliminada de tus pendientes.'),
-        ),
+        const SnackBar(content: Text('Noticia eliminada de tus pendientes.')),
       );
 
       // Cerramos la pantalla de detalle para que ya no la veas
@@ -147,9 +165,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al eliminar pendiente: $e'),
-        ),
+        SnackBar(content: Text('Error al eliminar pendiente: $e')),
       );
     } finally {
       if (mounted) {
@@ -160,13 +176,13 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final tieneCoordenadas = _tieneCoordenadas;
     final int cambios = _noticia.fechaCitaCambios ?? 0;
     final bool limiteCambiosFecha = (widget.role == 'reportero') && cambios >= 2;
     final bool esAdmin = widget.role == 'admin';
+
     final domicilio = (_noticia.domicilio ?? '').trim();
     final domicilioTxt = domicilio.isNotEmpty ? domicilio : 'Sin domicilio';
 
@@ -181,59 +197,89 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Panel de Detalles'),
+        title: const Text('Panel de Detalles'),
+        actions: [
+          if (esAdmin)
+            IconButton(
+              tooltip: 'Actualizar',
+              icon: const Icon(Icons.refresh),
+              onPressed: _refrescarNoticia,
+            ),
+        ],
       ),
       body: Column(
         children: [
-          // ------- Datos arriba -------
           Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _noticia.noticia,
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 8),
-
-                      Text(
-                        'Reportero: $nombreReportero',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                      ),
-                      const SizedBox(height: 8),
-
-                      if (_noticia.descripcion != null &&
-                          _noticia.descripcion!.trim().isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8.0),
-                          child: Text(
-                            _noticia.descripcion!,
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
+            child: RefreshIndicator(
+              onRefresh: _refrescarNoticia,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(), // ✅ permite pull-to-refresh aunque no haya scroll
+                padding: const EdgeInsets.all(16),
+                child: Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _noticia.noticia,
+                          style: Theme.of(context).textTheme.titleLarge,
                         ),
+                        const SizedBox(height: 8),
 
-                      if (_noticia.cliente != null && _noticia.cliente!.trim().isNotEmpty)
-                      Text(
-                        'Cliente: ${_noticia.cliente}',
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: InkWell(
-                              onLongPress: domicilio.isEmpty
+                        Text(
+                          'Reportero: $nombreReportero',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        if (_noticia.descripcion != null && _noticia.descripcion!.trim().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: Text(
+                              _noticia.descripcion!,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ),
+
+                        if (_noticia.cliente != null && _noticia.cliente!.trim().isNotEmpty)
+                          Text('Cliente: ${_noticia.cliente}'),
+
+                        const SizedBox(height: 4),
+
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: InkWell(
+                                onLongPress: domicilio.isEmpty
+                                    ? null
+                                    : () async {
+                                        await Clipboard.setData(ClipboardData(text: domicilio));
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Domicilio copiado')),
+                                        );
+                                      },
+                                child: Text(
+                                  'Domicilio: $domicilioTxt',
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              tooltip: 'Copiar domicilio',
+                              icon: const Icon(Icons.copy, size: 20),
+                              onPressed: domicilio.isEmpty
                                   ? null
                                   : () async {
                                       await Clipboard.setData(ClipboardData(text: domicilio));
@@ -242,180 +288,165 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                         const SnackBar(content: Text('Domicilio copiado')),
                                       );
                                     },
-                              child: Text(
-                                'Domicilio: $domicilioTxt',
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            tooltip: 'Copiar domicilio',
-                            icon: const Icon(Icons.copy, size: 20),
-                            onPressed: domicilio.isEmpty
-                                ? null
-                                : () async {
-                                    await Clipboard.setData(ClipboardData(text: domicilio));
-                                    if (!mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Domicilio copiado')),
-                                    );
-                                  },
-                          ),
-                        ],
-                      ),
-
-                      if (_noticia.ultimaMod != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          'Última modificación: ${_formatearFechaHora(_noticia.ultimaMod!)}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.grey[700],
-                                fontStyle: FontStyle.italic,
-                              ),
-                        ),
-                      ],
-
-                      const SizedBox(height: 8),
-                      Text(
-                        'Fecha de cita: '
-                        '${_noticia.fechaCita != null ? _formatearFechaCitaAmPm(_noticia.fechaCita!) : 'Sin fecha de cita'}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-
-                  const SizedBox(height: 4),
-                    if (_noticia.fechaCitaAnterior != null &&
-                        _noticia.fechaCita != null &&
-                        _noticia.fechaCitaAnterior!.toIso8601String() != _noticia.fechaCita!.toIso8601String()) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Fecha de cita anterior: ${_formatearFechaHora(_noticia.fechaCitaAnterior!)}',
-                        style: const TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.edit_note),
-                      label: const Text('Editar noticia'),
-                      onPressed: (_soloLectura || limiteCambiosFecha)
-                          ? null
-                          : () async {
-                              final updated = await Navigator.push<Noticia>(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => EditarNoticiaPage(
-                                    noticia: _noticia,
-                                    role: widget.role,
-                                  ),
-                                ),
-                              );
-
-                              if (updated != null && mounted) {
-                                setState(() => _noticia = updated);
-                              }
-                            },
-                    ),
-                  ),
-
-                  if (limiteCambiosFecha) ...[
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Límite alcanzado: ya no puedes cambiar la fecha de cita.',
-                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-
-                  const SizedBox(height: 8),
-
-                  // Botón Agregar/Editar ubicación
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: _soloLectura ? null : _abrirMapaUbicacion,
-                      icon: Icon(
-                        tieneCoordenadas
-                            ? Icons.edit_location_alt
-                            : Icons.add_location_alt,
-                      ),
-                      label: Text(
-                        tieneCoordenadas
-                            ? 'Editar ubicación'
-                            : 'Agregar ubicación',
-                      ),
-                    ),
-                  ),
-                  if (_noticia.latitud != null && _noticia.longitud != null) ...[
-                        const SizedBox(height: 8),
-
-                        if (esAdmin) ...[
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              icon: const Icon(Icons.visibility),
-                              label: const Text('Ser espectador de ruta'),
-                              onPressed: _soloLectura
-                                  ? null
-                                  : () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => EspectadorRutaPage(
-                                            noticiaId: _noticia.id,
-                                            destinoLat: _noticia.latitud!,
-                                            destinoLon: _noticia.longitud!,
-                                            wsUrl: ApiService.wsBaseUrl,
-                                            wsToken: ApiService.wsToken,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                            ),
-                          ),
-
-                          if (_soloLectura) ...[
-                            const SizedBox(height: 6),
-                            Center(
-                              child: Text(
-                                'Esta noticia está cerrada.',
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      fontStyle: FontStyle.italic,
-                                      color: Colors.grey[700],
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
                             ),
                           ],
+                        ),
 
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              icon: const Icon(Icons.map),
-                              label: const Text('Mostrar mapa completo'),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => MapaCompletoPage(noticia: _noticia),
-                                  ),
-                                );
-                              },
+                        if (_noticia.ultimaMod != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Última modificación: ${_formatearFechaHora(_noticia.ultimaMod!)}',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Colors.grey[700],
+                                  fontStyle: FontStyle.italic,
+                                ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 8),
+                        Text(
+                          'Fecha de cita: '
+                          '${_noticia.fechaCita != null ? _formatearFechaCitaAmPm(_noticia.fechaCita!) : 'Sin fecha de cita'}',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+
+                        const SizedBox(height: 4),
+                        if (_noticia.fechaCitaAnterior != null &&
+                            _noticia.fechaCita != null &&
+                            _noticia.fechaCitaAnterior!.toIso8601String() !=
+                                _noticia.fechaCita!.toIso8601String()) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Fecha de cita anterior: ${_formatearFechaHora(_noticia.fechaCitaAnterior!)}',
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ]
+                        ],
 
-                        else ...[
-                          if (!(_soloLectura && esAdmin))
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.edit_note),
+                            label: const Text('Editar noticia'),
+                            onPressed: (_soloLectura || limiteCambiosFecha)
+                                ? null
+                                : () async {
+                                    final updated = await Navigator.push<Noticia>(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => EditarNoticiaPage(
+                                          noticia: _noticia,
+                                          role: widget.role,
+                                        ),
+                                      ),
+                                    );
+
+                                    if (updated != null && mounted) {
+                                      setState(() => _noticia = updated);
+                                    }
+                                  },
+                          ),
+                        ),
+
+                        if (limiteCambiosFecha) ...[
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Límite alcanzado: ya no puedes cambiar la fecha de cita.',
+                            style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+
+                        const SizedBox(height: 8),
+
+                        // Botón Agregar/Editar ubicación
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: _soloLectura ? null : _abrirMapaUbicacion,
+                            icon: Icon(
+                              tieneCoordenadas ? Icons.edit_location_alt : Icons.add_location_alt,
+                            ),
+                            label: Text(
+                              tieneCoordenadas ? 'Editar ubicación' : 'Agregar ubicación',
+                            ),
+                          ),
+                        ),
+
+                        if (_noticia.latitud != null && _noticia.longitud != null) ...[
+                          const SizedBox(height: 8),
+
+                          // ---------------- ADMIN ----------------
+                          if (esAdmin) ...[
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                icon: const Icon(Icons.visibility),
+                                label: const Text('Ser espectador de ruta'),
+                                onPressed: _soloLectura
+                                    ? null
+                                    : () async {
+                                        final changed = await Navigator.push<bool>(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => EspectadorRutaPage(
+                                              noticiaId: _noticia.id,
+                                              destinoLat: _noticia.latitud!,
+                                              destinoLon: _noticia.longitud!,
+                                              wsUrl: ApiService.wsBaseUrl,
+                                              wsToken: ApiService.wsToken,
+                                            ),
+                                          ),
+                                        );
+
+                                        if (!mounted) return;
+
+                                        // ✅ si el espectador salió (por fin de ruta / salir / back)
+                                        if (changed == true) {
+                                          await _refrescarNoticia();
+                                        }
+                                      },
+                              ),
+                            ),
+
+                            if (_soloLectura) ...[
+                              const SizedBox(height: 6),
+                              Center(
+                                child: Text(
+                                  'Esta noticia está cerrada.',
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        fontStyle: FontStyle.italic,
+                                        color: Colors.grey[700],
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                              ),
+                            ],
+
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                icon: const Icon(Icons.map),
+                                label: const Text('Mostrar mapa completo'),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => MapaCompletoPage(noticia: _noticia),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ]
+
+                          // ---------------- REPORTERO ----------------
+                          else ...[
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton.icon(
@@ -445,71 +476,70 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
                                   if (!mounted) return;
                                   if (result == null) return;
+
                                   final Map<String, dynamic> r = Map<String, dynamic>.from(result as Map);
+                                  final lat = (r['llegadaLatitud'] as num?)?.toDouble();
+                                  final lon = (r['llegadaLongitud'] as num?)?.toDouble();
+                                  final horaStr = r['horaLlegada']?.toString();
+                                  final hora = DateTime.tryParse(horaStr ?? '') ?? DateTime.now();
 
-                                  if (result is Map) {
-                                    final lat = (result['llegadaLatitud'] as num?)?.toDouble();
-                                    final lon = (result['llegadaLongitud'] as num?)?.toDouble();
-                                    final horaStr = r['horaLlegada']?.toString();
-                                    final hora = DateTime.tryParse(horaStr ?? '') ?? DateTime.now();
-
-                                    if (lat != null && lon != null) {
-                                      setState(() {
-                                        _noticia = Noticia(
-                                          id: _noticia.id,
-                                          noticia: _noticia.noticia,
-                                          descripcion: _noticia.descripcion,
-                                          cliente: _noticia.cliente,
-                                          domicilio: _noticia.domicilio,
-                                          reportero: _noticia.reportero,
-                                          fechaCita: _noticia.fechaCita,
-                                          fechaCitaAnterior: _noticia.fechaCitaAnterior,
-                                          fechaCitaCambios: _noticia.fechaCitaCambios,
-                                          fechaPago: _noticia.fechaPago,
-                                          latitud: _noticia.latitud,
-                                          longitud: _noticia.longitud,
-                                          horaLlegada: hora,
-                                          llegadaLatitud: lat,
-                                          llegadaLongitud: lon,
-                                          pendiente: _noticia.pendiente,
-                                          ultimaMod: DateTime.now(),
-                                        );
-                                      });
-                                    }
+                                  if (lat != null && lon != null) {
+                                    setState(() {
+                                      _noticia = Noticia(
+                                        id: _noticia.id,
+                                        noticia: _noticia.noticia,
+                                        descripcion: _noticia.descripcion,
+                                        cliente: _noticia.cliente,
+                                        domicilio: _noticia.domicilio,
+                                        reportero: _noticia.reportero,
+                                        fechaCita: _noticia.fechaCita,
+                                        fechaCitaAnterior: _noticia.fechaCitaAnterior,
+                                        fechaCitaCambios: _noticia.fechaCitaCambios,
+                                        fechaPago: _noticia.fechaPago,
+                                        latitud: _noticia.latitud,
+                                        longitud: _noticia.longitud,
+                                        horaLlegada: hora,
+                                        llegadaLatitud: lat,
+                                        llegadaLongitud: lon,
+                                        pendiente: _noticia.pendiente,
+                                        ultimaMod: DateTime.now(),
+                                      );
+                                    });
                                   }
                                 },
                               ),
                             ),
-                        ],
+                          ],
 
-                        if (!_soloLectura &&
-                            _noticia.llegadaLatitud != null &&
-                            _noticia.llegadaLongitud != null) ...[
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              icon: _eliminando
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    )
-                                  : const Icon(Icons.check_circle_outline),
-                              label: Text(_eliminando ? 'Eliminando...' : 'Eliminar de mis pendientes'),
-                              onPressed: _eliminando ? null : _onEliminarPendientePressed,
+                          if (!_soloLectura &&
+                              _noticia.llegadaLatitud != null &&
+                              _noticia.llegadaLongitud != null) ...[
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                icon: _eliminando
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.check_circle_outline),
+                                label: Text(_eliminando ? 'Eliminando...' : 'Eliminar de mis pendientes'),
+                                onPressed: _eliminando ? null : _onEliminarPendientePressed,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
 
-                        const SizedBox(height: 8),
-                        if (!tieneCoordenadas)
-                          const Text(
-                            'No hay coordenadas para mostrar en el mapa.',
-                            style: TextStyle(color: Colors.red),
-                          ),
+                          const SizedBox(height: 8),
+                          if (!tieneCoordenadas)
+                            const Text(
+                              'No hay coordenadas para mostrar en el mapa.',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -549,15 +579,15 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                 ),
                               ),
                               if (_noticia.llegadaLatitud != null && _noticia.llegadaLongitud != null)
-                              Marker(
-                                point: latlng.LatLng(_noticia.llegadaLatitud!, _noticia.llegadaLongitud!),
-                                width: 80,
-                                height: 80,
-                                child: const Icon(
-                                  Icons.no_crash_sharp,
-                                  size: 38,
+                                Marker(
+                                  point: latlng.LatLng(_noticia.llegadaLatitud!, _noticia.llegadaLongitud!),
+                                  width: 80,
+                                  height: 80,
+                                  child: const Icon(
+                                    Icons.no_crash_sharp,
+                                    size: 38,
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                         ],
