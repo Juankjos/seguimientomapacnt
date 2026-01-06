@@ -4,6 +4,7 @@ import 'package:syncfusion_flutter_charts/charts.dart';
 import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
 import '../services/api_service.dart';
+import 'estadisticas_mes.dart';
 
 enum StatsRange { day, week, month, year }
 
@@ -40,10 +41,8 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
   List<ReporteroAdmin> _reporteros = [];
   List<Noticia> _noticias = [];
 
-  // para forzar “rebuild” y que la animación de barras corra al cambiar pestaña
   int _animSeed = 0;
 
-  // tooltips del chart
   late final TooltipBehavior _tooltip;
 
   @override
@@ -53,7 +52,6 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     _tab = TabController(length: 4, vsync: this);
 
     _tab.addListener(() {
-      // cuando termina el cambio de tab, forzamos rebuild para re-animar
       if (!_tab.indexIsChanging) {
         setState(() => _animSeed++);
       }
@@ -87,7 +85,6 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
         _loading = false;
       });
 
-      // para que al terminar carga se anime
       setState(() => _animSeed++);
     } catch (e) {
       setState(() {
@@ -139,25 +136,21 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     }
   }
 
-  // Timestamp “mejor esfuerzo” para estadísticas
   DateTime? _timestampFor(Noticia n) {
-    // Completada: intenta usar horaLlegada
     if (n.pendiente == false) {
       return n.horaLlegada ?? n.ultimaMod ?? n.fechaCita;
     }
-    // En curso: usa ultimaMod/fechaCita
     return n.ultimaMod ?? n.fechaCita;
   }
 
   bool _inRange(DateTime? dt, DateTime start, DateTime end) {
     if (dt == null) return false;
-    return !dt.isBefore(start) && dt.isBefore(end); // [start, end)
+    return !dt.isBefore(start) && dt.isBefore(end); 
   }
 
   List<ReporterStats> _buildStats(StatsRange range) {
     final bounds = _rangeBounds(range);
 
-    // Inicializa con todos los reporteros en 0 (para que siempre salgan en el chart)
     final Map<int, ReporterStats> map = {
       for (final r in _reporteros)
         r.id: ReporterStats(
@@ -168,14 +161,12 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
         ),
     };
 
-    // Conteo según rango
     for (final n in _noticias) {
       final ts = _timestampFor(n);
       if (!_inRange(ts, bounds.start, bounds.end)) continue;
 
       final rid = n.reporteroId ?? 0;
 
-      // Si viene sin asignar, lo agregamos como categoría
       if (!map.containsKey(rid)) {
         map[rid] = ReporterStats(
           reporteroId: rid,
@@ -205,11 +196,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
 
     final list = map.values.toList();
 
-    // Orden: más total primero
     list.sort((a, b) => b.total.compareTo(a.total));
-
-    // Si prefieres mantener orden alfabético, usa esto en lugar del sort anterior:
-    // list.sort((a, b) => a.nombre.toLowerCase().compareTo(b.nombre.toLowerCase()));
 
     return list;
   }
@@ -265,6 +252,13 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
   }
 
   Widget _buildContent() {
+    if (_range == StatsRange.month) {
+      return EstadisticasMes(
+        reporteros: _reporteros,
+        noticias: _noticias,
+      );
+    }
+
     final stats = _buildStats(_range);
 
     if (stats.isEmpty) {
@@ -278,7 +272,6 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
       padding: const EdgeInsets.all(12),
       child: Column(
         children: [
-          // Resumen
           Card(
             elevation: 1,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -304,7 +297,6 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           ),
           const SizedBox(height: 10),
 
-          // Chart con “rebuild/animación” en cambio de pestaña
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
@@ -339,7 +331,6 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
   Widget _buildChart(List<ReporterStats> stats, {required Key key}) {
     final theme = Theme.of(context);
 
-    // Para que no se vea “apretado” cuando hay muchos reporteros:
     final hasMany = stats.length > 8;
 
     return SfCartesianChart(
