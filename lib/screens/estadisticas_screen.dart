@@ -5,6 +5,7 @@ import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
 import '../services/api_service.dart';
 import 'estadisticas_mes.dart';
+import 'estadisticas_semanas.dart';
 
 enum StatsRange { day, week, month, year }
 
@@ -42,7 +43,6 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
   List<Noticia> _noticias = [];
 
   int _animSeed = 0;
-
   late final TooltipBehavior _tooltip;
 
   @override
@@ -75,7 +75,6 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     });
 
     try {
-      // Reporteros + noticias (admin)
       final reps = await ApiService.getReporterosAdmin(q: '');
       final news = await ApiService.getNoticiasAdmin();
 
@@ -94,18 +93,9 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     }
   }
 
-  // ------------------- Helpers de rango de fechas -------------------
+  // ------------------- Helpers de rango de fechas (día/año) -------------------
 
   DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
-
-  DateTime _startOfWeek(DateTime d) {
-    final day = _startOfDay(d);
-    final diff = day.weekday - DateTime.monday; // lunes = 1
-    return day.subtract(Duration(days: diff));
-  }
-
-  DateTime _startOfMonth(DateTime d) => DateTime(d.year, d.month, 1);
-
   DateTime _startOfYear(DateTime d) => DateTime(d.year, 1, 1);
 
   ({DateTime start, DateTime end}) _rangeBounds(StatsRange r) {
@@ -117,13 +107,14 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
         final end = start.add(const Duration(days: 1));
         return (start: start, end: end);
 
+      // ✅ YA NO USAMOS "week" aquí (ahora Semana = carrusel de semanas del mes actual)
       case StatsRange.week:
-        final start = _startOfWeek(now);
-        final end = start.add(const Duration(days: 7));
+        final start = _startOfDay(now);
+        final end = start.add(const Duration(days: 1));
         return (start: start, end: end);
 
       case StatsRange.month:
-        final start = _startOfMonth(now);
+        final start = DateTime(now.year, now.month, 1);
         final end = (start.month == 12)
             ? DateTime(start.year + 1, 1, 1)
             : DateTime(start.year, start.month + 1, 1);
@@ -145,7 +136,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
 
   bool _inRange(DateTime? dt, DateTime start, DateTime end) {
     if (dt == null) return false;
-    return !dt.isBefore(start) && dt.isBefore(end); 
+    return !dt.isBefore(start) && dt.isBefore(end);
   }
 
   List<ReporterStats> _buildStats(StatsRange range) {
@@ -195,9 +186,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     }
 
     final list = map.values.toList();
-
     list.sort((a, b) => b.total.compareTo(a.total));
-
     return list;
   }
 
@@ -206,12 +195,20 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
       case StatsRange.day:
         return 'Hoy';
       case StatsRange.week:
-        return 'Esta semana';
+        return 'Semanas del mes';
       case StatsRange.month:
         return 'Este mes';
       case StatsRange.year:
         return 'Este año';
     }
+  }
+
+  String _nombreMes(int month) {
+    const nombres = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+    ];
+    return nombres[month - 1];
   }
 
   // ------------------- UI -------------------
@@ -252,6 +249,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
   }
 
   Widget _buildContent() {
+    // ✅ Mes (igual que ya lo tenías)
     if (_range == StatsRange.month) {
       return EstadisticasMes(
         reporteros: _reporteros,
@@ -259,6 +257,20 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
       );
     }
 
+    // ✅ Semana = carrusel de semanas DEL MES ACTUAL
+    if (_range == StatsRange.week) {
+      final now = DateTime.now();
+      return EstadisticasSemanas(
+        embedded: true, // 👈 clave para usarlo dentro del tab
+        year: now.year,
+        month: now.month,
+        monthName: _nombreMes(now.month),
+        reporteros: _reporteros,
+        noticias: _noticias,
+      );
+    }
+
+    // ✅ Día y Año se quedan como estaban
     final stats = _buildStats(_range);
 
     if (stats.isEmpty) {
@@ -330,7 +342,6 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
 
   Widget _buildChart(List<ReporterStats> stats, {required Key key}) {
     final theme = Theme.of(context);
-
     final hasMany = stats.length > 8;
 
     return SfCartesianChart(

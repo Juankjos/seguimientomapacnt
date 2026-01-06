@@ -3,6 +3,7 @@ import 'package:syncfusion_flutter_charts/charts.dart';
 
 import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
+import 'estadisticas_semanas.dart';
 
 class EstadisticasMes extends StatefulWidget {
   final List<ReporteroAdmin> reporteros;
@@ -270,6 +271,25 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                 ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton.icon(
+                icon: const Icon(Icons.view_carousel),
+                label: const Text('Semanas'),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EstadisticasSemanas(
+                        year: _year,
+                        month: month,
+                        monthName: _nombreMes(month),
+                        reporteros: widget.reporteros,
+                        noticias: widget.noticias,
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),
