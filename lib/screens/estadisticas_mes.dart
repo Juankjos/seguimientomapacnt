@@ -258,7 +258,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
             children: [
               OutlinedButton.icon(
                 icon: const Icon(Icons.arrow_back),
-                label: const Text('Volver'),
+                label: const Text(''),
                 onPressed: () {
                   setState(() {
                     _selectedMonth = null;
@@ -307,14 +307,6 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
               ),
 
               const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '${_nombreMes(month)} $_year',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -328,7 +320,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Resumen del mes',
+                      '${_nombreMes(month)} $_year',
                       style: const TextStyle(fontWeight: FontWeight.w800),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
