@@ -1,3 +1,4 @@
+// lib/screens/estadisticas_semanas.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 
@@ -11,7 +12,6 @@ class EstadisticasSemanas extends StatefulWidget {
   final List<ReporteroAdmin> reporteros;
   final List<Noticia> noticias;
 
-  /// ✅ Si embedded=true, NO dibuja Scaffold/AppBar (para usar dentro de un Tab)
   final bool embedded;
 
   const EstadisticasSemanas({
@@ -47,7 +47,6 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
 
     _weeks = _buildWeeksForMonth(widget.year, widget.month);
 
-    // ✅ Arranca en la semana que contiene "hoy" (si hoy cae en este mes)
     _index = _indexForDate(DateTime.now());
     _page = PageController(initialPage: _index);
   }
@@ -110,7 +109,6 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
   }
 
   int _indexForDate(DateTime d) {
-    // Si la fecha no está en el mes/año actual del widget, arrancamos en 0
     if (d.year != widget.year || d.month != widget.month) return 0;
 
     final day = DateTime(d.year, d.month, d.day);
@@ -226,7 +224,6 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
           const SizedBox(height: 6),
         ],
 
-        // Header navegación
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(

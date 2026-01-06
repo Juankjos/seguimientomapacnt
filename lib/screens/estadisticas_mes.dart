@@ -1,9 +1,11 @@
+// lib/screens/estadisticas_mes.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 
 import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
 import 'estadisticas_semanas.dart';
+import 'estadisticas_dias.dart';
 
 class EstadisticasMes extends StatefulWidget {
   final List<ReporteroAdmin> reporteros;
@@ -168,7 +170,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                   onTap: () {
                     setState(() {
                       _selectedMonth = month;
-                      _animSeed++; // fuerza reanimación al entrar al chart
+                      _animSeed++;
                     });
                   },
                   child: AnimatedContainer(
@@ -263,18 +265,10 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                   });
                 },
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '${_nombreMes(month)} $_year',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                ),
-              ),
-              const SizedBox(width: 10),
-              FilledButton.icon(
-                icon: const Icon(Icons.view_carousel),
+              const SizedBox(width: 8),
+
+              OutlinedButton.icon(
+                icon: const Icon(Icons.view_week),
                 label: const Text('Semanas'),
                 onPressed: () {
                   Navigator.push(
@@ -290,6 +284,36 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                     ),
                   );
                 },
+              ),
+              const SizedBox(width: 8),
+
+              OutlinedButton.icon(
+                icon: const Icon(Icons.calendar_month),
+                label: const Text('Días'),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EstadisticasDias(
+                        year: _year,
+                        month: month,
+                        monthName: _nombreMes(month),
+                        reporteros: widget.reporteros,
+                        noticias: widget.noticias,
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '${_nombreMes(month)} $_year',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                ),
               ),
             ],
           ),

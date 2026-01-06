@@ -1,3 +1,4 @@
+// lib/screens/estadisticas_screen.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 
@@ -6,6 +7,7 @@ import '../models/reportero_admin.dart';
 import '../services/api_service.dart';
 import 'estadisticas_mes.dart';
 import 'estadisticas_semanas.dart';
+import 'estadisticas_dias.dart';
 
 enum StatsRange { day, week, month, year }
 
@@ -93,9 +95,16 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     }
   }
 
-  // ------------------- Helpers de rango de fechas (día/año) -------------------
+  // ------------------- Helpers de rango de fechas -------------------
 
   DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  DateTime _startOfWeek(DateTime d) {
+    final day = _startOfDay(d);
+    final diff = day.weekday - DateTime.monday; // lunes = 1
+    return day.subtract(Duration(days: diff));
+  }
+
   DateTime _startOfYear(DateTime d) => DateTime(d.year, 1, 1);
 
   ({DateTime start, DateTime end}) _rangeBounds(StatsRange r) {
@@ -107,10 +116,11 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
         final end = start.add(const Duration(days: 1));
         return (start: start, end: end);
 
-      // ✅ YA NO USAMOS "week" aquí (ahora Semana = carrusel de semanas del mes actual)
       case StatsRange.week:
-        final start = _startOfDay(now);
-        final end = start.add(const Duration(days: 1));
+        // (En realidad "Semana" se renderiza con EstadisticasSemanas, pero esto
+        // lo dejamos correcto por si se reutiliza el conteo.)
+        final start = _startOfWeek(now);
+        final end = start.add(const Duration(days: 7));
         return (start: start, end: end);
 
       case StatsRange.month:
@@ -211,6 +221,22 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     return nombres[month - 1];
   }
 
+  Future<void> _openDiasMesActual() async {
+    final now = DateTime.now();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EstadisticasDias(
+          year: now.year,
+          month: now.month,
+          monthName: _nombreMes(now.month),
+          reporteros: _reporteros,
+          noticias: _noticias,
+        ),
+      ),
+    );
+  }
+
   // ------------------- UI -------------------
 
   @override
@@ -249,7 +275,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
   }
 
   Widget _buildContent() {
-    // ✅ Mes (igual que ya lo tenías)
+    // ✅ Mes (vista especial)
     if (_range == StatsRange.month) {
       return EstadisticasMes(
         reporteros: _reporteros,
@@ -257,11 +283,11 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
       );
     }
 
-    // ✅ Semana = carrusel de semanas DEL MES ACTUAL
+    // ✅ Semana (vista especial: semanas del mes actual)
     if (_range == StatsRange.week) {
       final now = DateTime.now();
       return EstadisticasSemanas(
-        embedded: true, // 👈 clave para usarlo dentro del tab
+        embedded: true,
         year: now.year,
         month: now.month,
         monthName: _nombreMes(now.month),
@@ -270,7 +296,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
       );
     }
 
-    // ✅ Día y Año se quedan como estaban
+    // ✅ Día / Año (chart clásico)
     final stats = _buildStats(_range);
 
     if (stats.isEmpty) {
@@ -307,6 +333,20 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
               ),
             ),
           ),
+
+          // ✅ Botón “Días” solo en la pestaña Día
+          if (_range == StatsRange.day) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.calendar_month),
+                label: const Text('Días'),
+                onPressed: _openDiasMesActual,
+              ),
+            ),
+          ],
+
           const SizedBox(height: 10),
 
           Expanded(
