@@ -1,3 +1,4 @@
+// lib/screens/estadisticas_semanas.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 
@@ -166,13 +167,10 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
 
       final cur = map[rid]!;
 
-      // ✅ Completadas: por horaLlegada en rango
       final isCompletada = _inRange(n.horaLlegada, start, endEx);
 
-      // ✅ Agendadas: pendiente==true y fechaCita en rango
       final isAgendada = (n.pendiente == true) && _inRange(n.fechaCita, start, endEx);
 
-      // ✅ En curso (solo semana actual): por fechaCita en rango (independiente de estado)
       final isEnCurso = includeEnCurso && _inRange(n.fechaCita, start, endEx);
 
       map[rid] = _ReporterStats(
@@ -463,7 +461,7 @@ class _ReporterStats {
 
   final int completadas;
   final int agendadas;
-  final int enCurso; // solo se “usa” (y se muestra) en la semana actual
+  final int enCurso;
 
   const _ReporterStats({
     required this.reporteroId,
