@@ -337,25 +337,41 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${_nombreMes(month)} $_year',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  _pill('Agendadas: $totalAgendadas'),
-                  const SizedBox(width: 8),
-                  _pill('Completadas: $totalCompletadas'),
-                  if (isCurrent) ...[
-                    const SizedBox(width: 8),
-                    _pill('En curso: $totalEnCurso'),
-                  ],
-                ],
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final bool narrow = c.maxWidth < 380;
+                  final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
+
+                  final pills = <Widget>[
+                    // Mes actual -> solo Completadas + En curso
+                    if (isCurrent) ...[
+                      _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
+                      _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
+                    ] else ...[
+                      // Otros meses -> Completadas + Agendadas
+                      _pill('Agendadas: $totalAgendadas', maxWidth: maxPillW),
+                      _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
+                    ],
+                  ];
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${_nombreMes(month)} $_year',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: pills,
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ),
@@ -387,6 +403,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                   dataLabelSettings: const DataLabelSettings(isVisible: true),
                   animationDuration: 650,
                 ),
+
                 if (isCurrent)
                   ColumnSeries<_ReporterStats, String>(
                     name: 'En curso',
@@ -395,15 +412,16 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                     yValueMapper: (d, _) => d.enCurso,
                     dataLabelSettings: const DataLabelSettings(isVisible: true),
                     animationDuration: 650,
+                  )
+                else
+                  ColumnSeries<_ReporterStats, String>(
+                    name: 'Agendadas',
+                    dataSource: stats,
+                    xValueMapper: (d, _) => d.nombre,
+                    yValueMapper: (d, _) => d.agendadas,
+                    dataLabelSettings: const DataLabelSettings(isVisible: true),
+                    animationDuration: 650,
                   ),
-                ColumnSeries<_ReporterStats, String>(
-                  name: 'Agendadas',
-                  dataSource: stats,
-                  xValueMapper: (d, _) => d.nombre,
-                  yValueMapper: (d, _) => d.agendadas,
-                  dataLabelSettings: const DataLabelSettings(isVisible: true),
-                  animationDuration: 650,
-                ),
               ],
             ),
           ),
@@ -412,9 +430,10 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
     );
   }
 
-  Widget _pill(String text) {
+  Widget _pill(String text, {double? maxWidth}) {
     final theme = Theme.of(context);
-    return Container(
+
+    final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer,
@@ -422,11 +441,20 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
       ),
       child: Text(
         text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontWeight: FontWeight.w700,
           color: theme.colorScheme.onPrimaryContainer,
         ),
       ),
+    );
+
+    if (maxWidth == null) return core;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: core,
     );
   }
 
