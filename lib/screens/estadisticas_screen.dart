@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import 'estadisticas_mes.dart';
 import 'estadisticas_semanas.dart';
 import 'estadisticas_dias.dart';
+import 'estadisticas_year.dart';
 
 enum StatsRange { day, week, month, year }
 
@@ -348,6 +349,13 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
         year: now.year,
         month: now.month,
         monthName: _nombreMes(now.month),
+        reporteros: _reporteros,
+        noticias: _noticias,
+      );
+    }
+
+    if (_range == StatsRange.year) {
+      return EstadisticasYear(
         reporteros: _reporteros,
         noticias: _noticias,
       );
