@@ -14,17 +14,20 @@ enum StatsRange { day, week, month, year }
 class ReporterStats {
   final int reporteroId;
   final String nombre;
-  final int enCurso;
-  final int completadas;
+
+  final int completadas; 
+  final int enCurso;   
+  final int agendadas;   
 
   const ReporterStats({
     required this.reporteroId,
     required this.nombre,
-    required this.enCurso,
     required this.completadas,
+    required this.enCurso,
+    required this.agendadas,
   });
 
-  int get total => enCurso + completadas;
+  int get total => completadas + enCurso + agendadas;
 }
 
 class EstadisticasScreen extends StatefulWidget {
@@ -95,7 +98,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     }
   }
 
-  // ------------------- Helpers de rango de fechas -------------------
+  // ------------------- Helpers de fechas -------------------
 
   DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -117,8 +120,6 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
         return (start: start, end: end);
 
       case StatsRange.week:
-        // (En realidad "Semana" se renderiza con EstadisticasSemanas, pero esto
-        // lo dejamos correcto por si se reutiliza el conteo.)
         final start = _startOfWeek(now);
         final end = start.add(const Duration(days: 7));
         return (start: start, end: end);
@@ -137,19 +138,71 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     }
   }
 
-  DateTime? _timestampFor(Noticia n) {
+  bool _inRange(DateTime? dt, DateTime start, DateTime endExclusive) {
+    if (dt == null) return false;
+    return !dt.isBefore(start) && dt.isBefore(endExclusive);
+  }
+
+  // ------------------- Día (HOY) con lógica nueva -------------------
+
+  List<ReporterStats> _buildStatsToday() {
+    final b = _rangeBounds(StatsRange.day);
+
+    final Map<int, ReporterStats> map = {
+      for (final r in _reporteros)
+        r.id: ReporterStats(
+          reporteroId: r.id,
+          nombre: r.nombre,
+          completadas: 0,
+          agendadas: 0,
+          enCurso: 0,
+        ),
+    };
+
+    for (final n in _noticias) {
+      final rid = n.reporteroId ?? 0;
+
+      if (!map.containsKey(rid)) {
+        map[rid] = ReporterStats(
+          reporteroId: rid,
+          nombre: rid == 0 ? 'Sin asignar' : 'Reportero #$rid',
+          completadas: 0,
+          agendadas: 0,
+          enCurso: 0,
+        );
+      }
+
+      final cur = map[rid]!;
+
+      final isCompletadaHoy = _inRange(n.horaLlegada, b.start, b.end);
+      final isAgendadaHoy =
+          (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.end);
+      final isEnCursoHoy = _inRange(n.fechaCita, b.start, b.end);
+
+      map[rid] = ReporterStats(
+        reporteroId: cur.reporteroId,
+        nombre: cur.nombre,
+        completadas: cur.completadas + (isCompletadaHoy ? 1 : 0),
+        agendadas: cur.agendadas + (isAgendadaHoy ? 1 : 0),
+        enCurso: cur.enCurso + (isEnCursoHoy ? 1 : 0),
+      );
+    }
+
+    final list = map.values.toList();
+    list.sort((a, b) => b.total.compareTo(a.total));
+    return list;
+  }
+
+  // ------------------- Año (por ahora se queda como antes) -------------------
+
+  DateTime? _timestampForLegacy(Noticia n) {
     if (n.pendiente == false) {
       return n.horaLlegada ?? n.ultimaMod ?? n.fechaCita;
     }
     return n.ultimaMod ?? n.fechaCita;
   }
 
-  bool _inRange(DateTime? dt, DateTime start, DateTime end) {
-    if (dt == null) return false;
-    return !dt.isBefore(start) && dt.isBefore(end);
-  }
-
-  List<ReporterStats> _buildStats(StatsRange range) {
+  List<ReporterStats> _buildStatsLegacy(StatsRange range) {
     final bounds = _rangeBounds(range);
 
     final Map<int, ReporterStats> map = {
@@ -159,11 +212,12 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           nombre: r.nombre,
           enCurso: 0,
           completadas: 0,
+          agendadas: 0, 
         ),
     };
 
     for (final n in _noticias) {
-      final ts = _timestampFor(n);
+      final ts = _timestampForLegacy(n);
       if (!_inRange(ts, bounds.start, bounds.end)) continue;
 
       final rid = n.reporteroId ?? 0;
@@ -174,6 +228,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           nombre: rid == 0 ? 'Sin asignar' : 'Reportero #$rid',
           enCurso: 0,
           completadas: 0,
+          agendadas: 0,
         );
       }
 
@@ -184,6 +239,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           nombre: cur.nombre,
           enCurso: cur.enCurso + 1,
           completadas: cur.completadas,
+          agendadas: 0,
         );
       } else {
         map[rid] = ReporterStats(
@@ -191,6 +247,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           nombre: cur.nombre,
           enCurso: cur.enCurso,
           completadas: cur.completadas + 1,
+          agendadas: 0,
         );
       }
     }
@@ -199,6 +256,8 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     list.sort((a, b) => b.total.compareTo(a.total));
     return list;
   }
+
+  // ------------------- UI helpers -------------------
 
   String _tituloRange(StatsRange r) {
     switch (r) {
@@ -275,7 +334,6 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
   }
 
   Widget _buildContent() {
-    // ✅ Mes (vista especial)
     if (_range == StatsRange.month) {
       return EstadisticasMes(
         reporteros: _reporteros,
@@ -283,7 +341,6 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
       );
     }
 
-    // ✅ Semana (vista especial: semanas del mes actual)
     if (_range == StatsRange.week) {
       final now = DateTime.now();
       return EstadisticasSemanas(
@@ -296,15 +353,16 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
       );
     }
 
-    // ✅ Día / Año (chart clásico)
-    final stats = _buildStats(_range);
+    final List<ReporterStats> stats =
+        (_range == StatsRange.day) ? _buildStatsToday() : _buildStatsLegacy(_range);
 
     if (stats.isEmpty) {
       return const Center(child: Text('No hay datos para mostrar.'));
     }
 
-    final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
     final totalCompletadas = stats.fold<int>(0, (a, b) => a + b.completadas);
+    final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
+    final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
 
     return Padding(
       padding: const EdgeInsets.all(12),
@@ -326,15 +384,23 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _pill('En curso: $totalEnCurso'),
-                  const SizedBox(width: 8),
-                  _pill('Completadas: $totalCompletadas'),
+
+                  if (_range == StatsRange.day) ...[
+                    _pill('Agendadas: $totalAgendadas'),
+                    const SizedBox(width: 8),
+                    _pill('Completadas: $totalCompletadas'),
+                    const SizedBox(width: 8),
+                    _pill('En curso: $totalEnCurso'),
+                  ] else ...[
+                    _pill('En curso: $totalEnCurso'),
+                    const SizedBox(width: 8),
+                    _pill('Completadas: $totalCompletadas'),
+                  ],
                 ],
               ),
             ),
           ),
 
-          // ✅ Botón “Días” solo en la pestaña Día
           if (_range == StatsRange.day) ...[
             const SizedBox(height: 8),
             Align(
@@ -354,7 +420,9 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
               duration: const Duration(milliseconds: 220),
               switchInCurve: Curves.easeOut,
               switchOutCurve: Curves.easeIn,
-              child: _buildChart(stats, key: ValueKey('${_tab.index}_$_animSeed')),
+              child: (_range == StatsRange.day)
+                  ? _buildChartDia(stats, key: ValueKey('day_${_animSeed}'))
+                  : _buildChartLegacy(stats, key: ValueKey('${_tab.index}_$_animSeed')),
             ),
           ),
         ],
@@ -380,7 +448,57 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     );
   }
 
-  Widget _buildChart(List<ReporterStats> stats, {required Key key}) {
+  Widget _buildChartDia(List<ReporterStats> stats, {required Key key}) {
+    final theme = Theme.of(context);
+    final hasMany = stats.length > 8;
+
+    return SfCartesianChart(
+      key: key,
+      tooltipBehavior: _tooltip,
+      legend: const Legend(isVisible: true, position: LegendPosition.bottom),
+      plotAreaBorderWidth: 0,
+      primaryXAxis: CategoryAxis(
+        labelRotation: hasMany ? 45 : 0,
+        labelIntersectAction: AxisLabelIntersectAction.rotate45,
+        majorGridLines: const MajorGridLines(width: 0),
+      ),
+      primaryYAxis: NumericAxis(
+        minimum: 0,
+        majorGridLines: MajorGridLines(
+          width: 1,
+          color: theme.dividerColor.withOpacity(0.35),
+        ),
+      ),
+      series: [
+        ColumnSeries<ReporterStats, String>(
+          name: 'Completadas',
+          dataSource: stats,
+          xValueMapper: (d, _) => d.nombre,
+          yValueMapper: (d, _) => d.completadas,
+          dataLabelSettings: const DataLabelSettings(isVisible: true),
+          animationDuration: 650,
+        ),
+        ColumnSeries<ReporterStats, String>(
+          name: 'En curso',
+          dataSource: stats,
+          xValueMapper: (d, _) => d.nombre,
+          yValueMapper: (d, _) => d.enCurso,
+          dataLabelSettings: const DataLabelSettings(isVisible: true),
+          animationDuration: 650,
+        ),
+        ColumnSeries<ReporterStats, String>(
+          name: 'Agendadas',
+          dataSource: stats,
+          xValueMapper: (d, _) => d.nombre,
+          yValueMapper: (d, _) => d.agendadas,
+          dataLabelSettings: const DataLabelSettings(isVisible: true),
+          animationDuration: 650,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChartLegacy(List<ReporterStats> stats, {required Key key}) {
     final theme = Theme.of(context);
     final hasMany = stats.length > 8;
 

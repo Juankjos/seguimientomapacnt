@@ -64,33 +64,40 @@ class _EstadisticasDiasState extends State<EstadisticasDias> {
     return (start: start, endExclusive: end);
   }
 
-  DateTime? _timestampFor(Noticia n) {
-    if (n.pendiente == false) {
-      return n.horaLlegada ?? n.ultimaMod ?? n.fechaCita;
-    }
-    return n.ultimaMod ?? n.fechaCita;
-  }
-
   bool _inRange(DateTime? dt, DateTime start, DateTime endExclusive) {
     if (dt == null) return false;
     return !dt.isBefore(start) && dt.isBefore(endExclusive);
   }
 
-  int _countNoticiasEnDia(DateTime day) {
-    final b = _dayBounds(day);
-    int c = 0;
-    for (final n in widget.noticias) {
-      if (_inRange(_timestampFor(n), b.start, b.endExclusive)) c++;
-    }
-    return c;
+  bool _isToday(DateTime day) {
+    final now = DateTime.now();
+    final today = _dayOnly(DateTime(now.year, now.month, now.day));
+    return _dayOnly(day) == today;
   }
 
-  List<Noticia> _noticiasDelDia(DateTime day) {
+  // ------------------- “Eventos” del día para el calendario -------------------
+
+  List<Noticia> _noticiasRelevantesDelDia(DateTime day) {
     final b = _dayBounds(day);
-    return widget.noticias
-        .where((n) => _inRange(_timestampFor(n), b.start, b.endExclusive))
-        .toList();
+
+    final out = <Noticia>[];
+    final seen = <int>{};
+
+    for (final n in widget.noticias) {
+      final bool esCompletada = _inRange(n.horaLlegada, b.start, b.endExclusive);
+      final bool esAgendada = (n.pendiente == true) &&
+          _inRange(n.fechaCita, b.start, b.endExclusive);
+
+      if (!esCompletada && !esAgendada) continue;
+
+      final id = n.id;
+      if (seen.add(id)) out.add(n);
+    }
+
+    return out;
   }
+
+  int _countNoticiasEnDia(DateTime day) => _noticiasRelevantesDelDia(day).length;
 
   Future<void> _openDayChart(DateTime selected) async {
     await Navigator.push(
@@ -155,7 +162,7 @@ class _EstadisticasDiasState extends State<EstadisticasDias> {
                     });
                     await _openDayChart(sel);
                   },
-                  eventLoader: _noticiasDelDia,
+                  eventLoader: _noticiasRelevantesDelDia,
                   calendarStyle: CalendarStyle(
                     outsideDaysVisible: false,
                     todayDecoration: BoxDecoration(
@@ -257,62 +264,72 @@ class _DiaChartPageState extends State<_DiaChartPage> {
     return (start: start, endExclusive: end);
   }
 
-  DateTime? _timestampFor(Noticia n) {
-    if (n.pendiente == false) {
-      return n.horaLlegada ?? n.ultimaMod ?? n.fechaCita;
-    }
-    return n.ultimaMod ?? n.fechaCita;
-  }
-
   bool _inRange(DateTime? dt, DateTime start, DateTime endExclusive) {
     if (dt == null) return false;
     return !dt.isBefore(start) && dt.isBefore(endExclusive);
   }
 
+  bool _isToday(DateTime day) {
+    final now = DateTime.now();
+    final today = _dayOnly(DateTime(now.year, now.month, now.day));
+    return _dayOnly(day) == today;
+  }
+
   List<_ReporterStats> _buildStatsForDay(DateTime day) {
     final b = _dayBounds(day);
+    final bool showEnCurso = _isToday(day);
 
     final Map<int, _ReporterStats> map = {
       for (final r in widget.reporteros)
         r.id: _ReporterStats(
           reporteroId: r.id,
           nombre: r.nombre,
-          enCurso: 0,
           completadas: 0,
+          agendadas: 0,
+          enCurso: 0,
         ),
     };
 
     for (final n in widget.noticias) {
-      final ts = _timestampFor(n);
-      if (!_inRange(ts, b.start, b.endExclusive)) continue;
-
       final rid = n.reporteroId ?? 0;
 
       if (!map.containsKey(rid)) {
         map[rid] = _ReporterStats(
           reporteroId: rid,
           nombre: rid == 0 ? 'Sin asignar' : 'Reportero #$rid',
-          enCurso: 0,
           completadas: 0,
+          agendadas: 0,
+          enCurso: 0,
         );
       }
 
       final cur = map[rid]!;
-      if (n.pendiente == true) {
-        map[rid] = cur.copyWith(enCurso: cur.enCurso + 1);
-      } else {
+
+      if (_inRange(n.horaLlegada, b.start, b.endExclusive)) {
         map[rid] = cur.copyWith(completadas: cur.completadas + 1);
+      }
+
+      if ((n.pendiente == true) && _inRange(n.fechaCita, b.start, b.endExclusive)) {
+        final after = map[rid]!;
+        map[rid] = after.copyWith(agendadas: after.agendadas + 1);
+      }
+
+      if (showEnCurso && _inRange(n.fechaCita, b.start, b.endExclusive)) {
+        final after = map[rid]!;
+        map[rid] = after.copyWith(enCurso: after.enCurso + 1);
       }
     }
 
     final list = map.values.toList();
-    list.sort((a, b) => b.total.compareTo(a.total));
+    list.sort((a, b) {
+      final sa = _isToday(day) ? a.scoreToday : a.scoreBase;
+      final sb = _isToday(day) ? b.scoreToday : b.scoreBase;
+      return sb.compareTo(sa);
+    });
     return list;
   }
 
-  String _tituloDia(DateTime d) {
-    return '${d.day} de ${widget.monthName} del ${widget.year}';
-  }
+  String _tituloDia(DateTime d) => '${d.day} de ${widget.monthName} del ${widget.year}';
 
   Widget _pill(ThemeData theme, String text) {
     return Container(
@@ -334,10 +351,14 @@ class _DiaChartPageState extends State<_DiaChartPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    final bool showEnCurso = _isToday(widget.day);
     final stats = _buildStatsForDay(widget.day);
 
-    final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
     final totalCompletadas = stats.fold<int>(0, (a, b) => a + b.completadas);
+    final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
+    final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
+
     final hasMany = stats.length > 8;
 
     return Scaffold(
@@ -371,9 +392,13 @@ class _DiaChartPageState extends State<_DiaChartPage> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    _pill(theme, 'En curso: $totalEnCurso'),
+                    _pill(theme, 'Agendadas: $totalAgendadas'),
                     const SizedBox(width: 8),
                     _pill(theme, 'Completadas: $totalCompletadas'),
+                    if (showEnCurso) ...[
+                      const SizedBox(width: 8),
+                      _pill(theme, 'En curso: $totalEnCurso'),
+                    ],
                   ],
                 ),
               ),
@@ -399,18 +424,29 @@ class _DiaChartPageState extends State<_DiaChartPage> {
                 ),
                 series: [
                   ColumnSeries<_ReporterStats, String>(
-                    name: 'En curso',
-                    dataSource: stats,
-                    xValueMapper: (d, _) => d.nombre,
-                    yValueMapper: (d, _) => d.enCurso,
-                    dataLabelSettings: const DataLabelSettings(isVisible: true),
-                    animationDuration: 650,
-                  ),
-                  ColumnSeries<_ReporterStats, String>(
                     name: 'Completadas',
                     dataSource: stats,
                     xValueMapper: (d, _) => d.nombre,
                     yValueMapper: (d, _) => d.completadas,
+                    dataLabelSettings: const DataLabelSettings(isVisible: true),
+                    animationDuration: 650,
+                  ),
+
+                  if (showEnCurso)
+                    ColumnSeries<_ReporterStats, String>(
+                      name: 'En curso',
+                      dataSource: stats,
+                      xValueMapper: (d, _) => d.nombre,
+                      yValueMapper: (d, _) => d.enCurso,
+                      dataLabelSettings: const DataLabelSettings(isVisible: true),
+                      animationDuration: 650,
+                    ),
+
+                  ColumnSeries<_ReporterStats, String>(
+                    name: 'Agendadas',
+                    dataSource: stats,
+                    xValueMapper: (d, _) => d.nombre,
+                    yValueMapper: (d, _) => d.agendadas,
                     dataLabelSettings: const DataLabelSettings(isVisible: true),
                     animationDuration: 650,
                   ),
@@ -429,24 +465,31 @@ class _DiaChartPageState extends State<_DiaChartPage> {
 class _ReporterStats {
   final int reporteroId;
   final String nombre;
-  final int enCurso;
+
   final int completadas;
+  final int agendadas;
+
+  final int enCurso;
 
   const _ReporterStats({
     required this.reporteroId,
     required this.nombre,
-    required this.enCurso,
     required this.completadas,
+    required this.agendadas,
+    required this.enCurso,
   });
 
-  int get total => enCurso + completadas;
+  int get scoreBase => completadas + agendadas;
 
-  _ReporterStats copyWith({int? enCurso, int? completadas}) {
+  int get scoreToday => completadas + agendadas + enCurso;
+
+  _ReporterStats copyWith({int? completadas, int? agendadas, int? enCurso}) {
     return _ReporterStats(
       reporteroId: reporteroId,
       nombre: nombre,
-      enCurso: enCurso ?? this.enCurso,
       completadas: completadas ?? this.completadas,
+      agendadas: agendadas ?? this.agendadas,
+      enCurso: enCurso ?? this.enCurso,
     );
   }
 }
