@@ -5,6 +5,7 @@ import 'package:syncfusion_flutter_charts/charts.dart';
 import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
 import 'estadisticas_semanas.dart';
+import 'estadisticas_dias.dart';
 
 class EstadisticasYear extends StatefulWidget {
   final List<ReporteroAdmin> reporteros;
@@ -539,6 +540,21 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
     );
   }
 
+  Future<void> _openDias(int month) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EstadisticasDias(
+          year: widget.year,
+          month: month,
+          monthName: _nombreMes(month),
+          reporteros: widget.reporteros,
+          noticias: widget.noticias,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -717,6 +733,13 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
                 icon: const Icon(Icons.view_week),
                 label: const Text('Semanas'),
                 onPressed: () => _openSemanas(month),
+              ),
+              const SizedBox(width: 8),
+
+              OutlinedButton.icon(
+                icon: const Icon(Icons.calendar_month),
+                label: const Text('Días'),
+                onPressed: () => _openDias(month),
               ),
               const SizedBox(width: 8),
 
