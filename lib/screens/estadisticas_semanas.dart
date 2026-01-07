@@ -331,16 +331,27 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
                         ),
                         const SizedBox(height: 10),
 
-                        Row(
-                          children: [
-                            _pill(theme, 'Agendadas: $totalAgendadas'),
-                            const SizedBox(width: 8),
-                            _pill(theme, 'Completadas: $totalCompletadas'),
-                            if (isCurrent) ...[
-                              const SizedBox(width: 8),
-                              _pill(theme, 'En curso: $totalEnCurso'),
-                            ],
-                          ],
+                        LayoutBuilder(
+                          builder: (context, c) {
+                            final bool narrow = c.maxWidth < 380;
+                            final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
+
+                            final pills = <Widget>[
+                              if (!isCurrent)
+                                _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
+
+                                _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
+
+                              if (isCurrent)
+                                _pill(theme, 'En curso: $totalEnCurso', maxWidth: maxPillW),
+                            ];
+
+                            return Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: pills,
+                            );
+                          },
                         ),
                         const SizedBox(height: 10),
 
@@ -384,6 +395,7 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
                                       const DataLabelSettings(isVisible: true),
                                   animationDuration: 650,
                                 ),
+                              if (!isCurrent)
                               ColumnSeries<_ReporterStats, String>(
                                 name: 'Agendadas',
                                 dataSource: stats,
@@ -407,8 +419,8 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
     );
   }
 
-  Widget _pill(ThemeData theme, String text) {
-    return Container(
+  Widget _pill(ThemeData theme, String text, {double? maxWidth}) {
+    final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer,
@@ -416,11 +428,20 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
       ),
       child: Text(
         text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontWeight: FontWeight.w700,
           color: theme.colorScheme.onPrimaryContainer,
         ),
       ),
+    );
+
+    if (maxWidth == null) return core;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: core,
     );
   }
 

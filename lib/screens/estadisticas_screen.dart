@@ -105,7 +105,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
 
   DateTime _startOfWeek(DateTime d) {
     final day = _startOfDay(d);
-    final diff = day.weekday - DateTime.monday; // lunes = 1
+    final diff = day.weekday - DateTime.monday;
     return day.subtract(Duration(days: diff));
   }
 
@@ -376,41 +376,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
       padding: const EdgeInsets.all(12),
       child: Column(
         children: [
-          Card(
-            elevation: 1,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _tituloRange(_range),
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-
-                  if (_range == StatsRange.day) ...[
-                    _pill('Agendadas: $totalAgendadas'),
-                    const SizedBox(width: 8),
-                    _pill('Completadas: $totalCompletadas'),
-                    const SizedBox(width: 8),
-                    _pill('En curso: $totalEnCurso'),
-                  ] else ...[
-                    _pill('En curso: $totalEnCurso'),
-                    const SizedBox(width: 8),
-                    _pill('Completadas: $totalCompletadas'),
-                  ],
-                ],
-              ),
-            ),
-          ),
-
           if (_range == StatsRange.day) ...[
-            const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
               child: OutlinedButton.icon(
@@ -419,7 +385,51 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
                 onPressed: _openDiasMesActual,
               ),
             ),
+            const SizedBox(height: 8),
           ],
+
+          Card(
+            elevation: 1,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final bool narrow = c.maxWidth < 380;
+                  final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
+
+                  final pills = <Widget>[
+                    if (_range == StatsRange.day) ...[
+                      _pill('Agendadas: $totalAgendadas', maxWidth: maxPillW),
+                      _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
+                      _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
+                    ] else ...[
+                      _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
+                      _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
+                    ],
+                  ];
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _tituloRange(_range),
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: pills,
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
 
           const SizedBox(height: 10),
 
@@ -438,9 +448,10 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     );
   }
 
-  Widget _pill(String text) {
+  Widget _pill(String text, {double? maxWidth}) {
     final theme = Theme.of(context);
-    return Container(
+
+    final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer,
@@ -448,11 +459,20 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
       ),
       child: Text(
         text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontWeight: FontWeight.w700,
           color: theme.colorScheme.onPrimaryContainer,
         ),
       ),
+    );
+
+    if (maxWidth == null) return core;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: core,
     );
   }
 
