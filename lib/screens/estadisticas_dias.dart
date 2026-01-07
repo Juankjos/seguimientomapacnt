@@ -392,8 +392,10 @@ class _DiaChartPageState extends State<_DiaChartPage> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    _pill(theme, 'Agendadas: $totalAgendadas'),
-                    const SizedBox(width: 8),
+                    if (!showEnCurso) ...[
+                      _pill(theme, 'Agendadas: $totalAgendadas'),
+                      const SizedBox(width: 8),
+                    ],
                     _pill(theme, 'Completadas: $totalCompletadas'),
                     if (showEnCurso) ...[
                       const SizedBox(width: 8),
@@ -442,6 +444,7 @@ class _DiaChartPageState extends State<_DiaChartPage> {
                       animationDuration: 650,
                     ),
 
+                  if (!showEnCurso)
                   ColumnSeries<_ReporterStats, String>(
                     name: 'Agendadas',
                     dataSource: stats,

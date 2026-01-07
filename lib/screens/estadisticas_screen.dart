@@ -400,9 +400,8 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
 
                   final pills = <Widget>[
                     if (_range == StatsRange.day) ...[
-                      _pill('Agendadas: $totalAgendadas', maxWidth: maxPillW),
-                      _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
                       _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
+                      _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
                     ] else ...[
                       _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
                       _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
@@ -511,14 +510,6 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           dataSource: stats,
           xValueMapper: (d, _) => d.nombre,
           yValueMapper: (d, _) => d.enCurso,
-          dataLabelSettings: const DataLabelSettings(isVisible: true),
-          animationDuration: 650,
-        ),
-        ColumnSeries<ReporterStats, String>(
-          name: 'Agendadas',
-          dataSource: stats,
-          xValueMapper: (d, _) => d.nombre,
-          yValueMapper: (d, _) => d.agendadas,
           dataLabelSettings: const DataLabelSettings(isVisible: true),
           animationDuration: 650,
         ),
