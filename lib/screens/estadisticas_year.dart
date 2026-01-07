@@ -60,7 +60,6 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
       if (y2 != null) years.add(y2);
     }
 
-    // Siempre mostrar el año actual primero (aunque no haya registros)
     years.add(nowYear);
 
     final past = years.where((y) => y < nowYear).toList()..sort((a, b) => b.compareTo(a));
@@ -73,8 +72,6 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
     final b = _yearBounds(year);
     int c = 0;
 
-    // Unión sin duplicar por noticia:
-    // cuenta si tiene horaLlegada en el año OR fechaCita en el año
     for (final n in widget.noticias) {
       final hasCompletada = _inRange(n.horaLlegada, b.start, b.end);
       final hasFechaCita = _inRange(n.fechaCita, b.start, b.end);
