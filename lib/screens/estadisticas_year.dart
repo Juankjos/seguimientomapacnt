@@ -325,25 +325,39 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Resumen',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  _pill(theme, 'Agendadas: $totalAgendadas'),
-                  const SizedBox(width: 8),
-                  _pill(theme, 'Completadas: $totalCompletadas'),
-                  if (isCurrent) ...[
-                    const SizedBox(width: 8),
-                    _pill(theme, 'En curso: $totalEnCurso'),
-                  ],
-                ],
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final bool narrow = c.maxWidth < 380;
+                  final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
+
+                  final pills = <Widget>[
+                    if (isCurrent) ...[
+                      _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
+                      _pill(theme, 'En curso: $totalEnCurso', maxWidth: maxPillW),
+                    ] else ...[
+                      _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
+                      _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
+                    ],
+                  ];
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Resumen',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: pills,
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ),
@@ -375,6 +389,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                   dataLabelSettings: const DataLabelSettings(isVisible: true),
                   animationDuration: 650,
                 ),
+
                 if (isCurrent)
                   ColumnSeries<_ReporterStats, String>(
                     name: 'En curso',
@@ -383,15 +398,16 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                     yValueMapper: (d, _) => d.enCurso,
                     dataLabelSettings: const DataLabelSettings(isVisible: true),
                     animationDuration: 650,
+                  )
+                else
+                  ColumnSeries<_ReporterStats, String>(
+                    name: 'Agendadas',
+                    dataSource: stats,
+                    xValueMapper: (d, _) => d.nombre,
+                    yValueMapper: (d, _) => d.agendadas,
+                    dataLabelSettings: const DataLabelSettings(isVisible: true),
+                    animationDuration: 650,
                   ),
-                ColumnSeries<_ReporterStats, String>(
-                  name: 'Agendadas',
-                  dataSource: stats,
-                  xValueMapper: (d, _) => d.nombre,
-                  yValueMapper: (d, _) => d.agendadas,
-                  dataLabelSettings: const DataLabelSettings(isVisible: true),
-                  animationDuration: 650,
-                ),
               ],
             ),
           ),
@@ -400,8 +416,8 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
     );
   }
 
-  Widget _pill(ThemeData theme, String text) {
-    return Container(
+  Widget _pill(ThemeData theme, String text, {double? maxWidth}) {
+    final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer,
@@ -409,11 +425,20 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
       ),
       child: Text(
         text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontWeight: FontWeight.w700,
           color: theme.colorScheme.onPrimaryContainer,
         ),
       ),
+    );
+
+    if (maxWidth == null) return core;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: core,
     );
   }
 }
