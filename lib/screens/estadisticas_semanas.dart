@@ -1,4 +1,3 @@
-// lib/screens/estadisticas_semanas.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 
@@ -75,8 +74,10 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
 
   // ------------------- Semanas dinámicas (Lun–Dom, recortadas al mes) -------------------
 
+  DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
   DateTime _startOfWeekMonday(DateTime d) {
-    final day = DateTime(d.year, d.month, d.day);
+    final day = _dayOnly(d);
     final diff = day.weekday - DateTime.monday;
     return day.subtract(Duration(days: diff));
   }
@@ -111,7 +112,7 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
   int _indexForDate(DateTime d) {
     if (d.year != widget.year || d.month != widget.month) return 0;
 
-    final day = DateTime(d.year, d.month, d.day);
+    final day = _dayOnly(d);
     for (int i = 0; i < _weeks.length; i++) {
       final w = _weeks[i];
       if (!day.isBefore(w.start) && day.isBefore(w.endExclusive)) return i;
@@ -119,13 +120,10 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
     return 0;
   }
 
-  // ------------------- Stats por rango -------------------
-
-  DateTime? _timestampFor(Noticia n) {
-    if (n.pendiente == false) {
-      return n.horaLlegada ?? n.ultimaMod ?? n.fechaCita;
-    }
-    return n.ultimaMod ?? n.fechaCita;
+  bool _isCurrentWeek(_WeekRange w) {
+    final today = _dayOnly(DateTime.now());
+    if (today.year != widget.year || today.month != widget.month) return false;
+    return !today.isBefore(w.start) && today.isBefore(w.endExclusive);
   }
 
   bool _inRange(DateTime? dt, DateTime start, DateTime endExclusive) {
@@ -133,38 +131,57 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
     return !dt.isBefore(start) && dt.isBefore(endExclusive);
   }
 
-  List<_ReporterStats> _buildStats(DateTime start, DateTime endExclusive) {
+  // ------------------- Stats por semana (nueva lógica) -------------------
+
+  List<_ReporterStats> _buildStatsWeek(
+    _WeekRange w, {
+    required bool includeEnCurso,
+  }) {
+    final start = w.start;
+    final endEx = w.endExclusive;
+
     final Map<int, _ReporterStats> map = {
       for (final r in widget.reporteros)
         r.id: _ReporterStats(
           reporteroId: r.id,
           nombre: r.nombre,
-          enCurso: 0,
           completadas: 0,
+          agendadas: 0,
+          enCurso: 0,
         ),
     };
 
     for (final n in widget.noticias) {
-      final ts = _timestampFor(n);
-      if (!_inRange(ts, start, endExclusive)) continue;
-
       final rid = n.reporteroId ?? 0;
 
       if (!map.containsKey(rid)) {
         map[rid] = _ReporterStats(
           reporteroId: rid,
           nombre: rid == 0 ? 'Sin asignar' : 'Reportero #$rid',
-          enCurso: 0,
           completadas: 0,
+          agendadas: 0,
+          enCurso: 0,
         );
       }
 
       final cur = map[rid]!;
-      if (n.pendiente == true) {
-        map[rid] = cur.copyWith(enCurso: cur.enCurso + 1);
-      } else {
-        map[rid] = cur.copyWith(completadas: cur.completadas + 1);
-      }
+
+      // ✅ Completadas: por horaLlegada en rango
+      final isCompletada = _inRange(n.horaLlegada, start, endEx);
+
+      // ✅ Agendadas: pendiente==true y fechaCita en rango
+      final isAgendada = (n.pendiente == true) && _inRange(n.fechaCita, start, endEx);
+
+      // ✅ En curso (solo semana actual): por fechaCita en rango (independiente de estado)
+      final isEnCurso = includeEnCurso && _inRange(n.fechaCita, start, endEx);
+
+      map[rid] = _ReporterStats(
+        reporteroId: cur.reporteroId,
+        nombre: cur.nombre,
+        completadas: cur.completadas + (isCompletada ? 1 : 0),
+        agendadas: cur.agendadas + (isAgendada ? 1 : 0),
+        enCurso: cur.enCurso + (isEnCurso ? 1 : 0),
+      );
     }
 
     final list = map.values.toList();
@@ -271,10 +288,17 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
             },
             itemBuilder: (context, i) {
               final w = _weeks[i];
-              final stats = _buildStats(w.start, w.endExclusive);
+              final isCurrent = _isCurrentWeek(w);
 
+              final stats = _buildStatsWeek(
+                w,
+                includeEnCurso: isCurrent,
+              );
+
+              final totalCompletadas =
+                  stats.fold<int>(0, (a, b) => a + b.completadas);
+              final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
               final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
-              final totalCompletadas = stats.fold<int>(0, (a, b) => a + b.completadas);
 
               final hasMany = stats.length > 8;
 
@@ -311,9 +335,13 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
 
                         Row(
                           children: [
-                            _pill(theme, 'En curso: $totalEnCurso'),
+                            _pill(theme, 'Agendadas: $totalAgendadas'),
                             const SizedBox(width: 8),
                             _pill(theme, 'Completadas: $totalCompletadas'),
+                            if (isCurrent) ...[
+                              const SizedBox(width: 8),
+                              _pill(theme, 'En curso: $totalEnCurso'),
+                            ],
                           ],
                         ),
                         const SizedBox(height: 10),
@@ -341,18 +369,28 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
                             ),
                             series: [
                               ColumnSeries<_ReporterStats, String>(
-                                name: 'En curso',
-                                dataSource: stats,
-                                xValueMapper: (d, _) => d.nombre,
-                                yValueMapper: (d, _) => d.enCurso,
-                                dataLabelSettings: const DataLabelSettings(isVisible: true),
-                                animationDuration: 650,
-                              ),
-                              ColumnSeries<_ReporterStats, String>(
                                 name: 'Completadas',
                                 dataSource: stats,
                                 xValueMapper: (d, _) => d.nombre,
                                 yValueMapper: (d, _) => d.completadas,
+                                dataLabelSettings: const DataLabelSettings(isVisible: true),
+                                animationDuration: 650,
+                              ),
+                              if (isCurrent)
+                                ColumnSeries<_ReporterStats, String>(
+                                  name: 'En curso',
+                                  dataSource: stats,
+                                  xValueMapper: (d, _) => d.nombre,
+                                  yValueMapper: (d, _) => d.enCurso,
+                                  dataLabelSettings:
+                                      const DataLabelSettings(isVisible: true),
+                                  animationDuration: 650,
+                                ),
+                              ColumnSeries<_ReporterStats, String>(
+                                name: 'Agendadas',
+                                dataSource: stats,
+                                xValueMapper: (d, _) => d.nombre,
+                                yValueMapper: (d, _) => d.agendadas,
                                 dataLabelSettings: const DataLabelSettings(isVisible: true),
                                 animationDuration: 650,
                               ),
@@ -422,24 +460,18 @@ class _WeekRange {
 class _ReporterStats {
   final int reporteroId;
   final String nombre;
-  final int enCurso;
+
   final int completadas;
+  final int agendadas;
+  final int enCurso; // solo se “usa” (y se muestra) en la semana actual
 
   const _ReporterStats({
     required this.reporteroId,
     required this.nombre,
-    required this.enCurso,
     required this.completadas,
+    required this.agendadas,
+    required this.enCurso,
   });
 
-  int get total => enCurso + completadas;
-
-  _ReporterStats copyWith({int? enCurso, int? completadas}) {
-    return _ReporterStats(
-      reporteroId: reporteroId,
-      nombre: nombre,
-      enCurso: enCurso ?? this.enCurso,
-      completadas: completadas ?? this.completadas,
-    );
-  }
+  int get total => completadas + agendadas + enCurso;
 }
