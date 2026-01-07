@@ -388,58 +388,68 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
             const SizedBox(height: 8),
           ],
 
-          Card(
-            elevation: 1,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: LayoutBuilder(
-                builder: (context, c) {
-                  final bool narrow = c.maxWidth < 380;
-                  final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
-
-                  final pills = <Widget>[
-                    if (_range == StatsRange.day) ...[
-                      _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
-                      _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
-                    ] else ...[
-                      _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
-                      _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
-                    ],
-                  ];
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _tituloRange(_range),
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: pills,
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
           Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              switchInCurve: Curves.easeOut,
-              switchOutCurve: Curves.easeIn,
-              child: (_range == StatsRange.day)
-                  ? _buildChartDia(stats, key: ValueKey('day_${_animSeed}'))
-                  : _buildChartLegacy(stats, key: ValueKey('${_tab.index}_$_animSeed')),
+            child: Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16), // igual que Semana
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _tituloRange(_range), // "Hoy"
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final bool narrow = c.maxWidth < 380;
+                        final double? maxPillW =
+                            narrow ? (c.maxWidth - 8) / 2 : null;
+
+                        final pills = <Widget>[
+                          _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
+                          _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
+                          // Si luego quieres mostrar agendadas en Día:
+                          // _pill('Agendadas: $totalAgendadas', maxWidth: maxPillW),
+                        ];
+
+                        return Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: pills,
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 10),
+
+                    Expanded(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        switchInCurve: Curves.easeOut,
+                        switchOutCurve: Curves.easeIn,
+                        child: _buildChartDia(
+                          stats,
+                          key: ValueKey('day_${_animSeed}'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],

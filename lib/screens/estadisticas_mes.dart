@@ -275,6 +275,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
       padding: const EdgeInsets.all(12),
       child: Column(
         children: [
+          // Botonera arriba (fuera del card), igual que en Día
           Row(
             children: [
               OutlinedButton.icon(
@@ -326,103 +327,115 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                   );
                 },
               ),
-
-              const SizedBox(width: 10),
             ],
           ),
           const SizedBox(height: 10),
 
-          Card(
-            elevation: 1,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: LayoutBuilder(
-                builder: (context, c) {
-                  final bool narrow = c.maxWidth < 380;
-                  final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
-
-                  final pills = <Widget>[
-                    // Mes actual -> solo Completadas + En curso
-                    if (isCurrent) ...[
-                      _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
-                      _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
-                    ] else ...[
-                      // Otros meses -> Completadas + Agendadas
-                      _pill('Agendadas: $totalAgendadas', maxWidth: maxPillW),
-                      _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
-                    ],
-                  ];
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${_nombreMes(month)} $_year',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: pills,
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-
+          // Card único: título + pills + chart
           Expanded(
-            child: SfCartesianChart(
-              tooltipBehavior: _tooltip,
-              legend: const Legend(isVisible: true, position: LegendPosition.bottom),
-              plotAreaBorderWidth: 0,
-              primaryXAxis: CategoryAxis(
-                labelRotation: hasMany ? 45 : 0,
-                labelIntersectAction: AxisLabelIntersectAction.rotate45,
-                majorGridLines: const MajorGridLines(width: 0),
+            child: Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-              primaryYAxis: NumericAxis(
-                minimum: 0,
-                majorGridLines: MajorGridLines(
-                  width: 1,
-                  color: theme.dividerColor.withOpacity(0.35),
-                ),
-              ),
-              series: [
-                ColumnSeries<_ReporterStats, String>(
-                  name: 'Completadas',
-                  dataSource: stats,
-                  xValueMapper: (d, _) => d.nombre,
-                  yValueMapper: (d, _) => d.completadas,
-                  dataLabelSettings: const DataLabelSettings(isVisible: true),
-                  animationDuration: 650,
-                ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${_nombreMes(month)} $_year',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
 
-                if (isCurrent)
-                  ColumnSeries<_ReporterStats, String>(
-                    name: 'En curso',
-                    dataSource: stats,
-                    xValueMapper: (d, _) => d.nombre,
-                    yValueMapper: (d, _) => d.enCurso,
-                    dataLabelSettings: const DataLabelSettings(isVisible: true),
-                    animationDuration: 650,
-                  )
-                else
-                  ColumnSeries<_ReporterStats, String>(
-                    name: 'Agendadas',
-                    dataSource: stats,
-                    xValueMapper: (d, _) => d.nombre,
-                    yValueMapper: (d, _) => d.agendadas,
-                    dataLabelSettings: const DataLabelSettings(isVisible: true),
-                    animationDuration: 650,
-                  ),
-              ],
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final bool narrow = c.maxWidth < 380;
+                        final double? maxPillW =
+                            narrow ? (c.maxWidth - 8) / 2 : null;
+
+                        final pills = <Widget>[
+                          if (isCurrent) ...[
+                            _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
+                            _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
+                          ] else ...[
+                            _pill('Agendadas: $totalAgendadas', maxWidth: maxPillW),
+                            _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
+                          ],
+                        ];
+
+                        return Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: pills,
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 10),
+
+                    Expanded(
+                      child: SfCartesianChart(
+                        tooltipBehavior: _tooltip,
+                        legend: const Legend(
+                          isVisible: true,
+                          position: LegendPosition.bottom,
+                        ),
+                        plotAreaBorderWidth: 0,
+                        primaryXAxis: CategoryAxis(
+                          labelRotation: hasMany ? 45 : 0,
+                          labelIntersectAction: AxisLabelIntersectAction.rotate45,
+                          majorGridLines: const MajorGridLines(width: 0),
+                        ),
+                        primaryYAxis: NumericAxis(
+                          minimum: 0,
+                          majorGridLines: MajorGridLines(
+                            width: 1,
+                            color: theme.dividerColor.withOpacity(0.35),
+                          ),
+                        ),
+                        series: [
+                          ColumnSeries<_ReporterStats, String>(
+                            name: 'Completadas',
+                            dataSource: stats,
+                            xValueMapper: (d, _) => d.nombre,
+                            yValueMapper: (d, _) => d.completadas,
+                            dataLabelSettings: const DataLabelSettings(isVisible: true),
+                            animationDuration: 650,
+                          ),
+                          if (isCurrent)
+                            ColumnSeries<_ReporterStats, String>(
+                              name: 'En curso',
+                              dataSource: stats,
+                              xValueMapper: (d, _) => d.nombre,
+                              yValueMapper: (d, _) => d.enCurso,
+                              dataLabelSettings: const DataLabelSettings(isVisible: true),
+                              animationDuration: 650,
+                            )
+                          else
+                            ColumnSeries<_ReporterStats, String>(
+                              name: 'Agendadas',
+                              dataSource: stats,
+                              xValueMapper: (d, _) => d.nombre,
+                              yValueMapper: (d, _) => d.agendadas,
+                              dataLabelSettings: const DataLabelSettings(isVisible: true),
+                              animationDuration: 650,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],

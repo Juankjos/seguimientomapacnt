@@ -291,6 +291,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
       padding: const EdgeInsets.all(12),
       child: Column(
         children: [
+          // Botonera arriba (fuera del card)
           Row(
             children: [
               OutlinedButton.icon(
@@ -299,17 +300,8 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                 onPressed: () => setState(() => _selectedYear = null),
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Año $year',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
 
               if (!isCurrent) ...[
-                const SizedBox(width: 8),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.calendar_view_month),
                   label: const Text('Meses'),
@@ -320,95 +312,118 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
           ),
           const SizedBox(height: 10),
 
-          Card(
-            elevation: 1,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: LayoutBuilder(
-                builder: (context, c) {
-                  final bool narrow = c.maxWidth < 380;
-                  final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
-
-                  final pills = <Widget>[
-                    if (isCurrent) ...[
-                      _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
-                      _pill(theme, 'En curso: $totalEnCurso', maxWidth: maxPillW),
-                    ] else ...[
-                      _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
-                      _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
-                    ],
-                  ];
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Resumen',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: pills,
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-
+          // Card único: título + pills + chart
           Expanded(
-            child: SfCartesianChart(
-              tooltipBehavior: _tooltip,
-              legend: const Legend(isVisible: true, position: LegendPosition.bottom),
-              plotAreaBorderWidth: 0,
-              primaryXAxis: CategoryAxis(
-                labelRotation: hasMany ? 45 : 0,
-                labelIntersectAction: AxisLabelIntersectAction.rotate45,
-                majorGridLines: const MajorGridLines(width: 0),
+            child: Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-              primaryYAxis: NumericAxis(
-                minimum: 0,
-                majorGridLines: MajorGridLines(
-                  width: 1,
-                  color: theme.dividerColor.withOpacity(0.35),
-                ),
-              ),
-              series: [
-                ColumnSeries<_ReporterStats, String>(
-                  name: 'Completadas',
-                  dataSource: stats,
-                  xValueMapper: (d, _) => d.nombre,
-                  yValueMapper: (d, _) => d.completadas,
-                  dataLabelSettings: const DataLabelSettings(isVisible: true),
-                  animationDuration: 650,
-                ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Año $year',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
 
-                if (isCurrent)
-                  ColumnSeries<_ReporterStats, String>(
-                    name: 'En curso',
-                    dataSource: stats,
-                    xValueMapper: (d, _) => d.nombre,
-                    yValueMapper: (d, _) => d.enCurso,
-                    dataLabelSettings: const DataLabelSettings(isVisible: true),
-                    animationDuration: 650,
-                  )
-                else
-                  ColumnSeries<_ReporterStats, String>(
-                    name: 'Agendadas',
-                    dataSource: stats,
-                    xValueMapper: (d, _) => d.nombre,
-                    yValueMapper: (d, _) => d.agendadas,
-                    dataLabelSettings: const DataLabelSettings(isVisible: true),
-                    animationDuration: 650,
-                  ),
-              ],
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final bool narrow = c.maxWidth < 380;
+                        final double? maxPillW =
+                            narrow ? (c.maxWidth - 8) / 2 : null;
+
+                        final pills = <Widget>[
+                          if (isCurrent) ...[
+                            _pill(theme, 'Completadas: $totalCompletadas',
+                                maxWidth: maxPillW),
+                            _pill(theme, 'En curso: $totalEnCurso',
+                                maxWidth: maxPillW),
+                          ] else ...[
+                            _pill(theme, 'Agendadas: $totalAgendadas',
+                                maxWidth: maxPillW),
+                            _pill(theme, 'Completadas: $totalCompletadas',
+                                maxWidth: maxPillW),
+                          ],
+                        ];
+
+                        return Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: pills,
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 10),
+
+                    Expanded(
+                      child: SfCartesianChart(
+                        tooltipBehavior: _tooltip,
+                        legend: const Legend(
+                          isVisible: true,
+                          position: LegendPosition.bottom,
+                        ),
+                        plotAreaBorderWidth: 0,
+                        primaryXAxis: CategoryAxis(
+                          labelRotation: hasMany ? 45 : 0,
+                          labelIntersectAction: AxisLabelIntersectAction.rotate45,
+                          majorGridLines: const MajorGridLines(width: 0),
+                        ),
+                        primaryYAxis: NumericAxis(
+                          minimum: 0,
+                          majorGridLines: MajorGridLines(
+                            width: 1,
+                            color: theme.dividerColor.withOpacity(0.35),
+                          ),
+                        ),
+                        series: [
+                          ColumnSeries<_ReporterStats, String>(
+                            name: 'Completadas',
+                            dataSource: stats,
+                            xValueMapper: (d, _) => d.nombre,
+                            yValueMapper: (d, _) => d.completadas,
+                            dataLabelSettings: const DataLabelSettings(isVisible: true),
+                            animationDuration: 650,
+                          ),
+
+                          if (isCurrent)
+                            ColumnSeries<_ReporterStats, String>(
+                              name: 'En curso',
+                              dataSource: stats,
+                              xValueMapper: (d, _) => d.nombre,
+                              yValueMapper: (d, _) => d.enCurso,
+                              dataLabelSettings:
+                                  const DataLabelSettings(isVisible: true),
+                              animationDuration: 650,
+                            )
+                          else
+                            ColumnSeries<_ReporterStats, String>(
+                              name: 'Agendadas',
+                              dataSource: stats,
+                              xValueMapper: (d, _) => d.nombre,
+                              yValueMapper: (d, _) => d.agendadas,
+                              dataLabelSettings:
+                                  const DataLabelSettings(isVisible: true),
+                              animationDuration: 650,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
@@ -584,7 +599,11 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Meses • ${widget.year}'),
+        title: Text(
+          _selectedMonth == null
+              ? 'Meses • ${widget.year}'
+              : '${_nombreMes(_selectedMonth!)} • ${widget.year}',
+        ),
       ),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 220),
@@ -745,14 +764,6 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
                 onPressed: () => setState(() => _selectedMonth = null),
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '${_nombreMes(month)} ${widget.year}',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
 
               OutlinedButton.icon(
                 icon: const Icon(Icons.view_week),
