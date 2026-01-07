@@ -43,58 +43,67 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
     return (start: start, end: end);
   }
 
-  DateTime? _timestampFor(Noticia n) {
-    if (n.pendiente == false) {
-      return n.horaLlegada ?? n.ultimaMod ?? n.fechaCita;
-    }
-    return n.ultimaMod ?? n.fechaCita;
-  }
-
   bool _inRange(DateTime? dt, DateTime start, DateTime end) {
     if (dt == null) return false;
-    return !dt.isBefore(start) && dt.isBefore(end); // [start, end)
+    return !dt.isBefore(start) && dt.isBefore(end); 
   }
 
-  // ------------------- Stats internos -------------------
+  bool _isCurrentMonth(int month) {
+    final now = DateTime.now();
+    return now.year == _year && now.month == month;
+  }
 
-  List<_ReporterStats> _buildStatsForMonth(int year, int month) {
-    final bounds = _monthBounds(year, month);
+  // ------------------- Stats internos (nueva lógica) -------------------
+
+  List<_ReporterStats> _buildStatsForMonth(
+    int year,
+    int month, {
+    required bool includeEnCurso,
+  }) {
+    final b = _monthBounds(year, month);
 
     final Map<int, _ReporterStats> map = {
       for (final r in widget.reporteros)
         r.id: _ReporterStats(
           reporteroId: r.id,
           nombre: r.nombre,
-          enCurso: 0,
           completadas: 0,
+          agendadas: 0,
+          enCurso: 0,
         ),
     };
 
     for (final n in widget.noticias) {
-      final ts = _timestampFor(n);
-      if (!_inRange(ts, bounds.start, bounds.end)) continue;
-
       final rid = n.reporteroId ?? 0;
 
       if (!map.containsKey(rid)) {
         map[rid] = _ReporterStats(
           reporteroId: rid,
           nombre: rid == 0 ? 'Sin asignar' : 'Reportero #$rid',
-          enCurso: 0,
           completadas: 0,
+          agendadas: 0,
+          enCurso: 0,
         );
       }
 
       final cur = map[rid]!;
-      if (n.pendiente == true) {
-        map[rid] = cur.copyWith(enCurso: cur.enCurso + 1);
-      } else {
-        map[rid] = cur.copyWith(completadas: cur.completadas + 1);
-      }
+
+      final isCompletada = _inRange(n.horaLlegada, b.start, b.end);
+
+      final isAgendada = (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.end);
+
+      final isEnCurso = includeEnCurso && _inRange(n.fechaCita, b.start, b.end);
+
+      map[rid] = _ReporterStats(
+        reporteroId: cur.reporteroId,
+        nombre: cur.nombre,
+        completadas: cur.completadas + (isCompletada ? 1 : 0),
+        agendadas: cur.agendadas + (isAgendada ? 1 : 0),
+        enCurso: cur.enCurso + (isEnCurso ? 1 : 0),
+      );
     }
 
     final list = map.values.toList();
-
     list.sort((a, b) => b.total.compareTo(a.total));
     return list;
   }
@@ -102,9 +111,13 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
   int _countNoticiasEnMes(int year, int month) {
     final b = _monthBounds(year, month);
     int c = 0;
+
     for (final n in widget.noticias) {
-      if (_inRange(_timestampFor(n), b.start, b.end)) c++;
+      final hasCompletada = _inRange(n.horaLlegada, b.start, b.end);
+      final hasFechaCita = _inRange(n.fechaCita, b.start, b.end);
+      if (hasCompletada || hasFechaCita) c++;
     }
+
     return c;
   }
 
@@ -243,9 +256,17 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
   Widget _buildChartMes({required int month, required Key key}) {
     final theme = Theme.of(context);
 
-    final stats = _buildStatsForMonth(_year, month);
-    final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
+    final isCurrent = _isCurrentMonth(month);
+
+    final stats = _buildStatsForMonth(
+      _year,
+      month,
+      includeEnCurso: isCurrent,
+    );
+
     final totalCompletadas = stats.fold<int>(0, (a, b) => a + b.completadas);
+    final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
+    final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
 
     final hasMany = stats.length > 8;
 
@@ -327,16 +348,19 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _pill('En curso: $totalEnCurso'),
+                  _pill('Agendadas: $totalAgendadas'),
                   const SizedBox(width: 8),
                   _pill('Completadas: $totalCompletadas'),
+                  if (isCurrent) ...[
+                    const SizedBox(width: 8),
+                    _pill('En curso: $totalEnCurso'),
+                  ],
                 ],
               ),
             ),
           ),
           const SizedBox(height: 10),
 
-          // Chart
           Expanded(
             child: SfCartesianChart(
               tooltipBehavior: _tooltip,
@@ -356,18 +380,27 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
               ),
               series: [
                 ColumnSeries<_ReporterStats, String>(
-                  name: 'En curso',
-                  dataSource: stats,
-                  xValueMapper: (d, _) => d.nombre,
-                  yValueMapper: (d, _) => d.enCurso,
-                  dataLabelSettings: const DataLabelSettings(isVisible: true),
-                  animationDuration: 650,
-                ),
-                ColumnSeries<_ReporterStats, String>(
                   name: 'Completadas',
                   dataSource: stats,
                   xValueMapper: (d, _) => d.nombre,
                   yValueMapper: (d, _) => d.completadas,
+                  dataLabelSettings: const DataLabelSettings(isVisible: true),
+                  animationDuration: 650,
+                ),
+                if (isCurrent)
+                  ColumnSeries<_ReporterStats, String>(
+                    name: 'En curso',
+                    dataSource: stats,
+                    xValueMapper: (d, _) => d.nombre,
+                    yValueMapper: (d, _) => d.enCurso,
+                    dataLabelSettings: const DataLabelSettings(isVisible: true),
+                    animationDuration: 650,
+                  ),
+                ColumnSeries<_ReporterStats, String>(
+                  name: 'Agendadas',
+                  dataSource: stats,
+                  xValueMapper: (d, _) => d.nombre,
+                  yValueMapper: (d, _) => d.agendadas,
                   dataLabelSettings: const DataLabelSettings(isVisible: true),
                   animationDuration: 650,
                 ),
@@ -451,24 +484,18 @@ _MesEfemeride _efemerideMes(int month, ThemeData theme) {
 class _ReporterStats {
   final int reporteroId;
   final String nombre;
-  final int enCurso;
+
   final int completadas;
+  final int agendadas;
+  final int enCurso; 
 
   const _ReporterStats({
     required this.reporteroId,
     required this.nombre,
-    required this.enCurso,
     required this.completadas,
+    required this.agendadas,
+    required this.enCurso,
   });
 
-  int get total => enCurso + completadas;
-
-  _ReporterStats copyWith({int? enCurso, int? completadas}) {
-    return _ReporterStats(
-      reporteroId: reporteroId,
-      nombre: nombre,
-      enCurso: enCurso ?? this.enCurso,
-      completadas: completadas ?? this.completadas,
-    );
-  }
+  int get total => completadas + agendadas + enCurso;
 }
