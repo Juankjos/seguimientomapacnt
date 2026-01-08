@@ -1,4 +1,3 @@
-// lib/screens/espectador_ruta_page.dart
 import 'dart:async';
 import 'dart:convert';
 
@@ -51,7 +50,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
   late final latlng.LatLng _destino;
 
   bool _seguirReportero = true;
-
   DateTime? _lastLocationAt;
 
   @override
@@ -78,9 +76,7 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
     } catch (_) {}
 
     _ws = null;
-    if (mounted) {
-      setState(() => _conectado = false);
-    }
+    if (mounted) setState(() => _conectado = false);
   }
 
   Future<void> _connect() async {
@@ -114,19 +110,20 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
       final ch = WebSocketChannel.connect(uri);
       _ws = ch;
 
-      await ch.ready.timeout(const Duration(seconds: 8));
-
-      _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-        if (_ws != null) _sendSubscribeAll();
-        _watchdog();
-      });
-
+      // ✅ escuchar ANTES de esperar ready
       _wsSub = ch.stream.listen(
         _onWsMessage,
         onError: (e) => _scheduleReconnect('WS error: $e'),
         onDone: () => _scheduleReconnect('Conexión cerrada'),
         cancelOnError: true,
       );
+
+      await ch.ready.timeout(const Duration(seconds: 8));
+
+      _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+        if (_ws != null) _sendSubscribeAll();
+        _watchdog();
+      });
     } catch (e) {
       _scheduleReconnect('No se pudo conectar: $e');
     }
@@ -162,13 +159,8 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
 
     final secs = DateTime.now().difference(last).inSeconds;
 
-    if (secs >= 20) {
-      _sendSubscribeAll();
-    }
-
-    if (secs >= 45) {
-      _scheduleReconnect('Sin ubicación nueva (${secs}s). Reconectando…');
-    }
+    if (secs >= 20) _sendSubscribeAll();
+    if (secs >= 45) _scheduleReconnect('Sin ubicación nueva (${secs}s). Reconectando…');
   }
 
   void _onWsMessage(dynamic event) {
@@ -274,16 +266,12 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
 
       if (_puntos.isNotEmpty) {
         final last = _puntos.last;
-        if (last.latitude == p.latitude && last.longitude == p.longitude) {
-          return;
-        }
+        if (last.latitude == p.latitude && last.longitude == p.longitude) return;
       }
 
       _lastLocationAt = DateTime.now();
 
-      if (!_hayRutaEnCurso) {
-        setState(() => _hayRutaEnCurso = true);
-      }
+      if (!_hayRutaEnCurso) setState(() => _hayRutaEnCurso = true);
 
       _puntos.add(p);
       _ultimo = p;
@@ -352,9 +340,7 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
 
   void _toggleFollow() {
     setState(() => _seguirReportero = !_seguirReportero);
-    if (_seguirReportero && _ultimo != null) {
-      _map.move(_ultimo!, 17.0);
-    }
+    if (_seguirReportero && _ultimo != null) _map.move(_ultimo!, 17.0);
   }
 
   void _verTodo() {
@@ -487,7 +473,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
                     ),
                   ],
                 ),
-
                 Positioned(
                   top: 12,
                   left: 12,
@@ -518,7 +503,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
                     ),
                   ),
                 ),
-
                 Positioned(
                   bottom: 12,
                   left: 12,

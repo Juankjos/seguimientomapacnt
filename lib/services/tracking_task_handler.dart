@@ -1,4 +1,3 @@
-// lib/services/tracking_task_handler.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
@@ -23,13 +22,23 @@ class TrackingTaskHandler extends TaskHandler {
 
   int? _sessionId;
 
-  bool _reconnecting = false;
+  // Estado conexión
+  bool _isAuthed = false;
+  Completer<void>? _authedCompleter;
 
+  // Reconnect control
+  bool _reconnecting = false;
+  bool _stopping = false;
+  Timer? _reconnectTimer;
+
+  // Control de start para no spamear tracking_start
+  bool _startingSession = false;
+  DateTime? _startRequestedAt;
+
+  // Control envío ubicación
   DateTime? _lastSentAt;
   double? _lastLat;
   double? _lastLon;
-
-  Completer<void>? _authedCompleter;
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -44,21 +53,33 @@ class TrackingTaskHandler extends TaskHandler {
     _noticiaId = (payload['noticia_id'] as num?)?.toInt();
     _saveHistory = (payload['save_history'] as bool?) ?? false;
 
-    await _connectWs();
+    _stopping = false;
 
+    await _connectWs();
     await _waitAuthed();
 
-    await _sendStart();
+    // Pide sesión una sola vez al inicio
+    await _ensureSessionStarted();
+
+    // Primer envío inmediato
     await _tickSendLocation();
   }
 
   @override
   void onRepeatEvent(DateTime timestamp) {
-    _tickSendLocation();
+    // No await porque es callback periódico
+    unawaited(_tickSendLocation());
   }
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
+    _stopping = true;
+
+    // Cancela reconexión pendiente
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+
+    // Intenta mandar stop (best-effort)
     try {
       if (_ws != null && _sessionId != null) {
         _ws!.sink.add(jsonEncode({
@@ -72,11 +93,37 @@ class TrackingTaskHandler extends TaskHandler {
   }
 
   @override
-  void onReceiveData(Object data) {}
+  void onReceiveData(Object data) {
+    // Opcional: si en UI mandas un "STOP_TRACKING" antes de stopService
+    if (data == 'STOP_TRACKING') {
+      unawaited(_sendStopAndClose());
+    }
+  }
+
+  Future<void> _sendStopAndClose() async {
+    _stopping = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+
+    try {
+      if (_ws != null && _sessionId != null) {
+        _ws!.sink.add(jsonEncode({
+          'type': 'tracking_stop',
+          'session_id': _sessionId,
+        }));
+      }
+    } catch (_) {}
+
+    await _disposeWs();
+  }
 
   Future<void> _connectWs() async {
     if (_wsUrl == null || _token == null) return;
+    if (_stopping) return;
 
+    await _disposeWs();
+
+    _isAuthed = false;
     _authedCompleter = Completer<void>();
 
     try {
@@ -86,32 +133,42 @@ class TrackingTaskHandler extends TaskHandler {
         'token': _token!,
       });
 
-      _ws = WebSocketChannel.connect(withToken);
-      await _ws!.ready;
+      final ch = WebSocketChannel.connect(withToken);
+      _ws = ch;
 
-      _wsSub = _ws!.stream.listen(
+      // ✅ IMPORTANTE: escuchar stream ANTES de esperar ready
+      _wsSub = ch.stream.listen(
         (event) {
           try {
             final msg = jsonDecode(event as String) as Map<String, dynamic>;
+            final type = msg['type']?.toString();
 
-            if (msg['type'] == 'authed') {
-              if (_authedCompleter != null && !_authedCompleter!.isCompleted) {
-                _authedCompleter!.complete();
-              }
+            if (type == 'authed') {
+              _isAuthed = true;
+              final c = _authedCompleter;
+              if (c != null && !c.isCompleted) c.complete();
               return;
             }
 
-            if (msg['type'] == 'tracking_started') {
+            if (type == 'tracking_started') {
               _sessionId = (msg['session_id'] as num).toInt();
+              _startingSession = false;
+              _startRequestedAt = null;
               return;
             }
 
+            if (type == 'error') {
+              _scheduleReconnect();
+              return;
+            }
           } catch (_) {}
         },
-        onError: (e) => _scheduleReconnect(),
+        onError: (_) => _scheduleReconnect(),
         onDone: () => _scheduleReconnect(),
         cancelOnError: true,
       );
+
+      await ch.ready.timeout(const Duration(seconds: 8));
     } catch (_) {
       _scheduleReconnect();
     }
@@ -129,23 +186,42 @@ class TrackingTaskHandler extends TaskHandler {
   }
 
   void _scheduleReconnect() {
+    if (_stopping) return;
     if (_reconnecting) return;
     _reconnecting = true;
 
-    Future.delayed(const Duration(seconds: 5), () async {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(const Duration(seconds: 5), () async {
       _reconnecting = false;
+      if (_stopping) return;
+
       await _disposeWs();
       await _connectWs();
       await _waitAuthed();
 
-      if (_sessionId == null) {
-        await _sendStart();
-      }
+      // Si reconectó, pide nueva sesión
+      await _ensureSessionStarted();
     });
   }
 
-  Future<void> _sendStart() async {
+  Future<void> _ensureSessionStarted() async {
+    if (_stopping) return;
     if (_ws == null || _noticiaId == null) return;
+    if (!_isAuthed) return;
+
+    if (_sessionId != null) return;
+
+    // Evita spamear tracking_start si aún no llega tracking_started
+    if (_startingSession) {
+      final t = _startRequestedAt;
+      if (t != null) {
+        final secs = DateTime.now().difference(t).inSeconds;
+        if (secs < 10) return; // espera un poco
+      }
+    }
+
+    _startingSession = true;
+    _startRequestedAt = DateTime.now();
 
     try {
       _ws!.sink.add(jsonEncode({
@@ -157,13 +233,19 @@ class TrackingTaskHandler extends TaskHandler {
   }
 
   Future<void> _tickSendLocation() async {
+    if (_stopping) return;
+
     if (_ws == null) {
       _scheduleReconnect();
       return;
     }
 
+    // Si aún no autenticó, no mandes nada (evita "No autenticado" loop)
+    if (!_isAuthed) return;
+
+    // Si no hay sesión aún, solicita start (sin spam)
     if (_sessionId == null) {
-      await _sendStart();
+      await _ensureSessionStarted();
       return;
     }
 
@@ -192,7 +274,10 @@ class TrackingTaskHandler extends TaskHandler {
         'heading': pos.heading,
         'ts': now.toIso8601String(),
       }));
-    } catch (_) {}
+    } catch (_) {
+      // si falla GPS o envío, intenta recuperar conexión
+      _scheduleReconnect();
+    }
   }
 
   bool _shouldSend(DateTime now, double lat, double lon) {
@@ -214,8 +299,13 @@ class TrackingTaskHandler extends TaskHandler {
     } catch (_) {}
 
     _ws = null;
-    _sessionId = null;
 
+    // Al reconectar, arrancamos una sesión nueva (simple y confiable)
+    _sessionId = null;
+    _startingSession = false;
+    _startRequestedAt = null;
+
+    _isAuthed = false;
     _authedCompleter = null;
   }
 }
