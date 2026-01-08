@@ -1,3 +1,5 @@
+// lib/services/tracking_service.dart
+
 import 'dart:convert';
 
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -14,10 +16,8 @@ class TrackingService {
     required int noticiaId,
     bool saveHistory = false,
   }) async {
-    // Si ya está corriendo para esta misma noticia, no reiniciar
     if (_running && _runningNoticiaId == noticiaId) return;
 
-    // Si estaba corriendo otra, detenla
     if (_running) {
       await stop();
     }

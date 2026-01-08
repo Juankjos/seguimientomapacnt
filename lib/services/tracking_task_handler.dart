@@ -1,4 +1,4 @@
-// tracking_task_handler.dart
+// lib/services/tracking_task_handler.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
@@ -106,9 +106,6 @@ class TrackingTaskHandler extends TaskHandler {
               return;
             }
 
-            // Si quieres, aquí puedes loguear errores del server:
-            // if (msg['type'] == 'error') { ... }
-
           } catch (_) {}
         },
         onError: (e) => _scheduleReconnect(),
@@ -125,10 +122,8 @@ class TrackingTaskHandler extends TaskHandler {
     if (c == null) return;
 
     try {
-      // timeout para evitar bloqueo si el WS no responde
       await c.future.timeout(const Duration(seconds: 8));
     } catch (_) {
-      // Si no se pudo authed, forzamos reconexión
       _scheduleReconnect();
     }
   }
@@ -168,7 +163,6 @@ class TrackingTaskHandler extends TaskHandler {
     }
 
     if (_sessionId == null) {
-      // Si aún no hay session_id, intenta start (pero ya con authed hecho)
       await _sendStart();
       return;
     }
@@ -222,7 +216,6 @@ class TrackingTaskHandler extends TaskHandler {
     _ws = null;
     _sessionId = null;
 
-    // reinicia authed (se recalcula en connect)
     _authedCompleter = null;
   }
 }

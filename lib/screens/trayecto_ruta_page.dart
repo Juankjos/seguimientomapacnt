@@ -1,3 +1,5 @@
+// lib/screens/trayecto_ruta_page.dart
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -109,7 +111,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     _posicionSub?.cancel();
     _posicionSub = null;
 
-    // Detén el tracking en segundo plano (Foreground Service)
     if (!kIsWeb) {
       try {
         await FlutterForegroundTask.stopService();
@@ -186,16 +187,12 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
 
       _origen = latlng.LatLng(origenPos.latitude, origenPos.longitude);
 
-      // Tracking real (WS) siempre activo
       await _iniciarTrackingForeground();
 
-      // Notifica a admins: "en camino"
       unawaited(_notificarInicioTrayecto());
 
-      // Stream visual siempre activo
       _iniciarStreamUbicacion();
 
-      // Sígueme (cámara)
       _followCamera = true;
 
       final puntos = await _solicitarRutaOSRM(_origen!, _destino);
@@ -596,13 +593,11 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
                 ),
               ),
 
-              // Botones flotantes
               Positioned(
                 top: 16,
                 right: 16,
                 child: Column(
                   children: [
-                    // ✅ MI UBICACIÓN (no “activar/desactivar tracking”)
                     FloatingActionButton.small(
                       heroTag: 'centrar_btn',
                       onPressed: _centrarEnMiUbicacion,
@@ -611,7 +606,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
                     ),
                     const SizedBox(height: 8),
 
-                    // ✅ VER RUTA COMPLETA (siempre disponible)
                     FloatingActionButton.small(
                       heroTag: 'ruta_btn',
                       onPressed: _verRutaCompleta,
@@ -620,7 +614,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
                     ),
                     const SizedBox(height: 8),
 
-                    // ✅ UBICAR DESTINO (siempre disponible)
                     FloatingActionButton.small(
                       heroTag: 'destino_btn',
                       onPressed: _centrarEnDestino,

@@ -41,11 +41,9 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
   bool _conectado = false;
   String? _error;
 
-  // Estado “ruta en curso”
   bool _hayRutaEnCurso = false;
   int? _sessionId;
 
-  // Para no spamear diálogos
   bool _dialogNoRutaMostrado = false;
 
   final List<latlng.LatLng> _puntos = [];
@@ -116,10 +114,8 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
       final ch = WebSocketChannel.connect(uri);
       _ws = ch;
 
-      // ✅ Esperar handshake socket (si falla, reconecta)
       await ch.ready.timeout(const Duration(seconds: 8));
 
-      // ✅ Poll: re-suscribe cada 10s para “auto-recuperación”
       _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
         if (_ws != null) _sendSubscribeAll();
         _watchdog();
@@ -166,12 +162,10 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
 
     final secs = DateTime.now().difference(last).inSeconds;
 
-    // Si llevan 20s sin datos y la ruta está activa, pide estado otra vez
     if (secs >= 20) {
       _sendSubscribeAll();
     }
 
-    // Si llevan 45s sin datos, reconecta (algo se colgó)
     if (secs >= 45) {
       _scheduleReconnect('Sin ubicación nueva (${secs}s). Reconectando…');
     }
@@ -187,7 +181,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
 
     final type = msg['type']?.toString();
 
-    // 1) Confirmar conexión real
     if (type == 'authed') {
       if (!mounted) return;
       setState(() {
@@ -195,12 +188,10 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
         _error = null;
       });
 
-      // 2) Pedir sesiones activas
       _sendSubscribeAll();
       return;
     }
 
-    // 3) Lista inicial/actual de sesiones activas
     if (type == 'active_sessions') {
       final sessions = (msg['sessions'] as List?) ?? [];
 
@@ -223,7 +214,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
           _dialogNoRutaMostrado = false;
         });
 
-        // Sembrar última posición (si existe)
         if (lastLat != null && lastLon != null) {
           final p = latlng.LatLng(lastLat, lastLon);
           if (_puntos.isEmpty) {
@@ -244,7 +234,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
       return;
     }
 
-    // 4) Cuando el reportero inicia trayecto (broadcast a todos los admins)
     if (type == 'tracking_started') {
       final noticiaId = (msg['noticia_id'] as num?)?.toInt();
       if (noticiaId != widget.noticiaId) return;
@@ -267,7 +256,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
       return;
     }
 
-    // 5) Ubicación en vivo → filtrar por session_id (mejor) o noticia_id (fallback)
     if (type == 'tracking_location') {
       final sid = (msg['session_id'] as num?)?.toInt();
       final noticiaId = (msg['noticia_id'] as num?)?.toInt();
@@ -300,7 +288,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
       _puntos.add(p);
       _ultimo = p;
 
-      // Limitar memoria
       if (_puntos.length > 800) {
         _puntos.removeRange(0, _puntos.length - 800);
       }
@@ -310,7 +297,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
       return;
     }
 
-    // 6) Fin del trayecto
     if (type == 'tracking_stopped') {
       final sid = (msg['session_id'] as num?)?.toInt();
       if (_sessionId != null && sid != _sessionId) return;
@@ -325,7 +311,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
       return;
     }
 
-    // Errores del server (si los mandas)
     if (type == 'error') {
       final m = msg['message']?.toString() ?? 'Error';
       _scheduleReconnect(m);
@@ -351,7 +336,7 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
           FilledButton(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pop(context); // salir de espectador
+              Navigator.pop(context);
             },
             child: const Text('Salir'),
           ),
@@ -503,7 +488,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
                   ],
                 ),
 
-                // overlay estado (2 líneas)
                 Positioned(
                   top: 12,
                   left: 12,
@@ -535,7 +519,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
                   ),
                 ),
 
-                // pequeño indicador “conectado”
                 Positioned(
                   bottom: 12,
                   left: 12,
