@@ -1,3 +1,4 @@
+// lib/screens/espectador_ruta_page.dart
 import 'dart:async';
 import 'dart:convert';
 
@@ -110,7 +111,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
       final ch = WebSocketChannel.connect(uri);
       _ws = ch;
 
-      // ✅ escuchar ANTES de esperar ready
       _wsSub = ch.stream.listen(
         _onWsMessage,
         onError: (e) => _scheduleReconnect('WS error: $e'),

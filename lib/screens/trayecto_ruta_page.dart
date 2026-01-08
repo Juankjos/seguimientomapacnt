@@ -1,5 +1,3 @@
-// lib/screens/trayecto_ruta_page.dart
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -55,6 +53,8 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
 
   bool _notificacionInicioEnviada = false;
 
+  bool _deteniendoServicio = false; // ✅ evita dobles stops
+
   // Notificación a admin para inicio de trayecto
   Future<void> _notificarInicioTrayecto() async {
     if (_notificacionInicioEnviada) return;
@@ -107,15 +107,29 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     return res == true;
   }
 
+  Future<void> _detenerForegroundTracking() async {
+    if (kIsWeb) return;
+    if (_deteniendoServicio) return;
+    _deteniendoServicio = true;
+
+    // ✅ Pide al isolate que mande tracking_stop y cierre el WS
+    try {
+      FlutterForegroundTask.sendDataToTask('STOP_TRACKING');
+      await Future.delayed(const Duration(milliseconds: 350));
+    } catch (_) {}
+
+    try {
+      await FlutterForegroundTask.stopService();
+    } catch (_) {}
+
+    _deteniendoServicio = false;
+  }
+
   Future<void> _cancelarTrackingYSalir() async {
     _posicionSub?.cancel();
     _posicionSub = null;
 
-    if (!kIsWeb) {
-      try {
-        await FlutterForegroundTask.stopService();
-      } catch (_) {}
-    }
+    await _detenerForegroundTracking();
 
     if (mounted) {
       Navigator.pop(context);
@@ -171,6 +185,7 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
   @override
   void dispose() {
     _posicionSub?.cancel();
+    unawaited(_detenerForegroundTracking());
     super.dispose();
   }
 
@@ -412,9 +427,7 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'No se pudo obtener la ubicación actual para registrar la llegada.',
-            ),
+            content: Text('No se pudo obtener la ubicación actual para registrar la llegada.'),
           ),
         );
         return;
@@ -426,14 +439,12 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
         longitud: pos.longitude,
       );
 
-      await FlutterForegroundTask.stopService();
+      await _detenerForegroundTracking();
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Trayecto finalizado y llegada registrada.'),
-        ),
+        const SnackBar(content: Text('Trayecto finalizado y llegada registrada.')),
       );
 
       Navigator.pop(context, {
@@ -484,6 +495,7 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       ),
     );
   }
+
   Widget _buildMapa(ThemeData theme) {
     if (_origen == null) {
       return const Center(
@@ -505,13 +517,11 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
                     _mapIsReady = true;
                     _moverMapaInicial();
                   },
-
                   onPositionChanged: (pos, hasGesture) {
                     if (hasGesture && _followCamera) {
                       setState(() => _followCamera = false);
                     }
                   },
-
                   interactionOptions: const InteractionOptions(
                     flags: InteractiveFlag.all,
                   ),
@@ -557,7 +567,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
                   ),
                 ],
               ),
-
               Positioned(
                 top: 12,
                 left: 12,
@@ -592,7 +601,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
                   ),
                 ),
               ),
-
               Positioned(
                 top: 16,
                 right: 16,
@@ -605,7 +613,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
                       child: Icon(_followCamera ? Icons.gps_fixed : Icons.gps_not_fixed),
                     ),
                     const SizedBox(height: 8),
-
                     FloatingActionButton.small(
                       heroTag: 'ruta_btn',
                       onPressed: _verRutaCompleta,
@@ -613,7 +620,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
                       child: const Icon(Icons.alt_route),
                     ),
                     const SizedBox(height: 8),
-
                     FloatingActionButton.small(
                       heroTag: 'destino_btn',
                       onPressed: _centrarEnDestino,
@@ -626,7 +632,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
             ],
           ),
         ),
-
         SafeArea(
           top: false,
           child: Padding(
