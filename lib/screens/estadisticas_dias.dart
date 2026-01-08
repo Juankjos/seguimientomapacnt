@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:intl/intl.dart';
 
 import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
@@ -385,7 +386,7 @@ class _DiaChartPageState extends State<_DiaChartPage> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Resumen',
+                        'Total',
                         style: const TextStyle(fontWeight: FontWeight.w800),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -419,6 +420,8 @@ class _DiaChartPageState extends State<_DiaChartPage> {
                 ),
                 primaryYAxis: NumericAxis(
                   minimum: 0,
+                  interval: 1,
+                  numberFormat: NumberFormat('#0'),
                   majorGridLines: MajorGridLines(
                     width: 1,
                     color: theme.dividerColor.withOpacity(0.35),
@@ -430,6 +433,7 @@ class _DiaChartPageState extends State<_DiaChartPage> {
                     dataSource: stats,
                     xValueMapper: (d, _) => d.nombre,
                     yValueMapper: (d, _) => d.completadas,
+                    dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
                     dataLabelSettings: const DataLabelSettings(isVisible: true),
                     animationDuration: 650,
                   ),
@@ -440,6 +444,7 @@ class _DiaChartPageState extends State<_DiaChartPage> {
                       dataSource: stats,
                       xValueMapper: (d, _) => d.nombre,
                       yValueMapper: (d, _) => d.enCurso,
+                      dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
                       dataLabelSettings: const DataLabelSettings(isVisible: true),
                       animationDuration: 650,
                     ),
@@ -450,6 +455,7 @@ class _DiaChartPageState extends State<_DiaChartPage> {
                     dataSource: stats,
                     xValueMapper: (d, _) => d.nombre,
                     yValueMapper: (d, _) => d.agendadas,
+                    dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
                     dataLabelSettings: const DataLabelSettings(isVisible: true),
                     animationDuration: 650,
                   ),

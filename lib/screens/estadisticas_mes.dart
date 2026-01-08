@@ -1,6 +1,7 @@
 // lib/screens/estadisticas_mes.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
+import 'package:intl/intl.dart';
 
 import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
@@ -280,7 +281,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
             children: [
               OutlinedButton.icon(
                 icon: const Icon(Icons.arrow_back),
-                label: const Text(''),
+                label: const Text('Año'),
                 onPressed: () {
                   setState(() {
                     _selectedMonth = null;
@@ -398,6 +399,8 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                         ),
                         primaryYAxis: NumericAxis(
                           minimum: 0,
+                          interval: 1,
+                          numberFormat: NumberFormat('#0'),
                           majorGridLines: MajorGridLines(
                             width: 1,
                             color: theme.dividerColor.withOpacity(0.35),
@@ -409,6 +412,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                             dataSource: stats,
                             xValueMapper: (d, _) => d.nombre,
                             yValueMapper: (d, _) => d.completadas,
+                            dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
                             dataLabelSettings: const DataLabelSettings(isVisible: true),
                             animationDuration: 650,
                           ),
@@ -418,6 +422,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                               dataSource: stats,
                               xValueMapper: (d, _) => d.nombre,
                               yValueMapper: (d, _) => d.enCurso,
+                              dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
                               dataLabelSettings: const DataLabelSettings(isVisible: true),
                               animationDuration: 650,
                             )
@@ -427,6 +432,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                               dataSource: stats,
                               xValueMapper: (d, _) => d.nombre,
                               yValueMapper: (d, _) => d.agendadas,
+                              dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
                               dataLabelSettings: const DataLabelSettings(isVisible: true),
                               animationDuration: 650,
                             ),

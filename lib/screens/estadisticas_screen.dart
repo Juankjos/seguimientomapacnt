@@ -1,6 +1,7 @@
 // lib/screens/estadisticas_screen.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
+import 'package:intl/intl.dart';
 
 import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
@@ -501,6 +502,8 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
       ),
       primaryYAxis: NumericAxis(
         minimum: 0,
+        interval: 1,
+        numberFormat: NumberFormat('#0'),
         majorGridLines: MajorGridLines(
           width: 1,
           color: theme.dividerColor.withOpacity(0.35),
@@ -512,6 +515,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           dataSource: stats,
           xValueMapper: (d, _) => d.nombre,
           yValueMapper: (d, _) => d.completadas,
+          dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
           dataLabelSettings: const DataLabelSettings(isVisible: true),
           animationDuration: 650,
         ),
@@ -520,6 +524,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           dataSource: stats,
           xValueMapper: (d, _) => d.nombre,
           yValueMapper: (d, _) => d.enCurso,
+          dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
           dataLabelSettings: const DataLabelSettings(isVisible: true),
           animationDuration: 650,
         ),
@@ -554,6 +559,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           dataSource: stats,
           xValueMapper: (d, _) => d.nombre,
           yValueMapper: (d, _) => d.enCurso,
+          dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
           dataLabelSettings: const DataLabelSettings(isVisible: true),
           animationDuration: 650,
         ),
@@ -562,6 +568,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           dataSource: stats,
           xValueMapper: (d, _) => d.nombre,
           yValueMapper: (d, _) => d.completadas,
+          dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
           dataLabelSettings: const DataLabelSettings(isVisible: true),
           animationDuration: 650,
         ),

@@ -1,6 +1,7 @@
 // lib/screens/estadisticas_year.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
+import 'package:intl/intl.dart';
 
 import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
@@ -291,12 +292,11 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
       padding: const EdgeInsets.all(12),
       child: Column(
         children: [
-          // Botonera arriba (fuera del card)
           Row(
             children: [
               OutlinedButton.icon(
                 icon: const Icon(Icons.arrow_back),
-                label: const Text(''),
+                label: const Text('Volver a Años'),
                 onPressed: () => setState(() => _selectedYear = null),
               ),
               const SizedBox(width: 8),
@@ -312,7 +312,6 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
           ),
           const SizedBox(height: 10),
 
-          // Card único: título + pills + chart
           Expanded(
             child: Card(
               elevation: 1,
@@ -383,6 +382,8 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                         ),
                         primaryYAxis: NumericAxis(
                           minimum: 0,
+                          interval: 1,
+                          numberFormat: NumberFormat('#0'),
                           majorGridLines: MajorGridLines(
                             width: 1,
                             color: theme.dividerColor.withOpacity(0.35),
@@ -394,6 +395,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                             dataSource: stats,
                             xValueMapper: (d, _) => d.nombre,
                             yValueMapper: (d, _) => d.completadas,
+                            dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
                             dataLabelSettings: const DataLabelSettings(isVisible: true),
                             animationDuration: 650,
                           ),
@@ -404,6 +406,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                               dataSource: stats,
                               xValueMapper: (d, _) => d.nombre,
                               yValueMapper: (d, _) => d.enCurso,
+                              dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
                               dataLabelSettings:
                                   const DataLabelSettings(isVisible: true),
                               animationDuration: 650,
@@ -414,6 +417,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                               dataSource: stats,
                               xValueMapper: (d, _) => d.nombre,
                               yValueMapper: (d, _) => d.agendadas,
+                              dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
                               dataLabelSettings:
                                   const DataLabelSettings(isVisible: true),
                               animationDuration: 650,
@@ -760,7 +764,7 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
             children: [
               OutlinedButton.icon(
                 icon: const Icon(Icons.arrow_back),
-                label: const Text(''),
+                label: const Text('Año'),
                 onPressed: () => setState(() => _selectedMonth = null),
               ),
               const SizedBox(width: 8),
@@ -792,7 +796,7 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Resumen',
+                      'Total',
                       style: const TextStyle(fontWeight: FontWeight.w800),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -835,6 +839,7 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
                   dataSource: stats,
                   xValueMapper: (d, _) => d.nombre,
                   yValueMapper: (d, _) => d.completadas,
+                  dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
                   dataLabelSettings: const DataLabelSettings(isVisible: true),
                   animationDuration: 650,
                 ),
@@ -844,6 +849,7 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
                     dataSource: stats,
                     xValueMapper: (d, _) => d.nombre,
                     yValueMapper: (d, _) => d.enCurso,
+                    dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
                     dataLabelSettings: const DataLabelSettings(isVisible: true),
                     animationDuration: 650,
                   ),
@@ -852,6 +858,7 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
                   dataSource: stats,
                   xValueMapper: (d, _) => d.nombre,
                   yValueMapper: (d, _) => d.agendadas,
+                  dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
                   dataLabelSettings: const DataLabelSettings(isVisible: true),
                   animationDuration: 650,
                 ),
