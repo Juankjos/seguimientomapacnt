@@ -58,7 +58,6 @@ Future<void> _initFirebaseAndNotifications() async {
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  // 1) Inicializa Local Notifications
   const initSettings = fln.InitializationSettings(
     android: fln.AndroidInitializationSettings('ic_stat_notification'),
     iOS: fln.DarwinInitializationSettings(),
@@ -67,7 +66,6 @@ Future<void> _initFirebaseAndNotifications() async {
   await _localNotifs.initialize(
     initSettings,
     onDidReceiveNotificationResponse: (resp) async {
-      // Tap en notificación local (foreground)
       final payload = resp.payload;
       if (payload == null || payload.isEmpty) return;
 
@@ -83,25 +81,22 @@ Future<void> _initFirebaseAndNotifications() async {
     },
   );
 
-  // 2) Crea canal HIGH (Android 8+)
   final androidImpl = _localNotifs
       .resolvePlatformSpecificImplementation<fln.AndroidFlutterLocalNotificationsPlugin>();
   await androidImpl?.createNotificationChannel(_newsChannel);
 
-  // 3) Permisos (Android 13+ y iOS)
   await FirebaseMessaging.instance.requestPermission(
     alert: true,
     badge: true,
     sound: true,
   );
-  await androidImpl?.requestNotificationsPermission(); // Android 13+
+  await androidImpl?.requestNotificationsPermission();
   await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
     alert: true,
     badge: true,
     sound: true,
   );
 
-  // 4) Foreground: cuando llega un push, muéstralo con notificación local
   FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
     final notif = message.notification;
     if (notif == null) return;
@@ -122,14 +117,12 @@ Future<void> _initFirebaseAndNotifications() async {
         ),
         iOS: const fln.DarwinNotificationDetails(),
       ),
-      payload: jsonEncode(message.data), // <- para abrir noticia al tocar
+      payload: jsonEncode(message.data), 
     );
   });
 
-  // 5) Tap handlers para notificación push (background / terminated)
   await _setupNotificationTapHandlers();
 
-  // (Opcional) token para debug
   final token = await FirebaseMessaging.instance.getToken();
   debugPrint('✅ FCM Token: $token');
 }
@@ -152,14 +145,12 @@ Future<void> _setupNotificationTapHandlers() async {
     _pendingOpenData = initial.data;
   }
 
-  // App en background y tocan notificación push
   FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
     await _enqueueOrOpen(message.data);
   });
 }
 
 Future<void> _enqueueOrOpen(Map<String, dynamic> data) async {
-  // Si el Navigator aún no existe (antes del primer frame), lo diferimos
   if (navigatorKey.currentState == null) {
     _pendingOpenData = data;
     return;
@@ -203,7 +194,6 @@ Future<void> _openNoticiaFromData(Map<String, dynamic> data) async {
     ApiService.wsToken = wsToken;
   }
 
-  // Usa auth_* como prioridad (sesión real). Fallback a last_*.
   final role = prefs.getString('auth_role') ??
       prefs.getString('last_role') ??
       'reportero';
@@ -261,7 +251,6 @@ Future<void> main() async {
 
   await initFirebaseOnce();
 
-  // ForegroundTask (tu tracking)
   if (!kIsWeb) {
     FlutterForegroundTask.initCommunicationPort();
 
