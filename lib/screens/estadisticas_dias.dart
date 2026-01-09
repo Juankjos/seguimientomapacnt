@@ -76,6 +76,19 @@ class _EstadisticasDiasState extends State<EstadisticasDias> {
     return _dayOnly(day) == today;
   }
 
+  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+
+  bool _esAtrasada(Noticia n) {
+    final llegada = n.horaLlegada;
+    final cita = n.fechaCita;
+    if (llegada == null || cita == null) return false;
+
+    final llegadaMin = _aMinuto(llegada);
+    final citaMin = _aMinuto(cita);
+
+    return llegadaMin.isAfter(citaMin);
+  }
+
   // ------------------- “Eventos” del día para el calendario -------------------
 
   List<Noticia> _noticiasRelevantesDelDia(DateTime day) {
@@ -86,8 +99,8 @@ class _EstadisticasDiasState extends State<EstadisticasDias> {
 
     for (final n in widget.noticias) {
       final bool esCompletada = _inRange(n.horaLlegada, b.start, b.endExclusive);
-      final bool esAgendada = (n.pendiente == true) &&
-          _inRange(n.fechaCita, b.start, b.endExclusive);
+      final bool esAgendada =
+          (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.endExclusive);
 
       if (!esCompletada && !esAgendada) continue;
 
@@ -276,6 +289,15 @@ class _DiaChartPageState extends State<_DiaChartPage> {
     return _dayOnly(day) == today;
   }
 
+  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+
+  bool _esAtrasada(Noticia n) {
+    final llegada = n.horaLlegada;
+    final cita = n.fechaCita;
+    if (llegada == null || cita == null) return false;
+    return _aMinuto(llegada).isAfter(_aMinuto(cita));
+  }
+
   List<_ReporterStats> _buildStatsForDay(DateTime day) {
     final b = _dayBounds(day);
     final bool showEnCurso = _isToday(day);
@@ -286,6 +308,7 @@ class _DiaChartPageState extends State<_DiaChartPage> {
           reporteroId: r.id,
           nombre: r.nombre,
           completadas: 0,
+          atrasadas: 0,
           agendadas: 0,
           enCurso: 0,
         ),
@@ -299,6 +322,7 @@ class _DiaChartPageState extends State<_DiaChartPage> {
           reporteroId: rid,
           nombre: rid == 0 ? 'Sin asignar' : 'Reportero #$rid',
           completadas: 0,
+          atrasadas: 0,
           agendadas: 0,
           enCurso: 0,
         );
@@ -307,7 +331,11 @@ class _DiaChartPageState extends State<_DiaChartPage> {
       final cur = map[rid]!;
 
       if (_inRange(n.horaLlegada, b.start, b.endExclusive)) {
-        map[rid] = cur.copyWith(completadas: cur.completadas + 1);
+        if (_esAtrasada(n)) {
+          map[rid] = cur.copyWith(atrasadas: cur.atrasadas + 1);
+        } else {
+          map[rid] = cur.copyWith(completadas: cur.completadas + 1);
+        }
       }
 
       if ((n.pendiente == true) && _inRange(n.fechaCita, b.start, b.endExclusive)) {
@@ -357,6 +385,7 @@ class _DiaChartPageState extends State<_DiaChartPage> {
     final stats = _buildStatsForDay(widget.day);
 
     final totalCompletadas = stats.fold<int>(0, (a, b) => a + b.completadas);
+    final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
 
@@ -398,6 +427,9 @@ class _DiaChartPageState extends State<_DiaChartPage> {
                       const SizedBox(width: 8),
                     ],
                     _pill(theme, 'Completadas: $totalCompletadas'),
+                    const SizedBox(width: 8),
+                    _pill(theme, 'Atrasadas: $totalAtrasadas'),
+
                     if (showEnCurso) ...[
                       const SizedBox(width: 8),
                       _pill(theme, 'En curso: $totalEnCurso'),
@@ -438,6 +470,17 @@ class _DiaChartPageState extends State<_DiaChartPage> {
                     animationDuration: 650,
                   ),
 
+                  ColumnSeries<_ReporterStats, String>(
+                    name: 'Atrasadas',
+                    dataSource: stats,
+                    xValueMapper: (d, _) => d.nombre,
+                    yValueMapper: (d, _) => d.atrasadas,
+                    dataLabelMapper: (d, _) => d.atrasadas == 0 ? null : '${d.atrasadas}',
+                    dataLabelSettings: const DataLabelSettings(isVisible: true),
+                    animationDuration: 650,
+                    color: Colors.red.shade900,
+                  ),
+
                   if (showEnCurso)
                     ColumnSeries<_ReporterStats, String>(
                       name: 'En curso',
@@ -450,15 +493,15 @@ class _DiaChartPageState extends State<_DiaChartPage> {
                     ),
 
                   if (!showEnCurso)
-                  ColumnSeries<_ReporterStats, String>(
-                    name: 'Agendadas',
-                    dataSource: stats,
-                    xValueMapper: (d, _) => d.nombre,
-                    yValueMapper: (d, _) => d.agendadas,
-                    dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
-                    dataLabelSettings: const DataLabelSettings(isVisible: true),
-                    animationDuration: 650,
-                  ),
+                    ColumnSeries<_ReporterStats, String>(
+                      name: 'Agendadas',
+                      dataSource: stats,
+                      xValueMapper: (d, _) => d.nombre,
+                      yValueMapper: (d, _) => d.agendadas,
+                      dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
+                      dataLabelSettings: const DataLabelSettings(isVisible: true),
+                      animationDuration: 650,
+                    ),
                 ],
               ),
             ),
@@ -476,6 +519,7 @@ class _ReporterStats {
   final String nombre;
 
   final int completadas;
+  final int atrasadas;
   final int agendadas;
 
   final int enCurso;
@@ -484,19 +528,21 @@ class _ReporterStats {
     required this.reporteroId,
     required this.nombre,
     required this.completadas,
+    required this.atrasadas,
     required this.agendadas,
     required this.enCurso,
   });
 
-  int get scoreBase => completadas + agendadas;
+  int get scoreBase => completadas + atrasadas + agendadas;
 
-  int get scoreToday => completadas + agendadas + enCurso;
+  int get scoreToday => completadas + atrasadas + agendadas + enCurso;
 
-  _ReporterStats copyWith({int? completadas, int? agendadas, int? enCurso}) {
+  _ReporterStats copyWith({int? completadas, int? atrasadas, int? agendadas, int? enCurso}) {
     return _ReporterStats(
       reporteroId: reporteroId,
       nombre: nombre,
       completadas: completadas ?? this.completadas,
+      atrasadas: atrasadas ?? this.atrasadas,
       agendadas: agendadas ?? this.agendadas,
       enCurso: enCurso ?? this.enCurso,
     );

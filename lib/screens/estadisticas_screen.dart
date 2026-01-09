@@ -17,19 +17,21 @@ class ReporterStats {
   final int reporteroId;
   final String nombre;
 
-  final int completadas; 
-  final int enCurso;   
-  final int agendadas;   
+  final int completadas;
+  final int atrasadas;
+  final int enCurso;
+  final int agendadas;
 
   const ReporterStats({
     required this.reporteroId,
     required this.nombre,
     required this.completadas,
+    this.atrasadas = 0,
     required this.enCurso,
     required this.agendadas,
   });
 
-  int get total => completadas + enCurso + agendadas;
+  int get total => completadas + atrasadas + enCurso + agendadas;
 }
 
 class EstadisticasScreen extends StatefulWidget {
@@ -145,6 +147,15 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     return !dt.isBefore(start) && dt.isBefore(endExclusive);
   }
 
+  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+
+  bool _esAtrasada(Noticia n) {
+    final llegada = n.horaLlegada;
+    final cita = n.fechaCita;
+    if (llegada == null || cita == null) return false;
+    return _aMinuto(llegada).isAfter(_aMinuto(cita));
+  }
+
   // ------------------- Día (HOY) con lógica nueva -------------------
 
   List<ReporterStats> _buildStatsToday() {
@@ -156,6 +167,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           reporteroId: r.id,
           nombre: r.nombre,
           completadas: 0,
+          atrasadas: 0,
           agendadas: 0,
           enCurso: 0,
         ),
@@ -169,6 +181,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           reporteroId: rid,
           nombre: rid == 0 ? 'Sin asignar' : 'Reportero #$rid',
           completadas: 0,
+          atrasadas: 0,
           agendadas: 0,
           enCurso: 0,
         );
@@ -181,10 +194,22 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.end);
       final isEnCursoHoy = _inRange(n.fechaCita, b.start, b.end);
 
+      int addCompletada = 0;
+      int addAtrasada = 0;
+
+      if (isCompletadaHoy) {
+        if (_esAtrasada(n)) {
+          addAtrasada = 1;
+        } else {
+          addCompletada = 1;
+        }
+      }
+
       map[rid] = ReporterStats(
         reporteroId: cur.reporteroId,
         nombre: cur.nombre,
-        completadas: cur.completadas + (isCompletadaHoy ? 1 : 0),
+        completadas: cur.completadas + addCompletada,
+        atrasadas: cur.atrasadas + addAtrasada,
         agendadas: cur.agendadas + (isAgendadaHoy ? 1 : 0),
         enCurso: cur.enCurso + (isEnCursoHoy ? 1 : 0),
       );
@@ -195,7 +220,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     return list;
   }
 
-  // ------------------- Año (por ahora se queda como antes) -------------------
+  // ------------------- Año / Semana / Mes (legacy) con lógica nueva -------------------
 
   DateTime? _timestampForLegacy(Noticia n) {
     if (n.pendiente == false) {
@@ -214,7 +239,8 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           nombre: r.nombre,
           enCurso: 0,
           completadas: 0,
-          agendadas: 0, 
+          atrasadas: 0,
+          agendadas: 0,
         ),
     };
 
@@ -230,25 +256,31 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           nombre: rid == 0 ? 'Sin asignar' : 'Reportero #$rid',
           enCurso: 0,
           completadas: 0,
+          atrasadas: 0,
           agendadas: 0,
         );
       }
 
       final cur = map[rid]!;
+
       if (n.pendiente == true) {
         map[rid] = ReporterStats(
           reporteroId: cur.reporteroId,
           nombre: cur.nombre,
           enCurso: cur.enCurso + 1,
           completadas: cur.completadas,
+          atrasadas: cur.atrasadas,
           agendadas: 0,
         );
       } else {
+        final late = _esAtrasada(n);
+
         map[rid] = ReporterStats(
           reporteroId: cur.reporteroId,
           nombre: cur.nombre,
           enCurso: cur.enCurso,
-          completadas: cur.completadas + 1,
+          completadas: cur.completadas + (late ? 0 : 1),
+          atrasadas: cur.atrasadas + (late ? 1 : 0),
           agendadas: 0,
         );
       }
@@ -370,6 +402,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     }
 
     final totalCompletadas = stats.fold<int>(0, (a, b) => a + b.completadas);
+    final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
 
@@ -393,7 +426,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
             child: Card(
               elevation: 1,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16), // igual que Semana
+                borderRadius: BorderRadius.circular(16),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -403,7 +436,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
                       children: [
                         Expanded(
                           child: Text(
-                            _tituloRange(_range), // "Hoy"
+                            _tituloRange(_range),
                             style: Theme.of(context).textTheme.titleSmall?.copyWith(
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -424,8 +457,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
                         final pills = <Widget>[
                           _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
                           _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
-                          // Si luego quieres mostrar agendadas en Día:
-                          // _pill('Agendadas: $totalAgendadas', maxWidth: maxPillW),
+                          _pill('Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
                         ];
 
                         return Wrap(
@@ -520,55 +552,21 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           animationDuration: 650,
         ),
         ColumnSeries<ReporterStats, String>(
-          name: 'En curso',
+          name: 'Atrasadas',
           dataSource: stats,
           xValueMapper: (d, _) => d.nombre,
-          yValueMapper: (d, _) => d.enCurso,
-          dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
+          yValueMapper: (d, _) => d.atrasadas,
+          dataLabelMapper: (d, _) => d.atrasadas == 0 ? null : '${d.atrasadas}',
           dataLabelSettings: const DataLabelSettings(isVisible: true),
           animationDuration: 650,
+          color: Colors.red.shade900,
         ),
-      ],
-    );
-  }
-
-  Widget _buildChartLegacy(List<ReporterStats> stats, {required Key key}) {
-    final theme = Theme.of(context);
-    final hasMany = stats.length > 8;
-
-    return SfCartesianChart(
-      key: key,
-      tooltipBehavior: _tooltip,
-      legend: const Legend(isVisible: true, position: LegendPosition.bottom),
-      plotAreaBorderWidth: 0,
-      primaryXAxis: CategoryAxis(
-        labelRotation: hasMany ? 45 : 0,
-        labelIntersectAction: AxisLabelIntersectAction.rotate45,
-        majorGridLines: const MajorGridLines(width: 0),
-      ),
-      primaryYAxis: NumericAxis(
-        minimum: 0,
-        majorGridLines: MajorGridLines(
-          width: 1,
-          color: theme.dividerColor.withOpacity(0.35),
-        ),
-      ),
-      series: [
         ColumnSeries<ReporterStats, String>(
           name: 'En curso',
           dataSource: stats,
           xValueMapper: (d, _) => d.nombre,
           yValueMapper: (d, _) => d.enCurso,
           dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
-          dataLabelSettings: const DataLabelSettings(isVisible: true),
-          animationDuration: 650,
-        ),
-        ColumnSeries<ReporterStats, String>(
-          name: 'Completadas',
-          dataSource: stats,
-          xValueMapper: (d, _) => d.nombre,
-          yValueMapper: (d, _) => d.completadas,
-          dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
           dataLabelSettings: const DataLabelSettings(isVisible: true),
           animationDuration: 650,
         ),
