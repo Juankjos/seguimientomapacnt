@@ -35,6 +35,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
   bool get _soloLectura => widget.soloLectura || _noticia.pendiente == false;
 
+  bool get _yaTieneHoraLlegada => _noticia.horaLlegada != null;
+
   String _formatearFechaHora(DateTime dt) {
     return DateFormat("d 'de' MMMM 'de' y, HH:mm", 'es_MX').format(dt);
   }
@@ -51,7 +53,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     _noticia = widget.noticia;
   }
 
-  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+  DateTime _aMinuto(DateTime dt) =>
+      DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
 
   Color? _colorHoraLlegada() {
     final llegada = _noticia.horaLlegada;
@@ -73,8 +76,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     return _formatearFechaCitaAmPm(dt);
   }
 
-
-  bool get _tieneCoordenadas => _noticia.latitud != null && _noticia.longitud != null;
+  bool get _tieneCoordenadas =>
+      _noticia.latitud != null && _noticia.longitud != null;
 
   Future<void> _refrescarNoticia() async {
     if (widget.role != 'admin') return;
@@ -97,6 +100,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   }
 
   Future<void> _abrirMapaUbicacion() async {
+    if (_yaTieneHoraLlegada) return;
+
     final resultado = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
@@ -251,7 +256,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         const SizedBox(height: 8),
-
                         Text(
                           'Reportero: $nombreReportero',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -259,8 +263,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                               ),
                         ),
                         const SizedBox(height: 8),
-
-                        if (_noticia.descripcion != null && _noticia.descripcion!.trim().isNotEmpty)
+                        if (_noticia.descripcion != null &&
+                            _noticia.descripcion!.trim().isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8.0),
                             child: Text(
@@ -268,12 +272,10 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           ),
-
-                        if (_noticia.cliente != null && _noticia.cliente!.trim().isNotEmpty)
+                        if (_noticia.cliente != null &&
+                            _noticia.cliente!.trim().isNotEmpty)
                           Text('Cliente: ${_noticia.cliente}'),
-
                         const SizedBox(height: 4),
-
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -282,15 +284,20 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                 onLongPress: domicilio.isEmpty
                                     ? null
                                     : () async {
-                                        await Clipboard.setData(ClipboardData(text: domicilio));
+                                        await Clipboard.setData(
+                                            ClipboardData(text: domicilio));
                                         if (!mounted) return;
                                         ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Domicilio copiado')),
+                                          const SnackBar(
+                                              content: Text('Domicilio copiado')),
                                         );
                                       },
                                 child: Text(
                                   'Domicilio: $domicilioTxt',
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.copyWith(
                                         fontWeight: FontWeight.w600,
                                       ),
                                 ),
@@ -303,16 +310,17 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                               onPressed: domicilio.isEmpty
                                   ? null
                                   : () async {
-                                      await Clipboard.setData(ClipboardData(text: domicilio));
+                                      await Clipboard.setData(
+                                          ClipboardData(text: domicilio));
                                       if (!mounted) return;
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Domicilio copiado')),
+                                        const SnackBar(
+                                            content: Text('Domicilio copiado')),
                                       );
                                     },
                             ),
                           ],
                         ),
-
                         if (_noticia.ultimaMod != null) ...[
                           const SizedBox(height: 4),
                           Text(
@@ -323,7 +331,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                 ),
                           ),
                         ],
-
                         const SizedBox(height: 8),
                         Text(
                           'Fecha de cita: '
@@ -332,7 +339,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                 fontWeight: FontWeight.w600,
                               ),
                         ),
-
                         const SizedBox(height: 4),
                         if (_noticia.fechaCitaAnterior != null &&
                             _noticia.fechaCita != null &&
@@ -347,7 +353,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                             ),
                           ),
                         ],
-
                         const SizedBox(height: 4),
                         Text(
                           'Hora de llegada: '
@@ -358,6 +363,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                               ),
                         ),
 
+                        // ---------- Editar noticia ----------
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
@@ -396,12 +402,20 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
-                            onPressed: _soloLectura ? null : _abrirMapaUbicacion,
+                            onPressed: (_soloLectura || _yaTieneHoraLlegada)
+                                ? null
+                                : _abrirMapaUbicacion,
                             icon: Icon(
-                              tieneCoordenadas ? Icons.edit_location_alt : Icons.add_location_alt,
+                              tieneCoordenadas
+                                  ? Icons.edit_location_alt
+                                  : Icons.add_location_alt,
                             ),
                             label: Text(
-                              tieneCoordenadas ? 'Editar ubicación' : 'Agregar ubicación',
+                              _yaTieneHoraLlegada
+                                  ? 'Ubicación bloqueada (ya hay llegada)'
+                                  : (tieneCoordenadas
+                                      ? 'Editar ubicación'
+                                      : 'Agregar ubicación'),
                             ),
                           ),
                         ),
@@ -419,7 +433,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                 onPressed: _soloLectura
                                     ? null
                                     : () async {
-                                        final changed = await Navigator.push<bool>(
+                                        final changed =
+                                            await Navigator.push<bool>(
                                           context,
                                           MaterialPageRoute(
                                             builder: (_) => EspectadorRutaPage(
@@ -447,7 +462,10 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                 child: Text(
                                   'Esta noticia está cerrada.',
                                   textAlign: TextAlign.center,
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.copyWith(
                                         fontStyle: FontStyle.italic,
                                         color: Colors.grey[700],
                                         fontWeight: FontWeight.w600,
@@ -466,7 +484,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => MapaCompletoPage(noticia: _noticia),
+                                      builder: (_) =>
+                                          MapaCompletoPage(noticia: _noticia),
                                     ),
                                   );
                                 },
@@ -479,14 +498,18 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton.icon(
-                                icon: Icon(_soloLectura ? Icons.map : Icons.directions),
-                                label: Text(_soloLectura ? 'Mostrar mapa completo' : 'Ir a destino ahora'),
+                                icon: Icon(
+                                    _soloLectura ? Icons.map : Icons.directions),
+                                label: Text(_soloLectura
+                                    ? 'Mostrar mapa completo'
+                                    : 'Ir a destino ahora'),
                                 onPressed: () async {
                                   if (_soloLectura) {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (_) => MapaCompletoPage(noticia: _noticia),
+                                        builder: (_) =>
+                                            MapaCompletoPage(noticia: _noticia),
                                       ),
                                     );
                                     return;
@@ -505,15 +528,21 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
                                   if (!mounted) return;
                                   if (result == null) return;
+
                                   DateTime _parseMysqlDateTime(String? v) {
-                                    if (v == null || v.trim().isEmpty) return DateTime.now();
+                                    if (v == null || v.trim().isEmpty) {
+                                      return DateTime.now();
+                                    }
                                     final s = v.trim().replaceFirst(' ', 'T');
                                     return DateTime.tryParse(s) ?? DateTime.now();
                                   }
 
-                                  final Map<String, dynamic> r = Map<String, dynamic>.from(result as Map);
-                                  final lat = (r['llegadaLatitud'] as num?)?.toDouble();
-                                  final lon = (r['llegadaLongitud'] as num?)?.toDouble();
+                                  final Map<String, dynamic> r =
+                                      Map<String, dynamic>.from(result as Map);
+                                  final lat =
+                                      (r['llegadaLatitud'] as num?)?.toDouble();
+                                  final lon =
+                                      (r['llegadaLongitud'] as num?)?.toDouble();
                                   final horaStr = r['horaLlegada']?.toString();
                                   final hora = _parseMysqlDateTime(horaStr);
 
@@ -559,8 +588,11 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                         child: CircularProgressIndicator(strokeWidth: 2),
                                       )
                                     : const Icon(Icons.check_circle_outline),
-                                label: Text(_eliminando ? 'Eliminando...' : 'Eliminar de mis pendientes'),
-                                onPressed: _eliminando ? null : _onEliminarPendientePressed,
+                                label: Text(_eliminando
+                                    ? 'Eliminando...'
+                                    : 'Eliminar de mis pendientes'),
+                                onPressed:
+                                    _eliminando ? null : _onEliminarPendientePressed,
                               ),
                             ),
                           ],
@@ -612,9 +644,13 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                   color: Colors.red,
                                 ),
                               ),
-                              if (_noticia.llegadaLatitud != null && _noticia.llegadaLongitud != null)
+                              if (_noticia.llegadaLatitud != null &&
+                                  _noticia.llegadaLongitud != null)
                                 Marker(
-                                  point: latlng.LatLng(_noticia.llegadaLatitud!, _noticia.llegadaLongitud!),
+                                  point: latlng.LatLng(
+                                    _noticia.llegadaLatitud!,
+                                    _noticia.llegadaLongitud!,
+                                  ),
                                   width: 80,
                                   height: 80,
                                   child: const Icon(
