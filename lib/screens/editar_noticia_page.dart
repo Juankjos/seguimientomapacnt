@@ -28,6 +28,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
   String? _error;
 
   bool get _esAdmin => widget.role == 'admin';
+  bool get _yaTieneHoraLlegada => widget.noticia.horaLlegada != null;
 
   bool get _descActualVacia {
     final d = widget.noticia.descripcion;
@@ -42,7 +43,10 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
   bool get _puedeEditarTitulo => _esAdmin;
 
   bool get _puedeEditarFecha {
+    if (_yaTieneHoraLlegada) return false;
+
     if (_esAdmin) return true;
+
     return (widget.noticia.fechaCitaCambios < 2);
   }
 
@@ -56,7 +60,6 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
 
     _tituloCtrl = TextEditingController(text: widget.noticia.noticia);
     _descCtrl = TextEditingController(text: widget.noticia.descripcion ?? '');
-
     _fechaCita = widget.noticia.fechaCita;
   }
 
@@ -143,6 +146,11 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
       }
     }
 
+    if (_yaTieneHoraLlegada && _huboCambioFecha()) {
+      setState(() => _error = 'No se puede cambiar la fecha de cita: ya se registró la hora de llegada.');
+      return;
+    }
+
     if (!_esAdmin && !_puedeEditarFecha && _huboCambioFecha()) {
       setState(() => _error = 'Límite alcanzado: ya no puedes cambiar la fecha de cita.');
       return;
@@ -152,8 +160,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     final String? descSend = _puedeEditarDescripcion ? desc : null;
     final DateTime? fechaSend = _puedeEditarFecha ? _fechaCita : null;
 
-    final nadaQueGuardar =
-        (tituloSend == null) && (descSend == null) && (fechaSend == null);
+    final nadaQueGuardar = (tituloSend == null) && (descSend == null) && (fechaSend == null);
     if (nadaQueGuardar) {
       setState(() => _error = 'No tienes cambios para guardar.');
       return;
@@ -191,12 +198,10 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // Mostrar fecha anterior si existe y es distinta
     final anterior = widget.noticia.fechaCitaAnterior;
     final actual = widget.noticia.fechaCita;
-    final bool mostrarAnterior = anterior != null &&
-        actual != null &&
-        anterior.toIso8601String() != actual.toIso8601String();
+    final bool mostrarAnterior =
+        anterior != null && actual != null && anterior.toIso8601String() != actual.toIso8601String();
 
     final cambios = widget.noticia.fechaCitaCambios;
 
@@ -236,9 +241,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                   enabled: _puedeEditarTitulo,
                   decoration: InputDecoration(
                     labelText: 'Título',
-                    helperText: _puedeEditarTitulo
-                        ? 'Puedes editar el título.'
-                        : 'Solo Admin puede editar el título.',
+                    helperText: _puedeEditarTitulo ? 'Puedes editar el título.' : 'Solo Admin puede editar el título.',
                     border: const OutlineInputBorder(),
                   ),
                 ),
@@ -297,6 +300,17 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                         ),
                       ],
 
+                      if (_yaTieneHoraLlegada) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'La fecha de cita ya no puede modificarse porque se registró la hora de llegada.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+
                       if (!_esAdmin) ...[
                         const SizedBox(height: 6),
                         Text(
@@ -313,9 +327,13 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                         width: double.infinity,
                         child: OutlinedButton.icon(
                           icon: const Icon(Icons.calendar_month),
-                          label: Text(_puedeEditarFecha
-                              ? 'Seleccionar fecha y hora'
-                              : 'Límite alcanzado (2 cambios)'),
+                          label: Text(
+                            _puedeEditarFecha
+                                ? 'Seleccionar fecha y hora'
+                                : (_yaTieneHoraLlegada
+                                    ? 'Bloqueado: ya hay hora de llegada'
+                                    : 'Límite alcanzado (2 cambios)'),
+                          ),
                           onPressed: _puedeEditarFecha ? _seleccionarFechaHora : null,
                         ),
                       ),
