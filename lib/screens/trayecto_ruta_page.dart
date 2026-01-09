@@ -1,3 +1,4 @@
+// lib/screens/trayecto_ruta_page.dart
 import 'dart:async';
 import 'dart:convert';
 
@@ -53,9 +54,8 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
 
   bool _notificacionInicioEnviada = false;
 
-  bool _deteniendoServicio = false; // ✅ evita dobles stops
+  bool _deteniendoServicio = false;
 
-  // Notificación a admin para inicio de trayecto
   Future<void> _notificarInicioTrayecto() async {
     if (_notificacionInicioEnviada) return;
     _notificacionInicioEnviada = true;
@@ -112,7 +112,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     if (_deteniendoServicio) return;
     _deteniendoServicio = true;
 
-    // ✅ Pide al isolate que mande tracking_stop y cierre el WS
     try {
       FlutterForegroundTask.sendDataToTask('STOP_TRACKING');
       await Future.delayed(const Duration(milliseconds: 350));

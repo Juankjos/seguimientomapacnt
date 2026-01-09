@@ -1,3 +1,4 @@
+// lib/screens/noticia_detalle_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
@@ -50,11 +51,32 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     _noticia = widget.noticia;
   }
 
+  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+
+  Color? _colorHoraLlegada() {
+    final llegada = _noticia.horaLlegada;
+    final cita = _noticia.fechaCita;
+
+    if (llegada == null || cita == null) return null;
+
+    final llegadaMin = _aMinuto(llegada);
+    final citaMin = _aMinuto(cita);
+
+    if (!llegadaMin.isAfter(citaMin)) {
+      return Colors.green.shade900;
+    }
+
+    return Colors.red;
+  }
+
+  String _formatearHoraLlegadaAmPm(DateTime dt) {
+    return _formatearFechaCitaAmPm(dt);
+  }
+
+
   bool get _tieneCoordenadas => _noticia.latitud != null && _noticia.longitud != null;
 
-  // ✅ Refresca la noticia (principalmente útil para admin cuando regresa de EspectadorRutaPage)
   Future<void> _refrescarNoticia() async {
-    // Si no es admin, igual permitimos "pull-to-refresh" sin romper nada
     if (widget.role != 'admin') return;
 
     try {
@@ -160,7 +182,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
         const SnackBar(content: Text('Noticia eliminada de tus pendientes.')),
       );
 
-      // Cerramos la pantalla de detalle para que ya no la veas
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
@@ -213,7 +234,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
             child: RefreshIndicator(
               onRefresh: _refrescarNoticia,
               child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(), // ✅ permite pull-to-refresh aunque no haya scroll
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 child: Card(
                   elevation: 2,
@@ -327,6 +348,16 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                           ),
                         ],
 
+                        const SizedBox(height: 4),
+                        Text(
+                          'Hora de llegada: '
+                          '${_noticia.horaLlegada != null ? _formatearHoraLlegadaAmPm(_noticia.horaLlegada!) : 'Sin hora de llegada'}',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: _colorHoraLlegada() ?? Colors.grey[700],
+                              ),
+                        ),
+
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
@@ -362,7 +393,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
                         const SizedBox(height: 8),
 
-                        // Botón Agregar/Editar ubicación
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
@@ -404,7 +434,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
                                         if (!mounted) return;
 
-                                        // ✅ si el espectador salió (por fin de ruta / salir / back)
                                         if (changed == true) {
                                           await _refrescarNoticia();
                                         }
@@ -476,12 +505,17 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
                                   if (!mounted) return;
                                   if (result == null) return;
+                                  DateTime _parseMysqlDateTime(String? v) {
+                                    if (v == null || v.trim().isEmpty) return DateTime.now();
+                                    final s = v.trim().replaceFirst(' ', 'T');
+                                    return DateTime.tryParse(s) ?? DateTime.now();
+                                  }
 
                                   final Map<String, dynamic> r = Map<String, dynamic>.from(result as Map);
                                   final lat = (r['llegadaLatitud'] as num?)?.toDouble();
                                   final lon = (r['llegadaLongitud'] as num?)?.toDouble();
                                   final horaStr = r['horaLlegada']?.toString();
-                                  final hora = DateTime.tryParse(horaStr ?? '') ?? DateTime.now();
+                                  final hora = _parseMysqlDateTime(horaStr);
 
                                   if (lat != null && lon != null) {
                                     setState(() {

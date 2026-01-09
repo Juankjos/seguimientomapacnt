@@ -1,3 +1,4 @@
+// lib/screens/editar_noticia_page.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -6,7 +7,7 @@ import '../services/api_service.dart';
 
 class EditarNoticiaPage extends StatefulWidget {
   final Noticia noticia;
-  final String role; // 'admin' o 'reportero'
+  final String role;
 
   const EditarNoticiaPage({
     super.key,
@@ -35,7 +36,6 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
 
   bool get _puedeEditarDescripcion {
     if (_esAdmin) return true;
-    // Reportero: solo si estaba vacía/nula
     return _descActualVacia;
   }
 
@@ -43,7 +43,6 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
 
   bool get _puedeEditarFecha {
     if (_esAdmin) return true;
-    // Reportero: máximo 2 cambios (según contador en BD)
     return (widget.noticia.fechaCitaCambios < 2);
   }
 
@@ -74,7 +73,6 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     final now = DateTime.now();
     final initial = _fechaCita ?? now;
 
-    // 1) Fecha
     final pickedDate = await showDatePicker(
       context: context,
       locale: const Locale('es', 'MX'),
@@ -88,7 +86,6 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
 
     if (pickedDate == null) return;
 
-    // 2) Hora
     final pickedTime = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(initial),
@@ -132,7 +129,6 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     final titulo = _tituloCtrl.text.trim();
     final desc = _descCtrl.text.trim();
 
-    // Validaciones mínimas
     if (_esAdmin) {
       if (titulo.isEmpty) {
         setState(() => _error = 'El título no puede estar vacío.');
@@ -147,18 +143,15 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
       }
     }
 
-    // Si reportero ya no puede editar fecha y además intenta cambiarla, lo prevenimos
     if (!_esAdmin && !_puedeEditarFecha && _huboCambioFecha()) {
       setState(() => _error = 'Límite alcanzado: ya no puedes cambiar la fecha de cita.');
       return;
     }
 
-    // Decidir qué campos enviamos (según permisos)
     final String? tituloSend = _puedeEditarTitulo ? titulo : null;
     final String? descSend = _puedeEditarDescripcion ? desc : null;
     final DateTime? fechaSend = _puedeEditarFecha ? _fechaCita : null;
 
-    // Si no va a enviar nada, evitamos request
     final nadaQueGuardar =
         (tituloSend == null) && (descSend == null) && (fechaSend == null);
     if (nadaQueGuardar) {

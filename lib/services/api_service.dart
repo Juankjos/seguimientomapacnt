@@ -2,6 +2,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 
 import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
@@ -411,12 +412,16 @@ class ApiService {
   }) async {
     final url = Uri.parse('$baseUrl/update_llegada_noticia.php');
 
+    final ahora = DateTime.now();
+    final horaLlegadaStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(ahora);
+
     final response = await http.post(
       url,
       body: {
         'noticia_id': noticiaId.toString(),
         'latitud': latitud.toString(),
         'longitud': longitud.toString(),
+        'hora_llegada': horaLlegadaStr,
       },
     );
 
@@ -426,8 +431,7 @@ class ApiService {
         throw Exception(data['message'] ?? 'Error al registrar llegada');
       }
     } else {
-      throw Exception(
-          'Error en el servidor al registrar llegada (${response.statusCode})');
+      throw Exception('Error en el servidor al registrar llegada (${response.statusCode})');
     }
   }
 

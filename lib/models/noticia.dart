@@ -1,3 +1,4 @@
+// lib/models/noticia.dart
 class Noticia {
   final int id;
   final String noticia;
@@ -85,7 +86,7 @@ class Noticia {
       fechaPago: parseDate(json['fecha_pago']),
       latitud: parseDouble(json['latitud']),
       longitud: parseDouble(json['longitud']),
-      horaLlegada: parseDate(json['hora_llegada']),
+      horaLlegada: parseDateTime(json['hora_llegada']),
       llegadaLatitud: parseDouble(json['llegada_latitud']),
       llegadaLongitud: parseDouble(json['llegada_longitud']),
       pendiente: parseBool(json['pendiente']),

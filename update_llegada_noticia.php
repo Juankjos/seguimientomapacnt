@@ -16,7 +16,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// ✅ Acepta JSON o x-www-form-urlencoded
 $raw = file_get_contents('php://input');
 $json = json_decode($raw ?: '', true);
 $in = is_array($json) ? $json : $_POST;
@@ -39,7 +38,7 @@ try {
     $sql = "
         UPDATE noticias
         SET
-        hora_llegada = NOW(),
+        hora_llegada = STR_TO_DATE(:hora, '%Y-%m-%d %H:%i:%s'),
         llegada_latitud = :lat,
         llegada_longitud = :lon
         WHERE id = :id
@@ -48,17 +47,23 @@ try {
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute([
+        ':hora' => $horaLlegada,
         ':lat' => $latitud,
         ':lon' => $longitud,
         ':id'  => $noticiaId,
     ]);
+
+    $horaLlegada = isset($in['hora_llegada']) ? trim((string)$in['hora_llegada']) : '';
+    if ($horaLlegada === '' || !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $horaLlegada)) {
+        echo json_encode(['success' => false, 'message' => 'hora_llegada inválida']);
+        exit;
+    }
 
     if ($stmt->rowCount() === 0) {
         echo json_encode(['success' => false, 'message' => 'No se encontró la noticia o no hubo cambios']);
         exit;
     }
 
-    // Trae info para mensaje (título noticia + nombre reportero si existe)
     $q = $pdo->prepare("
         SELECT n.noticia, r.nombre AS reportero_nombre
         FROM noticias n
