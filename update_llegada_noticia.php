@@ -23,6 +23,7 @@ $in = is_array($json) ? $json : $_POST;
 $noticiaId = isset($in['noticia_id']) ? (int)$in['noticia_id'] : 0;
 $latitud   = isset($in['latitud']) ? trim((string)$in['latitud']) : '';
 $longitud  = isset($in['longitud']) ? trim((string)$in['longitud']) : '';
+$horaLlegada = isset($in['hora_llegada']) ? trim((string)$in['hora_llegada']) : '';
 
 if ($noticiaId <= 0 || $latitud === '' || $longitud === '') {
     echo json_encode([
@@ -32,15 +33,20 @@ if ($noticiaId <= 0 || $latitud === '' || $longitud === '') {
     exit;
 }
 
+if ($horaLlegada === '' || !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $horaLlegada)) {
+    echo json_encode(['success' => false, 'message' => 'hora_llegada inválida']);
+    exit;
+}
+
 $debug = (isset($_GET['debug_fcm']) && $_GET['debug_fcm'] === '1');
 
 try {
     $sql = "
         UPDATE noticias
         SET
-        hora_llegada = STR_TO_DATE(:hora, '%Y-%m-%d %H:%i:%s'),
-        llegada_latitud = :lat,
-        llegada_longitud = :lon
+            hora_llegada = STR_TO_DATE(:hora, '%Y-%m-%d %H:%i:%s'),
+            llegada_latitud = :lat,
+            llegada_longitud = :lon
         WHERE id = :id
         LIMIT 1
     ";
@@ -48,20 +54,18 @@ try {
     $stmt = $pdo->prepare($sql);
     $stmt->execute([
         ':hora' => $horaLlegada,
-        ':lat' => $latitud,
-        ':lon' => $longitud,
-        ':id'  => $noticiaId,
+        ':lat'  => $latitud,
+        ':lon'  => $longitud,
+        ':id'   => $noticiaId,
     ]);
 
-    $horaLlegada = isset($in['hora_llegada']) ? trim((string)$in['hora_llegada']) : '';
-    if ($horaLlegada === '' || !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $horaLlegada)) {
-        echo json_encode(['success' => false, 'message' => 'hora_llegada inválida']);
-        exit;
-    }
-
     if ($stmt->rowCount() === 0) {
-        echo json_encode(['success' => false, 'message' => 'No se encontró la noticia o no hubo cambios']);
-        exit;
+        $check = $pdo->prepare("SELECT id FROM noticias WHERE id = :id LIMIT 1");
+        $check->execute([':id' => $noticiaId]);
+        if (!$check->fetchColumn()) {
+            echo json_encode(['success' => false, 'message' => 'No se encontró la noticia']);
+            exit;
+        }
     }
 
     $q = $pdo->prepare("
@@ -84,23 +88,23 @@ try {
     try {
         $fcmPath = __DIR__ . '/fcm.php';
         if (!file_exists($fcmPath)) {
-        throw new Exception("No existe fcm.php en {$fcmPath}");
+            throw new Exception("No existe fcm.php en {$fcmPath}");
         }
 
         require_once $fcmPath;
 
         $body = $nombreRep !== ''
-        ? "El reportero {$nombreRep} se encuentra en el destino."
-        : "El reportero se encuentra en el destino.";
+            ? "El reportero {$nombreRep} se encuentra en el destino."
+            : "El reportero se encuentra en el destino.";
 
         $fcmRes = fcm_send_topic([
-        'topic' => 'rol_admin',
-        'title' => 'Reporte de trayecto',
-        'body'  => $body . " ($tituloNoticia)",
-        'data'  => [
-            'tipo' => 'llegada_destino',
-            'noticia_id' => (string)$noticiaId,
-        ],
+            'topic' => 'rol_admin',
+            'title' => 'Reporte de trayecto',
+            'body'  => $body . " ($tituloNoticia)",
+            'data'  => [
+                'tipo' => 'llegada_destino',
+                'noticia_id' => (string)$noticiaId,
+            ],
         ]);
 
         error_log("FCM llegada_destino rol_admin result=" . json_encode($fcmRes));
@@ -111,11 +115,11 @@ try {
 
     if ($debug) {
         echo json_encode([
-        'success' => true,
-        'message' => 'Llegada registrada + debug FCM',
-        'hora_llegada' => date('Y-m-d H:i:s'),
-        'fcm' => $fcmRes,
-        'fcm_error' => $fcmErr,
+            'success' => true,
+            'message' => 'Llegada registrada + debug FCM',
+            'hora_llegada' => $horaLlegada,
+            'fcm' => $fcmRes,
+            'fcm_error' => $fcmErr,
         ]);
         exit;
     }
@@ -123,7 +127,7 @@ try {
     echo json_encode([
         'success' => true,
         'message' => 'Hora y coordenadas de llegada registradas correctamente',
-        'hora_llegada' => date('Y-m-d H:i:s'),
+        'hora_llegada' => $horaLlegada,
     ]);
     exit;
 

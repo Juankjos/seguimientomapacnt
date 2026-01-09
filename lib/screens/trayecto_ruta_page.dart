@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:intl/intl.dart';
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
@@ -432,6 +433,9 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
         return;
       }
 
+      final ahora = DateTime.now();
+      final horaLlegadaStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(ahora);
+
       await ApiService.registrarLlegadaNoticia(
         noticiaId: widget.noticia.id,
         latitud: pos.latitude,
@@ -449,7 +453,7 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       Navigator.pop(context, {
         'llegadaLatitud': pos.latitude,
         'llegadaLongitud': pos.longitude,
-        'horaLlegada': DateTime.now().toIso8601String(),
+        'horaLlegada': horaLlegadaStr,
       });
     } catch (e) {
       if (!mounted) return;
