@@ -1,5 +1,7 @@
+// lib/screens/crear_noticia_page.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/cupertino.dart';
 
 import '../services/api_service.dart';
 
@@ -17,7 +19,6 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
   final TextEditingController _descCtrl = TextEditingController();
   final TextEditingController _domicilioCtrl = TextEditingController();
 
-  // Asignar reportero
   final TextEditingController _buscarReporteroCtrl = TextEditingController();
   int? _reporteroIdSeleccionado;
   String? _reporteroNombreSeleccionado;
@@ -33,6 +34,76 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
   final DateFormat _fmtFechaHora = DateFormat('dd/MM/yyyy HH:mm');
 
   DateTime _soloFecha(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  Future<TimeOfDay?> _showAmPmCarouselTimePicker(
+    BuildContext context, {
+    required TimeOfDay initialTime,
+    int minuteInterval = 1,
+  }) async {
+    DateTime toDateTime(TimeOfDay t) {
+      final now = DateTime.now();
+      return DateTime(now.year, now.month, now.day, t.hour, t.minute);
+    }
+
+    TimeOfDay fromDateTime(DateTime dt) => TimeOfDay(hour: dt.hour, minute: dt.minute);
+
+    DateTime selected = toDateTime(initialTime);
+
+    return showModalBottomSheet<TimeOfDay>(
+      context: context,
+      isScrollControlled: false,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+
+        return SafeArea(
+          child: Container(
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+            ),
+            padding: const EdgeInsets.only(top: 10, bottom: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, null),
+                        child: const Text('Cancelar'),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'Seleccionar hora',
+                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, fromDateTime(selected)),
+                        child: const Text('Aceptar'),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 220,
+                  child: CupertinoDatePicker(
+                    mode: CupertinoDatePickerMode.time,
+                    use24hFormat: false,
+                    minuteInterval: minuteInterval,
+                    initialDateTime: selected,
+                    onDateTimeChanged: (dt) => selected = dt,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   void dispose() {
@@ -53,28 +124,25 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
     final picked = await showDatePicker(
       context: context,
       initialDate: inicial,
-      firstDate: hoy, // ✅ NO permite fechas pasadas
+      firstDate: hoy,
       lastDate: DateTime(hoy.year + 2, 12, 31),
       locale: const Locale('es', 'MX'),
     );
 
     if (picked != null) {
-      setState(() {
-        _fechaSeleccionada = picked;
-      });
+      setState(() => _fechaSeleccionada = picked);
     }
   }
 
   Future<void> _seleccionarHora() async {
-    final picked = await showTimePicker(
-      context: context,
+    final picked = await _showAmPmCarouselTimePicker(
+      context,
       initialTime: _horaSeleccionada ?? TimeOfDay.now(),
+      minuteInterval: 1,
     );
 
     if (picked != null) {
-      setState(() {
-        _horaSeleccionada = picked;
-      });
+      setState(() => _horaSeleccionada = picked);
     }
   }
 
@@ -94,32 +162,22 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
 
   Future<void> _buscarReporteros(String query) async {
     if (query.trim().isEmpty) {
-      setState(() {
-        _resultadosReporteros = [];
-      });
+      setState(() => _resultadosReporteros = []);
       return;
     }
 
-    setState(() {
-      _buscandoReporteros = true;
-    });
+    setState(() => _buscandoReporteros = true);
 
     try {
       final resultados = await ApiService.buscarReporteros(query);
-      setState(() {
-        _resultadosReporteros = resultados;
-      });
+      setState(() => _resultadosReporteros = resultados);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al buscar reporteros: $e')),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _buscandoReporteros = false;
-        });
-      }
+      if (mounted) setState(() => _buscandoReporteros = false);
     }
   }
 
@@ -134,9 +192,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
       return;
     }
 
-    setState(() {
-      _guardando = true;
-    });
+    setState(() => _guardando = true);
 
     try {
       final fechaCita = _combinarFechaHora();
@@ -162,11 +218,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
         SnackBar(content: Text('Error al crear noticia: $e')),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _guardando = false;
-        });
-      }
+      if (mounted) setState(() => _guardando = false);
     }
   }
 
@@ -175,9 +227,8 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
     final theme = Theme.of(context);
 
     final fechaCita = _combinarFechaHora();
-    final String textoFechaCita = fechaCita != null
-        ? _fmtFechaHora.format(fechaCita)
-        : 'Sin fecha/hora asignada';
+    final String textoFechaCita =
+        fechaCita != null ? _fmtFechaHora.format(fechaCita) : 'Sin fecha/hora asignada';
 
     return Scaffold(
       appBar: AppBar(
@@ -197,9 +248,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
                   border: OutlineInputBorder(),
                 ),
                 validator: (v) {
-                  if (v == null || v.trim().isEmpty) {
-                    return 'El título es obligatorio';
-                  }
+                  if (v == null || v.trim().isEmpty) return 'El título es obligatorio';
                   return null;
                 },
               ),
@@ -225,30 +274,24 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
               ),
               const SizedBox(height: 16),
 
-              // -------- Asignar reportero (opcional) --------
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('Reportero asignado:', style: theme.textTheme.bodyMedium),
                   Text(
                     _reporteroNombreSeleccionado ?? 'Ninguno',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
+
               Row(
                 children: [
                   ElevatedButton.icon(
                     icon: const Icon(Icons.person_search),
                     label: const Text('Asignar reportero'),
-                    onPressed: () {
-                      setState(() {
-                        _mostrarBuscadorReportero = !_mostrarBuscadorReportero;
-                      });
-                    },
+                    onPressed: () => setState(() => _mostrarBuscadorReportero = !_mostrarBuscadorReportero),
                   ),
                   const SizedBox(width: 8),
                   if (_reporteroIdSeleccionado != null)
@@ -316,16 +359,14 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
 
               const SizedBox(height: 16),
 
-              // -------- Fecha y hora de cita --------
               Text('Fecha y hora de cita:', style: theme.textTheme.bodyMedium),
               const SizedBox(height: 4),
               Text(
                 textoFechaCita,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
+
               Row(
                 children: [
                   OutlinedButton.icon(

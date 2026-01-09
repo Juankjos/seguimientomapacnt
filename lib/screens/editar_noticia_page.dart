@@ -1,6 +1,7 @@
 // lib/screens/editar_noticia_page.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/cupertino.dart';
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
@@ -54,6 +55,76 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     return DateFormat("d 'de' MMMM 'de' y, HH:mm", 'es_MX').format(dt);
   }
 
+  Future<TimeOfDay?> _showAmPmCarouselTimePicker(
+    BuildContext context, {
+    required TimeOfDay initialTime,
+    int minuteInterval = 1,
+  }) async {
+    DateTime toDateTime(TimeOfDay t) {
+      final now = DateTime.now();
+      return DateTime(now.year, now.month, now.day, t.hour, t.minute);
+    }
+
+    TimeOfDay fromDateTime(DateTime dt) => TimeOfDay(hour: dt.hour, minute: dt.minute);
+
+    DateTime selected = toDateTime(initialTime);
+
+    return showModalBottomSheet<TimeOfDay>(
+      context: context,
+      isScrollControlled: false,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+
+        return SafeArea(
+          child: Container(
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+            ),
+            padding: const EdgeInsets.only(top: 10, bottom: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, null),
+                        child: const Text('Cancelar'),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'Seleccionar hora',
+                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, fromDateTime(selected)),
+                        child: const Text('Aceptar'),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 220,
+                  child: CupertinoDatePicker(
+                    mode: CupertinoDatePickerMode.time,
+                    use24hFormat: false,
+                    minuteInterval: minuteInterval,
+                    initialDateTime: selected,
+                    onDateTimeChanged: (dt) => selected = dt,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -89,12 +160,10 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
 
     if (pickedDate == null) return;
 
-    final pickedTime = await showTimePicker(
-      context: context,
+    final pickedTime = await _showAmPmCarouselTimePicker(
+      context,
       initialTime: TimeOfDay.fromDateTime(initial),
-      helpText: 'Seleccionar hora',
-      cancelText: 'Cancelar',
-      confirmText: 'Aceptar',
+      minuteInterval: 1,
     );
 
     if (pickedTime == null) return;
@@ -125,25 +194,19 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
   Future<void> _guardar() async {
     if (_guardando) return;
 
-    setState(() {
-      _error = null;
-    });
+    setState(() => _error = null);
 
     final titulo = _tituloCtrl.text.trim();
     final desc = _descCtrl.text.trim();
 
-    if (_esAdmin) {
-      if (titulo.isEmpty) {
-        setState(() => _error = 'El título no puede estar vacío.');
-        return;
-      }
+    if (_esAdmin && titulo.isEmpty) {
+      setState(() => _error = 'El título no puede estar vacío.');
+      return;
     }
 
-    if (_puedeEditarDescripcion) {
-      if (desc.isEmpty) {
-        setState(() => _error = 'La descripción no puede estar vacía.');
-        return;
-      }
+    if (_puedeEditarDescripcion && desc.isEmpty) {
+      setState(() => _error = 'La descripción no puede estar vacía.');
+      return;
     }
 
     if (_yaTieneHoraLlegada && _huboCambioFecha()) {
@@ -182,15 +245,9 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
       if (!mounted) return;
       Navigator.pop(context, updated);
     } catch (e) {
-      setState(() {
-        _error = 'Error al guardar: $e';
-      });
+      setState(() => _error = 'Error al guardar: $e');
     } finally {
-      if (mounted) {
-        setState(() {
-          _guardando = false;
-        });
-      }
+      if (mounted) setState(() => _guardando = false);
     }
   }
 
@@ -226,16 +283,12 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                     const SizedBox(width: 8),
                     Text(
                       _esAdmin ? 'Modo Admin' : 'Modo Reportero',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 12),
 
-                // ---------- TÍTULO ----------
                 TextField(
                   controller: _tituloCtrl,
                   enabled: _puedeEditarTitulo,
@@ -248,7 +301,6 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
 
                 const SizedBox(height: 12),
 
-                // ---------- DESCRIPCIÓN ----------
                 TextField(
                   controller: _descCtrl,
                   enabled: _puedeEditarDescripcion,
@@ -266,7 +318,6 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
 
                 const SizedBox(height: 12),
 
-                // ---------- FECHA CITA ----------
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
@@ -354,7 +405,6 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                   const SizedBox(height: 12),
                 ],
 
-                // ---------- GUARDAR ----------
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
