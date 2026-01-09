@@ -412,7 +412,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                             ),
                             label: Text(
                               _yaTieneHoraLlegada
-                                  ? 'Ubicación bloqueada (ya hay llegada)'
+                                  ? 'Ubicación bloqueada'
                                   : (tieneCoordenadas
                                       ? 'Editar ubicación'
                                       : 'Agregar ubicación'),
