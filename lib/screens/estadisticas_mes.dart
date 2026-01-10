@@ -103,7 +103,11 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
 
       final isCompletada = _inRange(n.horaLlegada, b.start, b.end);
       final isAgendada = (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.end);
-      final isEnCurso = includeEnCurso && _inRange(n.fechaCita, b.start, b.end);
+      final isEnCurso =
+        includeEnCurso &&
+        (n.pendiente == true) &&
+        (n.horaLlegada == null) &&
+        _inRange(n.fechaCita, b.start, b.end);
 
       int addCompletada = 0;
       int addAtrasada = 0;

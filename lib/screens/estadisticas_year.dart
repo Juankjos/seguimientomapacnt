@@ -49,6 +49,15 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
     return !dt.isBefore(start) && dt.isBefore(endExclusive);
   }
 
+  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+
+  bool _esAtrasada(Noticia n) {
+    final llegada = n.horaLlegada;
+    final cita = n.fechaCita;
+    if (llegada == null || cita == null) return false;
+    return _aMinuto(llegada).isAfter(_aMinuto(cita));
+  }
+
   bool _isCurrentYear(int year) => year == DateTime.now().year;
 
   List<int> _buildYearsList() {
@@ -65,8 +74,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
 
     years.add(nowYear);
 
-    final past = years.where((y) => y < nowYear).toList()
-      ..sort((a, b) => b.compareTo(a));
+    final past = years.where((y) => y < nowYear).toList()..sort((a, b) => b.compareTo(a));
     final future = years.where((y) => y > nowYear).toList()..sort();
 
     return [nowYear, ...past, ...future];
@@ -85,6 +93,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
     return c;
   }
 
+  // ✅ Incluye Atrasadas y En curso correcto (si ya es completada/atrasada, NO cuenta como en curso)
   List<_ReporterStats> _buildStatsForYear(int year, {required bool includeEnCurso}) {
     final b = _yearBounds(year);
 
@@ -94,6 +103,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
           reporteroId: r.id,
           nombre: r.nombre,
           completadas: 0,
+          atrasadas: 0,
           agendadas: 0,
           enCurso: 0,
         ),
@@ -108,6 +118,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
           reporteroId: rid,
           nombre: rid == 0 ? 'Sin asignar' : 'Reportero #$rid',
           completadas: 0,
+          atrasadas: 0,
           agendadas: 0,
           enCurso: 0,
         ),
@@ -116,11 +127,30 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
       final cur = map[rid]!;
 
       final isCompletada = _inRange(n.horaLlegada, b.start, b.end);
-      final isAgendada = (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.end);
-      final isEnCurso = includeEnCurso && _inRange(n.fechaCita, b.start, b.end);
+
+      final isAgendada =
+          (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.end);
+
+      final isEnCurso =
+          includeEnCurso &&
+          (n.pendiente == true) &&
+          (n.horaLlegada == null) &&
+          _inRange(n.fechaCita, b.start, b.end);
+
+      int addCompletada = 0;
+      int addAtrasada = 0;
+
+      if (isCompletada) {
+        if (_esAtrasada(n)) {
+          addAtrasada = 1;
+        } else {
+          addCompletada = 1;
+        }
+      }
 
       map[rid] = cur.copyWith(
-        completadas: cur.completadas + (isCompletada ? 1 : 0),
+        completadas: cur.completadas + addCompletada,
+        atrasadas: cur.atrasadas + addAtrasada,
         agendadas: cur.agendadas + (isAgendada ? 1 : 0),
         enCurso: cur.enCurso + (isEnCurso ? 1 : 0),
       );
@@ -246,8 +276,9 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                                 '$year${isCurrent ? ' (Actual)' : ''}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.titleSmall
-                                    ?.copyWith(fontWeight: FontWeight.w800),
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                               const SizedBox(height: 2),
                               Text(
@@ -282,6 +313,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
     final stats = _buildStatsForYear(year, includeEnCurso: isCurrent);
 
     final totalCompletadas = stats.fold<int>(0, (a, b) => a + b.completadas);
+    final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
 
@@ -300,18 +332,15 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                 onPressed: () => setState(() => _selectedYear = null),
               ),
               const SizedBox(width: 8),
-
-              if (!isCurrent) ...[
+              if (!isCurrent)
                 OutlinedButton.icon(
                   icon: const Icon(Icons.calendar_view_month),
                   label: const Text('Meses'),
                   onPressed: () => _openMesesForYear(year),
                 ),
-              ],
             ],
           ),
           const SizedBox(height: 10),
-
           Expanded(
             child: Card(
               elevation: 1,
@@ -337,24 +366,20 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                       ],
                     ),
                     const SizedBox(height: 10),
-
                     LayoutBuilder(
                       builder: (context, c) {
                         final bool narrow = c.maxWidth < 380;
-                        final double? maxPillW =
-                            narrow ? (c.maxWidth - 8) / 2 : null;
+                        final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
 
                         final pills = <Widget>[
                           if (isCurrent) ...[
-                            _pill(theme, 'Completadas: $totalCompletadas',
-                                maxWidth: maxPillW),
-                            _pill(theme, 'En curso: $totalEnCurso',
-                                maxWidth: maxPillW),
+                            _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
+                            _pill(theme, 'Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
+                            _pill(theme, 'En curso: $totalEnCurso', maxWidth: maxPillW),
                           ] else ...[
-                            _pill(theme, 'Agendadas: $totalAgendadas',
-                                maxWidth: maxPillW),
-                            _pill(theme, 'Completadas: $totalCompletadas',
-                                maxWidth: maxPillW),
+                            _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
+                            _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
+                            _pill(theme, 'Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
                           ],
                         ];
 
@@ -366,14 +391,10 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                       },
                     ),
                     const SizedBox(height: 10),
-
                     Expanded(
                       child: SfCartesianChart(
                         tooltipBehavior: _tooltip,
-                        legend: const Legend(
-                          isVisible: true,
-                          position: LegendPosition.bottom,
-                        ),
+                        legend: const Legend(isVisible: true, position: LegendPosition.bottom),
                         plotAreaBorderWidth: 0,
                         primaryXAxis: CategoryAxis(
                           labelRotation: hasMany ? 45 : 0,
@@ -399,7 +420,16 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                             dataLabelSettings: const DataLabelSettings(isVisible: true),
                             animationDuration: 650,
                           ),
-
+                          ColumnSeries<_ReporterStats, String>(
+                            name: 'Atrasadas',
+                            dataSource: stats,
+                            xValueMapper: (d, _) => d.nombre,
+                            yValueMapper: (d, _) => d.atrasadas,
+                            dataLabelMapper: (d, _) => d.atrasadas == 0 ? null : '${d.atrasadas}',
+                            dataLabelSettings: const DataLabelSettings(isVisible: true),
+                            animationDuration: 650,
+                            color: Colors.red.shade900,
+                          ),
                           if (isCurrent)
                             ColumnSeries<_ReporterStats, String>(
                               name: 'En curso',
@@ -407,8 +437,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                               xValueMapper: (d, _) => d.nombre,
                               yValueMapper: (d, _) => d.enCurso,
                               dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
-                              dataLabelSettings:
-                                  const DataLabelSettings(isVisible: true),
+                              dataLabelSettings: const DataLabelSettings(isVisible: true),
                               animationDuration: 650,
                             )
                           else
@@ -418,8 +447,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                               xValueMapper: (d, _) => d.nombre,
                               yValueMapper: (d, _) => d.agendadas,
                               dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
-                              dataLabelSettings:
-                                  const DataLabelSettings(isVisible: true),
+                              dataLabelSettings: const DataLabelSettings(isVisible: true),
                               animationDuration: 650,
                             ),
                         ],
@@ -501,6 +529,15 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
     return !dt.isBefore(start) && dt.isBefore(endExclusive);
   }
 
+  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+
+  bool _esAtrasada(Noticia n) {
+    final llegada = n.horaLlegada;
+    final cita = n.fechaCita;
+    if (llegada == null || cita == null) return false;
+    return _aMinuto(llegada).isAfter(_aMinuto(cita));
+  }
+
   bool _isCurrentMonth(int year, int month) {
     final now = DateTime.now();
     return now.year == year && now.month == month;
@@ -532,6 +569,7 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
           reporteroId: r.id,
           nombre: r.nombre,
           completadas: 0,
+          atrasadas: 0,
           agendadas: 0,
           enCurso: 0,
         ),
@@ -546,6 +584,7 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
           reporteroId: rid,
           nombre: rid == 0 ? 'Sin asignar' : 'Reportero #$rid',
           completadas: 0,
+          atrasadas: 0,
           agendadas: 0,
           enCurso: 0,
         ),
@@ -555,10 +594,27 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
 
       final isCompletada = _inRange(n.horaLlegada, b.start, b.end);
       final isAgendada = (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.end);
-      final isEnCurso = includeEnCurso && _inRange(n.fechaCita, b.start, b.end);
+
+      final isEnCurso =
+          includeEnCurso &&
+          (n.pendiente == true) &&
+          (n.horaLlegada == null) &&
+          _inRange(n.fechaCita, b.start, b.end);
+
+      int addCompletada = 0;
+      int addAtrasada = 0;
+
+      if (isCompletada) {
+        if (_esAtrasada(n)) {
+          addAtrasada = 1;
+        } else {
+          addCompletada = 1;
+        }
+      }
 
       map[rid] = cur.copyWith(
-        completadas: cur.completadas + (isCompletada ? 1 : 0),
+        completadas: cur.completadas + addCompletada,
+        atrasadas: cur.atrasadas + addAtrasada,
         agendadas: cur.agendadas + (isAgendada ? 1 : 0),
         enCurso: cur.enCurso + (isEnCurso ? 1 : 0),
       );
@@ -645,7 +701,6 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
             ),
           ),
           const SizedBox(height: 10),
-
           Expanded(
             child: GridView.builder(
               padding: const EdgeInsets.only(bottom: 6),
@@ -750,6 +805,7 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
     );
 
     final totalCompletadas = stats.fold<int>(0, (a, b) => a + b.completadas);
+    final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
 
@@ -768,21 +824,17 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
                 onPressed: () => setState(() => _selectedMonth = null),
               ),
               const SizedBox(width: 8),
-
               OutlinedButton.icon(
                 icon: const Icon(Icons.view_week),
                 label: const Text('Semanas'),
                 onPressed: () => _openSemanas(month),
               ),
               const SizedBox(width: 8),
-
               OutlinedButton.icon(
                 icon: const Icon(Icons.calendar_month),
                 label: const Text('Días'),
                 onPressed: () => _openDias(month),
               ),
-              const SizedBox(width: 8),
-
             ],
           ),
           const SizedBox(height: 10),
@@ -792,25 +844,35 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Total',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  _pill(theme, 'Agendadas: $totalAgendadas'),
-                  const SizedBox(width: 8),
-                  _pill(theme, 'Completadas: $totalCompletadas'),
-                  if (isCurrent) ...[
-                    const SizedBox(width: 8),
-                    _pill(theme, 'En curso: $totalEnCurso'),
-                  ],
-                ],
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final bool narrow = c.maxWidth < 380;
+                  final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
+
+                  final pills = <Widget>[
+                    _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
+                    _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
+                    _pill(theme, 'Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
+                    if (isCurrent) _pill(theme, 'En curso: $totalEnCurso', maxWidth: maxPillW),
+                  ];
+
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: Text(
+                          'Total',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      ...pills,
+                    ],
+                  );
+                },
               ),
             ),
           ),
@@ -843,6 +905,16 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
                   dataLabelSettings: const DataLabelSettings(isVisible: true),
                   animationDuration: 650,
                 ),
+                ColumnSeries<_ReporterStats, String>(
+                  name: 'Atrasadas',
+                  dataSource: stats,
+                  xValueMapper: (d, _) => d.nombre,
+                  yValueMapper: (d, _) => d.atrasadas,
+                  dataLabelMapper: (d, _) => d.atrasadas == 0 ? null : '${d.atrasadas}',
+                  dataLabelSettings: const DataLabelSettings(isVisible: true),
+                  animationDuration: 650,
+                  color: Colors.red.shade900,
+                ),
                 if (isCurrent)
                   ColumnSeries<_ReporterStats, String>(
                     name: 'En curso',
@@ -870,8 +942,8 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
     );
   }
 
-  Widget _pill(ThemeData theme, String text) {
-    return Container(
+  Widget _pill(ThemeData theme, String text, {double? maxWidth}) {
+    final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer,
@@ -879,11 +951,20 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
       ),
       child: Text(
         text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontWeight: FontWeight.w700,
           color: theme.colorScheme.onPrimaryContainer,
         ),
       ),
+    );
+
+    if (maxWidth == null) return core;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: core,
     );
   }
 
@@ -999,6 +1080,7 @@ class _ReporterStats {
   final String nombre;
 
   final int completadas;
+  final int atrasadas;
   final int agendadas;
   final int enCurso;
 
@@ -1006,17 +1088,19 @@ class _ReporterStats {
     required this.reporteroId,
     required this.nombre,
     required this.completadas,
+    required this.atrasadas,
     required this.agendadas,
     required this.enCurso,
   });
 
-  int get total => completadas + agendadas + enCurso;
+  int get total => completadas + atrasadas + agendadas + enCurso;
 
-  _ReporterStats copyWith({int? completadas, int? agendadas, int? enCurso}) {
+  _ReporterStats copyWith({int? completadas, int? atrasadas, int? agendadas, int? enCurso}) {
     return _ReporterStats(
       reporteroId: reporteroId,
       nombre: nombre,
       completadas: completadas ?? this.completadas,
+      atrasadas: atrasadas ?? this.atrasadas,
       agendadas: agendadas ?? this.agendadas,
       enCurso: enCurso ?? this.enCurso,
     );

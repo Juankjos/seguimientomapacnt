@@ -343,7 +343,10 @@ class _DiaChartPageState extends State<_DiaChartPage> {
         map[rid] = after.copyWith(agendadas: after.agendadas + 1);
       }
 
-      if (showEnCurso && _inRange(n.fechaCita, b.start, b.endExclusive)) {
+      if (showEnCurso &&
+          (n.pendiente == true) &&
+          (n.horaLlegada == null) &&
+          _inRange(n.fechaCita, b.start, b.endExclusive)) {
         final after = map[rid]!;
         map[rid] = after.copyWith(enCurso: after.enCurso + 1);
       }
