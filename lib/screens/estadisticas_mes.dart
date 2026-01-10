@@ -1,4 +1,3 @@
-// lib/screens/estadisticas_mes.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
@@ -46,7 +45,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
 
   bool _inRange(DateTime? dt, DateTime start, DateTime end) {
     if (dt == null) return false;
-    return !dt.isBefore(start) && dt.isBefore(end); 
+    return !dt.isBefore(start) && dt.isBefore(end);
   }
 
   bool _isCurrentMonth(int month) {
@@ -54,7 +53,18 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
     return now.year == _year && now.month == month;
   }
 
-  // ------------------- Stats internos (nueva lógica) -------------------
+  // ------------------- ATRASADAS -------------------
+
+  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+
+  bool _esAtrasada(Noticia n) {
+    final llegada = n.horaLlegada;
+    final cita = n.fechaCita;
+    if (llegada == null || cita == null) return false;
+    return _aMinuto(llegada).isAfter(_aMinuto(cita));
+  }
+
+  // ------------------- Stats internos (✅ nueva lógica con atrasadas) -------------------
 
   List<_ReporterStats> _buildStatsForMonth(
     int year,
@@ -69,6 +79,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
           reporteroId: r.id,
           nombre: r.nombre,
           completadas: 0,
+          atrasadas: 0,
           agendadas: 0,
           enCurso: 0,
         ),
@@ -82,6 +93,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
           reporteroId: rid,
           nombre: rid == 0 ? 'Sin asignar' : 'Reportero #$rid',
           completadas: 0,
+          atrasadas: 0,
           agendadas: 0,
           enCurso: 0,
         );
@@ -90,15 +102,25 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
       final cur = map[rid]!;
 
       final isCompletada = _inRange(n.horaLlegada, b.start, b.end);
-
       final isAgendada = (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.end);
-
       final isEnCurso = includeEnCurso && _inRange(n.fechaCita, b.start, b.end);
+
+      int addCompletada = 0;
+      int addAtrasada = 0;
+
+      if (isCompletada) {
+        if (_esAtrasada(n)) {
+          addAtrasada = 1;
+        } else {
+          addCompletada = 1;
+        }
+      }
 
       map[rid] = _ReporterStats(
         reporteroId: cur.reporteroId,
         nombre: cur.nombre,
-        completadas: cur.completadas + (isCompletada ? 1 : 0),
+        completadas: cur.completadas + addCompletada,
+        atrasadas: cur.atrasadas + addAtrasada,
         agendadas: cur.agendadas + (isAgendada ? 1 : 0),
         enCurso: cur.enCurso + (isEnCurso ? 1 : 0),
       );
@@ -266,6 +288,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
     );
 
     final totalCompletadas = stats.fold<int>(0, (a, b) => a + b.completadas);
+    final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
 
@@ -276,7 +299,6 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
       padding: const EdgeInsets.all(12),
       child: Column(
         children: [
-          // Botonera arriba (fuera del card), igual que en Día
           Row(
             children: [
               OutlinedButton.icon(
@@ -332,7 +354,6 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
           ),
           const SizedBox(height: 10),
 
-          // Card único: título + pills + chart
           Expanded(
             child: Card(
               elevation: 1,
@@ -362,17 +383,15 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                     LayoutBuilder(
                       builder: (context, c) {
                         final bool narrow = c.maxWidth < 380;
-                        final double? maxPillW =
-                            narrow ? (c.maxWidth - 8) / 2 : null;
+                        final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
 
                         final pills = <Widget>[
-                          if (isCurrent) ...[
-                            _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
-                            _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
-                          ] else ...[
+                          _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
+                          _pill('Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
+                          if (isCurrent)
+                            _pill('En curso: $totalEnCurso', maxWidth: maxPillW)
+                          else
                             _pill('Agendadas: $totalAgendadas', maxWidth: maxPillW),
-                            _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
-                          ],
                         ];
 
                         return Wrap(
@@ -415,6 +434,16 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                             dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
                             dataLabelSettings: const DataLabelSettings(isVisible: true),
                             animationDuration: 650,
+                          ),
+                          ColumnSeries<_ReporterStats, String>(
+                            name: 'Atrasadas',
+                            dataSource: stats,
+                            xValueMapper: (d, _) => d.nombre,
+                            yValueMapper: (d, _) => d.atrasadas,
+                            dataLabelMapper: (d, _) => d.atrasadas == 0 ? null : '${d.atrasadas}',
+                            dataLabelSettings: const DataLabelSettings(isVisible: true),
+                            animationDuration: 650,
+                            color: Colors.red.shade900,
                           ),
                           if (isCurrent)
                             ColumnSeries<_ReporterStats, String>(
@@ -533,16 +562,18 @@ class _ReporterStats {
   final String nombre;
 
   final int completadas;
+  final int atrasadas;
   final int agendadas;
-  final int enCurso; 
+  final int enCurso;
 
   const _ReporterStats({
     required this.reporteroId,
     required this.nombre,
     required this.completadas,
+    required this.atrasadas,
     required this.agendadas,
     required this.enCurso,
   });
 
-  int get total => completadas + agendadas + enCurso;
+  int get total => completadas + atrasadas + agendadas + enCurso;
 }

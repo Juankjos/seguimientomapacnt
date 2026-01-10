@@ -1,4 +1,3 @@
-// lib/screens/estadisticas_semanas.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
@@ -133,7 +132,18 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
     return !dt.isBefore(start) && dt.isBefore(endExclusive);
   }
 
-  // ------------------- Stats por semana (nueva lógica) -------------------
+  // ------------------- ATRASADAS -------------------
+
+  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+
+  bool _esAtrasada(Noticia n) {
+    final llegada = n.horaLlegada;
+    final cita = n.fechaCita;
+    if (llegada == null || cita == null) return false;
+    return _aMinuto(llegada).isAfter(_aMinuto(cita));
+  }
+
+  // ------------------- Stats por semana (✅ nueva lógica con atrasadas) -------------------
 
   List<_ReporterStats> _buildStatsWeek(
     _WeekRange w, {
@@ -148,6 +158,7 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
           reporteroId: r.id,
           nombre: r.nombre,
           completadas: 0,
+          atrasadas: 0,
           agendadas: 0,
           enCurso: 0,
         ),
@@ -161,6 +172,7 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
           reporteroId: rid,
           nombre: rid == 0 ? 'Sin asignar' : 'Reportero #$rid',
           completadas: 0,
+          atrasadas: 0,
           agendadas: 0,
           enCurso: 0,
         );
@@ -169,15 +181,25 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
       final cur = map[rid]!;
 
       final isCompletada = _inRange(n.horaLlegada, start, endEx);
-
       final isAgendada = (n.pendiente == true) && _inRange(n.fechaCita, start, endEx);
-
       final isEnCurso = includeEnCurso && _inRange(n.fechaCita, start, endEx);
+
+      int addCompletada = 0;
+      int addAtrasada = 0;
+
+      if (isCompletada) {
+        if (_esAtrasada(n)) {
+          addAtrasada = 1;
+        } else {
+          addCompletada = 1;
+        }
+      }
 
       map[rid] = _ReporterStats(
         reporteroId: cur.reporteroId,
         nombre: cur.nombre,
-        completadas: cur.completadas + (isCompletada ? 1 : 0),
+        completadas: cur.completadas + addCompletada,
+        atrasadas: cur.atrasadas + addAtrasada,
         agendadas: cur.agendadas + (isAgendada ? 1 : 0),
         enCurso: cur.enCurso + (isEnCurso ? 1 : 0),
       );
@@ -294,8 +316,8 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
                 includeEnCurso: isCurrent,
               );
 
-              final totalCompletadas =
-                  stats.fold<int>(0, (a, b) => a + b.completadas);
+              final totalCompletadas = stats.fold<int>(0, (a, b) => a + b.completadas);
+              final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
               final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
               final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
 
@@ -338,13 +360,12 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
                             final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
 
                             final pills = <Widget>[
-                              if (!isCurrent)
-                                _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
-
-                                _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
-
+                              _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
+                              _pill(theme, 'Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
                               if (isCurrent)
-                                _pill(theme, 'En curso: $totalEnCurso', maxWidth: maxPillW),
+                                _pill(theme, 'En curso: $totalEnCurso', maxWidth: maxPillW)
+                              else
+                                _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
                             ];
 
                             return Wrap(
@@ -389,6 +410,16 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
                                 dataLabelSettings: const DataLabelSettings(isVisible: true),
                                 animationDuration: 650,
                               ),
+                              ColumnSeries<_ReporterStats, String>(
+                                name: 'Atrasadas',
+                                dataSource: stats,
+                                xValueMapper: (d, _) => d.nombre,
+                                yValueMapper: (d, _) => d.atrasadas,
+                                dataLabelMapper: (d, _) => d.atrasadas == 0 ? null : '${d.atrasadas}',
+                                dataLabelSettings: const DataLabelSettings(isVisible: true),
+                                animationDuration: 650,
+                                color: Colors.red.shade900,
+                              ),
                               if (isCurrent)
                                 ColumnSeries<_ReporterStats, String>(
                                   name: 'En curso',
@@ -396,20 +427,19 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
                                   xValueMapper: (d, _) => d.nombre,
                                   yValueMapper: (d, _) => d.enCurso,
                                   dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
-                                  dataLabelSettings:
-                                      const DataLabelSettings(isVisible: true),
+                                  dataLabelSettings: const DataLabelSettings(isVisible: true),
+                                  animationDuration: 650,
+                                )
+                              else
+                                ColumnSeries<_ReporterStats, String>(
+                                  name: 'Agendadas',
+                                  dataSource: stats,
+                                  xValueMapper: (d, _) => d.nombre,
+                                  yValueMapper: (d, _) => d.agendadas,
+                                  dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
+                                  dataLabelSettings: const DataLabelSettings(isVisible: true),
                                   animationDuration: 650,
                                 ),
-                              if (!isCurrent)
-                              ColumnSeries<_ReporterStats, String>(
-                                name: 'Agendadas',
-                                dataSource: stats,
-                                xValueMapper: (d, _) => d.nombre,
-                                yValueMapper: (d, _) => d.agendadas,
-                                dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
-                                dataLabelSettings: const DataLabelSettings(isVisible: true),
-                                animationDuration: 650,
-                              ),
                             ],
                           ),
                         ),
@@ -487,6 +517,7 @@ class _ReporterStats {
   final String nombre;
 
   final int completadas;
+  final int atrasadas;
   final int agendadas;
   final int enCurso;
 
@@ -494,9 +525,10 @@ class _ReporterStats {
     required this.reporteroId,
     required this.nombre,
     required this.completadas,
+    required this.atrasadas,
     required this.agendadas,
     required this.enCurso,
   });
 
-  int get total => completadas + agendadas + enCurso;
+  int get total => completadas + atrasadas + agendadas + enCurso;
 }
