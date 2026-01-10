@@ -70,13 +70,8 @@ class _EstadisticasDiasState extends State<EstadisticasDias> {
     return !dt.isBefore(start) && dt.isBefore(endExclusive);
   }
 
-  bool _isToday(DateTime day) {
-    final now = DateTime.now();
-    final today = _dayOnly(DateTime(now.year, now.month, now.day));
-    return _dayOnly(day) == today;
-  }
-
-  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+  DateTime _aMinuto(DateTime dt) =>
+      DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
 
   bool _esAtrasada(Noticia n) {
     final llegada = n.horaLlegada;
@@ -289,7 +284,8 @@ class _DiaChartPageState extends State<_DiaChartPage> {
     return _dayOnly(day) == today;
   }
 
-  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+  DateTime _aMinuto(DateTime dt) =>
+      DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
 
   bool _esAtrasada(Noticia n) {
     final llegada = n.horaLlegada;
@@ -363,8 +359,8 @@ class _DiaChartPageState extends State<_DiaChartPage> {
 
   String _tituloDia(DateTime d) => '${d.day} de ${widget.monthName} del ${widget.year}';
 
-  Widget _pill(ThemeData theme, String text) {
-    return Container(
+  Widget _pill(ThemeData theme, String text, {double? maxWidth}) {
+    final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer,
@@ -372,11 +368,20 @@ class _DiaChartPageState extends State<_DiaChartPage> {
       ),
       child: Text(
         text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontWeight: FontWeight.w700,
           color: theme.colorScheme.onPrimaryContainer,
         ),
       ),
+    );
+
+    if (maxWidth == null) return core;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: core,
     );
   }
 
@@ -409,103 +414,122 @@ class _DiaChartPageState extends State<_DiaChartPage> {
         padding: const EdgeInsets.all(12),
         child: Column(
           children: [
-            Card(
-              elevation: 1,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Total',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (!showEnCurso) ...[
-                      _pill(theme, 'Agendadas: $totalAgendadas'),
-                      const SizedBox(width: 8),
-                    ],
-                    _pill(theme, 'Completadas: $totalCompletadas'),
-                    const SizedBox(width: 8),
-                    _pill(theme, 'Atrasadas: $totalAtrasadas'),
-
-                    if (showEnCurso) ...[
-                      const SizedBox(width: 8),
-                      _pill(theme, 'En curso: $totalEnCurso'),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
             Expanded(
-              child: SfCartesianChart(
-                key: ValueKey('day_chart_${widget.day.toIso8601String()}_$_animSeed'),
-                tooltipBehavior: _tooltip,
-                legend: const Legend(isVisible: true, position: LegendPosition.bottom),
-                plotAreaBorderWidth: 0,
-                primaryXAxis: CategoryAxis(
-                  labelRotation: hasMany ? 45 : 0,
-                  labelIntersectAction: AxisLabelIntersectAction.rotate45,
-                  majorGridLines: const MajorGridLines(width: 0),
+              child: Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                primaryYAxis: NumericAxis(
-                  minimum: 0,
-                  interval: 1,
-                  numberFormat: NumberFormat('#0'),
-                  majorGridLines: MajorGridLines(
-                    width: 1,
-                    color: theme.dividerColor.withOpacity(0.35),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    children: [
+                      LayoutBuilder(
+                        builder: (context, c) {
+                          final bool narrow = c.maxWidth < 380;
+                          final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
+
+                          final pills = <Widget>[
+                            if (!showEnCurso)
+                              _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
+                            _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
+                            _pill(theme, 'Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
+                            if (showEnCurso)
+                              _pill(theme, 'En curso: $totalEnCurso', maxWidth: maxPillW),
+                          ];
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Total',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: pills,
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      Expanded(
+                        child: SfCartesianChart(
+                          key: ValueKey('day_chart_${widget.day.toIso8601String()}_$_animSeed'),
+                          tooltipBehavior: _tooltip,
+                          legend: const Legend(isVisible: true, position: LegendPosition.bottom),
+                          plotAreaBorderWidth: 0,
+                          primaryXAxis: CategoryAxis(
+                            labelRotation: hasMany ? 45 : 0,
+                            labelIntersectAction: AxisLabelIntersectAction.rotate45,
+                            majorGridLines: const MajorGridLines(width: 0),
+                          ),
+                          primaryYAxis: NumericAxis(
+                            minimum: 0,
+                            interval: 1,
+                            numberFormat: NumberFormat('#0'),
+                            majorGridLines: MajorGridLines(
+                              width: 1,
+                              color: theme.dividerColor.withOpacity(0.35),
+                            ),
+                          ),
+                          series: [
+                            ColumnSeries<_ReporterStats, String>(
+                              name: 'Completadas',
+                              dataSource: stats,
+                              xValueMapper: (d, _) => d.nombre,
+                              yValueMapper: (d, _) => d.completadas,
+                              dataLabelMapper: (d, _) =>
+                                  d.completadas == 0 ? null : '${d.completadas}',
+                              dataLabelSettings: const DataLabelSettings(isVisible: true),
+                              animationDuration: 650,
+                            ),
+                            ColumnSeries<_ReporterStats, String>(
+                              name: 'Atrasadas',
+                              dataSource: stats,
+                              xValueMapper: (d, _) => d.nombre,
+                              yValueMapper: (d, _) => d.atrasadas,
+                              dataLabelMapper: (d, _) =>
+                                  d.atrasadas == 0 ? null : '${d.atrasadas}',
+                              dataLabelSettings: const DataLabelSettings(isVisible: true),
+                              animationDuration: 650,
+                              color: Colors.red.shade900,
+                            ),
+                            if (showEnCurso)
+                              ColumnSeries<_ReporterStats, String>(
+                                name: 'En curso',
+                                dataSource: stats,
+                                xValueMapper: (d, _) => d.nombre,
+                                yValueMapper: (d, _) => d.enCurso,
+                                dataLabelMapper: (d, _) =>
+                                    d.enCurso == 0 ? null : '${d.enCurso}',
+                                dataLabelSettings: const DataLabelSettings(isVisible: true),
+                                animationDuration: 650,
+                              ),
+                            if (!showEnCurso)
+                              ColumnSeries<_ReporterStats, String>(
+                                name: 'Agendadas',
+                                dataSource: stats,
+                                xValueMapper: (d, _) => d.nombre,
+                                yValueMapper: (d, _) => d.agendadas,
+                                dataLabelMapper: (d, _) =>
+                                    d.agendadas == 0 ? null : '${d.agendadas}',
+                                dataLabelSettings: const DataLabelSettings(isVisible: true),
+                                animationDuration: 650,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                series: [
-                  ColumnSeries<_ReporterStats, String>(
-                    name: 'Completadas',
-                    dataSource: stats,
-                    xValueMapper: (d, _) => d.nombre,
-                    yValueMapper: (d, _) => d.completadas,
-                    dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
-                    dataLabelSettings: const DataLabelSettings(isVisible: true),
-                    animationDuration: 650,
-                  ),
-
-                  ColumnSeries<_ReporterStats, String>(
-                    name: 'Atrasadas',
-                    dataSource: stats,
-                    xValueMapper: (d, _) => d.nombre,
-                    yValueMapper: (d, _) => d.atrasadas,
-                    dataLabelMapper: (d, _) => d.atrasadas == 0 ? null : '${d.atrasadas}',
-                    dataLabelSettings: const DataLabelSettings(isVisible: true),
-                    animationDuration: 650,
-                    color: Colors.red.shade900,
-                  ),
-
-                  if (showEnCurso)
-                    ColumnSeries<_ReporterStats, String>(
-                      name: 'En curso',
-                      dataSource: stats,
-                      xValueMapper: (d, _) => d.nombre,
-                      yValueMapper: (d, _) => d.enCurso,
-                      dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
-                      dataLabelSettings: const DataLabelSettings(isVisible: true),
-                      animationDuration: 650,
-                    ),
-
-                  if (!showEnCurso)
-                    ColumnSeries<_ReporterStats, String>(
-                      name: 'Agendadas',
-                      dataSource: stats,
-                      xValueMapper: (d, _) => d.nombre,
-                      yValueMapper: (d, _) => d.agendadas,
-                      dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
-                      dataLabelSettings: const DataLabelSettings(isVisible: true),
-                      animationDuration: 650,
-                    ),
-                ],
               ),
             ),
           ],
