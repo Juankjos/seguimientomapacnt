@@ -90,7 +90,7 @@ class Noticia {
       llegadaLatitud: parseDouble(json['llegada_latitud']),
       llegadaLongitud: parseDouble(json['llegada_longitud']),
       pendiente: parseBool(json['pendiente']),
-      ultimaMod: parseDate(json['ultima_mod']), 
+      ultimaMod: parseDateTime(json['ultima_mod']), 
     );
   }
 }

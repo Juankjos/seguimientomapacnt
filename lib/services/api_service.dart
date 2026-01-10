@@ -26,6 +26,7 @@ class ApiService {
   static const String baseUrl = 'http://167.99.163.209:8080/seguimientomapacnt';
   static const String wsBaseUrl = 'ws://167.99.163.209:3001';
   static String wsToken = '';
+  static String _mysqlDateTime(DateTime dt) => DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
 
   // 🔹 Login
   static Future<Map<String, dynamic>> login(
@@ -93,7 +94,6 @@ class ApiService {
 
   // 🔹 Obtener todas las noticias (modo admin) usando get_noticias.php
   static Future<List<Noticia>> getNoticiasAdmin() async {
-    // Llamamos al mismo script, pero con ?modo=admin
     final url = Uri.parse('$baseUrl/get_noticias.php?modo=admin');
 
     final response = await http.get(url);
@@ -122,11 +122,9 @@ class ApiService {
   }) async {
     final url = Uri.parse('$baseUrl/crear_noticia.php');
 
-    // Formato DATETIME para MySQL
     String? fechaCitaStr;
     if (fechaCita != null) {
       fechaCitaStr = fechaCita.toIso8601String().substring(0, 19).replaceFirst('T', ' ');
-      // Ej: 2025-12-20 15:30:00
     }
 
     final body = {
@@ -366,7 +364,7 @@ class ApiService {
   // 🔹 Reasignar / desasignar noticias (admin)
   static Future<void> reasignarNoticias({
     required List<int> noticiaIds,
-    int? nuevoReporteroId, // null => desasignar (reportero_id = NULL)
+    int? nuevoReporteroId,
   }) async {
     final url = Uri.parse('$baseUrl/reassign_noticias.php');
 
@@ -461,7 +459,7 @@ class ApiService {
   // 🔹 Actualizar campos de noticia
   static Future<Noticia> actualizarNoticia({
     required int noticiaId,
-    required String role, // 'admin' o 'reportero'
+    required String role,
     String? titulo,
     String? descripcion,
     DateTime? fechaCita,
@@ -476,12 +474,12 @@ class ApiService {
     final body = <String, String>{
       'noticia_id': noticiaId.toString(),
       'role': role,
+      'ultima_mod': _mysqlDateTime(DateTime.now()),
     };
 
     if (titulo != null) body['noticia'] = titulo;
     if (descripcion != null) body['descripcion'] = descripcion;
     if (fechaCita != null) body['fecha_cita'] = fechaCitaStr!;
-    // Si quieres permitir borrar fecha: manda 'fecha_cita' = '' desde admin
 
     final response = await http.post(url, body: body);
 
@@ -509,6 +507,7 @@ class ApiService {
       'noticia_id': noticiaId.toString(),
       'latitud': latitud.toString(),
       'longitud': longitud.toString(),
+      'ultima_mod': _mysqlDateTime(DateTime.now()),
     };
 
     if (domicilio != null && domicilio.isNotEmpty) {
