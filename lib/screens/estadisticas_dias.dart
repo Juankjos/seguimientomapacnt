@@ -334,15 +334,23 @@ class _DiaChartPageState extends State<_DiaChartPage> {
         }
       }
 
-      if ((n.pendiente == true) && _inRange(n.fechaCita, b.start, b.endExclusive)) {
+      final isEnCurso =
+          showEnCurso &&
+          (n.pendiente == true) &&
+          (n.horaLlegada == null) &&
+          _inRange(n.fechaCita, b.start, b.endExclusive);
+
+      final isAgendada =
+          (n.pendiente == true) &&
+          _inRange(n.fechaCita, b.start, b.endExclusive) &&
+          !(showEnCurso && isEnCurso);
+
+      if (isAgendada) {
         final after = map[rid]!;
         map[rid] = after.copyWith(agendadas: after.agendadas + 1);
       }
 
-      if (showEnCurso &&
-          (n.pendiente == true) &&
-          (n.horaLlegada == null) &&
-          _inRange(n.fechaCita, b.start, b.endExclusive)) {
+      if (isEnCurso) {
         final after = map[rid]!;
         map[rid] = after.copyWith(enCurso: after.enCurso + 1);
       }
@@ -359,11 +367,11 @@ class _DiaChartPageState extends State<_DiaChartPage> {
 
   String _tituloDia(DateTime d) => '${d.day} de ${widget.monthName} del ${widget.year}';
 
-  Widget _pill(ThemeData theme, String text, {double? maxWidth}) {
+  Widget _pill(ThemeData theme, String text, {double? maxWidth, bool isTotal = false}) {
     final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer,
+        color: isTotal ? Colors.black : theme.colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -371,8 +379,8 @@ class _DiaChartPageState extends State<_DiaChartPage> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontWeight: FontWeight.w700,
-          color: theme.colorScheme.onPrimaryContainer,
+          fontWeight: FontWeight.w800,
+          color: isTotal ? Colors.white : theme.colorScheme.onPrimaryContainer,
         ),
       ),
     );
@@ -396,6 +404,7 @@ class _DiaChartPageState extends State<_DiaChartPage> {
     final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
+    final totalTareas = totalCompletadas + totalAtrasadas + (showEnCurso ? totalEnCurso : totalAgendadas);
 
     final hasMany = stats.length > 8;
 
@@ -430,6 +439,7 @@ class _DiaChartPageState extends State<_DiaChartPage> {
                           final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
 
                           final pills = <Widget>[
+                            _pill(theme, 'Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
                             if (!showEnCurso)
                               _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
                             _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),

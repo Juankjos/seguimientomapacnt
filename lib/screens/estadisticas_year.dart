@@ -128,14 +128,16 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
 
       final isCompletada = _inRange(n.horaLlegada, b.start, b.end);
 
-      final isAgendada =
-          (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.end);
-
       final isEnCurso =
-          includeEnCurso &&
-          (n.pendiente == true) &&
-          (n.horaLlegada == null) &&
-          _inRange(n.fechaCita, b.start, b.end);
+        includeEnCurso &&
+        (n.pendiente == true) &&
+        (n.horaLlegada == null) &&
+        _inRange(n.fechaCita, b.start, b.end);
+
+      final isAgendada =
+        (n.pendiente == true) &&
+        _inRange(n.fechaCita, b.start, b.end) &&
+        !(includeEnCurso && isEnCurso);
 
       int addCompletada = 0;
       int addAtrasada = 0;
@@ -316,6 +318,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
     final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
+    final totalTareas = totalCompletadas + totalAtrasadas + (isCurrent ? totalEnCurso : totalAgendadas);
 
     final hasMany = stats.length > 8;
 
@@ -372,6 +375,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                         final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
 
                         final pills = <Widget>[
+                          _pill(theme, 'Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
                           if (isCurrent) ...[
                             _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
                             _pill(theme, 'Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
@@ -463,11 +467,11 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
     );
   }
 
-  Widget _pill(ThemeData theme, String text, {double? maxWidth}) {
+  Widget _pill(ThemeData theme, String text, {double? maxWidth, bool isTotal = false}) {
     final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer,
+        color: isTotal ? Colors.black : theme.colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -475,8 +479,8 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontWeight: FontWeight.w700,
-          color: theme.colorScheme.onPrimaryContainer,
+          fontWeight: FontWeight.w800,
+          color: isTotal ? Colors.white : theme.colorScheme.onPrimaryContainer,
         ),
       ),
     );
@@ -593,13 +597,17 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
       final cur = map[rid]!;
 
       final isCompletada = _inRange(n.horaLlegada, b.start, b.end);
-      final isAgendada = (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.end);
 
       final isEnCurso =
-          includeEnCurso &&
-          (n.pendiente == true) &&
-          (n.horaLlegada == null) &&
-          _inRange(n.fechaCita, b.start, b.end);
+        includeEnCurso &&
+        (n.pendiente == true) &&
+        (n.horaLlegada == null) &&
+        _inRange(n.fechaCita, b.start, b.end);
+
+      final isAgendada =
+        (n.pendiente == true) &&
+        _inRange(n.fechaCita, b.start, b.end) &&
+        !(includeEnCurso && isEnCurso);
 
       int addCompletada = 0;
       int addAtrasada = 0;
@@ -808,6 +816,7 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
     final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
+    final totalTareas = totalCompletadas + totalAtrasadas + totalAgendadas + (isCurrent ? totalEnCurso : 0);
 
     final hasMany = stats.length > 8;
 
@@ -850,6 +859,7 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
                   final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
 
                   final pills = <Widget>[
+                    _pill(theme, 'Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
                     _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
                     _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
                     _pill(theme, 'Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
@@ -942,11 +952,11 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
     );
   }
 
-  Widget _pill(ThemeData theme, String text, {double? maxWidth}) {
+  Widget _pill(ThemeData theme, String text, {double? maxWidth, bool isTotal = false}) {
     final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer,
+        color: isTotal ? Colors.black : theme.colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -954,8 +964,8 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontWeight: FontWeight.w700,
-          color: theme.colorScheme.onPrimaryContainer,
+          fontWeight: FontWeight.w800,
+          color: isTotal ? Colors.white : theme.colorScheme.onPrimaryContainer,
         ),
       ),
     );

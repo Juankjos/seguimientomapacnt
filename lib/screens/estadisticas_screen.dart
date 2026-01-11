@@ -408,6 +408,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
+    final totalTareas = totalEnCurso + totalCompletadas + totalAtrasadas;
 
     return Padding(
       padding: const EdgeInsets.all(12),
@@ -458,6 +459,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
                             narrow ? (c.maxWidth - 8) / 2 : null;
 
                         final pills = <Widget>[
+                          _pill('Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
                           _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
                           _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
                           _pill('Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
@@ -493,13 +495,13 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     );
   }
 
-  Widget _pill(String text, {double? maxWidth}) {
+  Widget _pill(String text, {double? maxWidth, bool isTotal = false}) {
     final theme = Theme.of(context);
 
     final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer,
+        color: isTotal ? Colors.black : theme.colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -508,7 +510,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontWeight: FontWeight.w700,
-          color: theme.colorScheme.onPrimaryContainer,
+          color: isTotal ? Colors.white : theme.colorScheme.onPrimaryContainer,
         ),
       ),
     );

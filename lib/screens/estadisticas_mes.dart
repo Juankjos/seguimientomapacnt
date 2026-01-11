@@ -1,3 +1,4 @@
+// lib/screens/estadisticas_screen.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
@@ -102,12 +103,15 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
       final cur = map[rid]!;
 
       final isCompletada = _inRange(n.horaLlegada, b.start, b.end);
-      final isAgendada = (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.end);
       final isEnCurso =
         includeEnCurso &&
         (n.pendiente == true) &&
         (n.horaLlegada == null) &&
         _inRange(n.fechaCita, b.start, b.end);
+      final isAgendada =
+        (n.pendiente == true) &&
+        _inRange(n.fechaCita, b.start, b.end) &&
+        !(includeEnCurso && isEnCurso);
 
       int addCompletada = 0;
       int addAtrasada = 0;
@@ -295,6 +299,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
     final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
+    final totalTareas = totalCompletadas + totalAtrasadas + (isCurrent ? totalEnCurso : totalAgendadas);
 
     final hasMany = stats.length > 8;
 
@@ -390,6 +395,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                         final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
 
                         final pills = <Widget>[
+                          _pill('Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
                           _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
                           _pill('Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
                           if (isCurrent)
@@ -482,13 +488,13 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
     );
   }
 
-  Widget _pill(String text, {double? maxWidth}) {
+  Widget _pill(String text, {double? maxWidth, bool isTotal = false}) {
     final theme = Theme.of(context);
 
     final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer,
+        color: isTotal ? Colors.black : theme.colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -496,8 +502,8 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontWeight: FontWeight.w700,
-          color: theme.colorScheme.onPrimaryContainer,
+          fontWeight: FontWeight.w800,
+          color: isTotal ? Colors.white : theme.colorScheme.onPrimaryContainer,
         ),
       ),
     );

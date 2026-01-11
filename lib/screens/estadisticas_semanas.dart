@@ -1,3 +1,4 @@
+// lib/screens/estadisticas_screen.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
@@ -181,12 +182,15 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
       final cur = map[rid]!;
 
       final isCompletada = _inRange(n.horaLlegada, start, endEx);
-      final isAgendada = (n.pendiente == true) && _inRange(n.fechaCita, start, endEx);
       final isEnCurso =
         includeEnCurso &&
         (n.pendiente == true) &&
         (n.horaLlegada == null) &&
         _inRange(n.fechaCita, start, endEx);
+      final isAgendada =
+        (n.pendiente == true) &&
+        _inRange(n.fechaCita, start, endEx) &&
+        !(includeEnCurso && isEnCurso);
 
       int addCompletada = 0;
       int addAtrasada = 0;
@@ -324,6 +328,7 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
               final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
               final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
               final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
+              final totalTareas = totalCompletadas + totalAtrasadas + (isCurrent ? totalEnCurso : totalAgendadas);
 
               final hasMany = stats.length > 8;
 
@@ -364,6 +369,7 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
                             final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
 
                             final pills = <Widget>[
+                              _pill(theme, 'Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
                               _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
                               _pill(theme, 'Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
                               if (isCurrent)
@@ -459,11 +465,11 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
     );
   }
 
-  Widget _pill(ThemeData theme, String text, {double? maxWidth}) {
-    final core = Container(
+  Widget _pill(ThemeData theme, String text, {double? maxWidth, bool isTotal = false,}) {
+      final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer,
+        color: isTotal ? Colors.black : theme.colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -471,8 +477,8 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontWeight: FontWeight.w700,
-          color: theme.colorScheme.onPrimaryContainer,
+          fontWeight: FontWeight.w800,
+          color: isTotal ? Colors.white : theme.colorScheme.onPrimaryContainer,
         ),
       ),
     );
