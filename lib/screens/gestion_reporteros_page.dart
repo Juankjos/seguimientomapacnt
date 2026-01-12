@@ -14,9 +14,9 @@ class GestionReporterosPage extends StatefulWidget {
 
 class _GestionReporterosPageState extends State<GestionReporterosPage> {
   final _searchCtrl = TextEditingController();
+
   bool _cargando = true;
   String? _error;
-
   List<ReporteroAdmin> _items = [];
 
   @override
@@ -64,6 +64,22 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
     }
   }
 
+  Future<void> _mostrarDialogCrearUsuario() async {
+    final created = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _CrearUsuarioDialog(),
+    );
+
+    if (created == true) {
+      await _cargar(q: _searchCtrl.text.trim());
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Usuario creado')),
+      );
+    }
+  }
+
   Color _colorFromId(int id) {
     final colors = <Color>[
       Colors.blue,
@@ -81,7 +97,7 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
   Widget _avatarDefault({
     required int id,
     required String nombre,
-    double radius = 36,
+    double radius = 32,
   }) {
     final letter = nombre.trim().isNotEmpty ? nombre.trim()[0].toUpperCase() : '?';
     final c = _colorFromId(id);
@@ -92,7 +108,7 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
       child: Text(
         letter,
         style: TextStyle(
-          fontSize: radius * 0.65,
+          fontSize: radius * 0.70,
           fontWeight: FontWeight.w800,
           color: c,
         ),
@@ -100,25 +116,15 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
     );
   }
 
-  Future<void> _mostrarDialogCrearReportero() async {
-    final created = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const _CrearUsuarioDialog(),
-    );
-
-    if (created == true) {
-      await _cargar(q: _searchCtrl.text.trim());
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Usuario creado')),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final showTopLoader = !_cargando && _items.isNotEmpty;
+    final width = MediaQuery.sizeOf(context).width;
+
+    // ✅ Esto evita el overflow en la grilla:
+    // - en pantallas pequeñas baja a 2 columnas
+    // - da más altura a cada tile cuando hay 3+ columnas
+    final crossAxisCount = (width / 180).floor().clamp(2, 4);
+    final childAspectRatio = (crossAxisCount >= 3) ? 0.70 : 0.95;
 
     return Scaffold(
       appBar: AppBar(
@@ -126,7 +132,7 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
         actions: [
           IconButton(
             tooltip: 'Añadir usuario',
-            onPressed: _mostrarDialogCrearReportero,
+            onPressed: _mostrarDialogCrearUsuario,
             icon: const Icon(Icons.person_add_alt_1),
           ),
           IconButton(
@@ -138,8 +144,6 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
       ),
       body: Column(
         children: [
-          if (showTopLoader) const LinearProgressIndicator(minHeight: 2),
-
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: TextField(
@@ -164,7 +168,6 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
               onSubmitted: (v) => _cargar(q: v.trim()),
             ),
           ),
-
           Expanded(
             child: _cargando
                 ? const Center(child: CircularProgressIndicator())
@@ -179,11 +182,11 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
                         onRefresh: () => _cargar(q: _searchCtrl.text.trim()),
                         child: GridView.builder(
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: crossAxisCount,
                             crossAxisSpacing: 12,
                             mainAxisSpacing: 12,
-                            childAspectRatio: 0.78,
+                            childAspectRatio: childAspectRatio,
                           ),
                           itemCount: _items.length,
                           itemBuilder: (context, i) {
@@ -207,23 +210,39 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
                                 ),
                                 padding: const EdgeInsets.all(10),
                                 child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    _avatarDefault(id: r.id, nombre: r.nombre, radius: 36),
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      r.nombre,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(fontWeight: FontWeight.w600),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      roleLabel,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.65),
+                                    const SizedBox(height: 8),
+                                    _avatarDefault(id: r.id, nombre: r.nombre, radius: 32),
+                                    const SizedBox(height: 8),
+
+                                    // ✅ Flexible evita RenderFlex overflow dentro del tile
+                                    Expanded(
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Flexible(
+                                            child: Text(
+                                              r.nombre,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(fontWeight: FontWeight.w600),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            roleLabel,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface
+                                                  .withOpacity(0.65),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
@@ -293,7 +312,6 @@ class _CrearUsuarioDialogState extends State<_CrearUsuarioDialog> {
       );
 
       FocusManager.instance.primaryFocus?.unfocus();
-
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -307,124 +325,153 @@ class _CrearUsuarioDialogState extends State<_CrearUsuarioDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final viewInsetsBottom = MediaQuery.of(context).viewInsets.bottom;
+    final h = MediaQuery.sizeOf(context).height;
+
     return WillPopScope(
       onWillPop: () async => !_creando,
-      child: AlertDialog(
-        title: const Text('Añadir Usuario'),
-        content: Form(
-          key: _formKey,
-          child: SizedBox(
-            width: 380,
+      child: Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 420,
+            maxHeight: h * 0.90,
+          ),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + viewInsetsBottom),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextFormField(
-                  controller: _nombreCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Nombre',
-                    border: OutlineInputBorder(),
-                  ),
-                  textInputAction: TextInputAction.next,
-                  enabled: !_creando,
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'El nombre es requerido';
-                    if (v.trim().length < 2) return 'Nombre demasiado corto';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _passCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Contraseña',
-                    border: OutlineInputBorder(),
-                  ),
-                  textInputAction: TextInputAction.next,
-                  enabled: !_creando,
-                  validator: (v) {
-                    final s = v?.trim() ?? '';
-                    if (s.isEmpty) return 'La contraseña es requerida';
-                    if (s.length < 6) return 'Mínimo 6 caracteres';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _pass2Ctrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirmar contraseña',
-                    border: OutlineInputBorder(),
-                  ),
-                  textInputAction: TextInputAction.done,
-                  enabled: !_creando,
-                  onFieldSubmitted: (_) => _creando ? null : _crear(),
-                  validator: (v) {
-                    final s = v?.trim() ?? '';
-                    if (s.isEmpty) return 'Confirma la contraseña';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 14),
-
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Rol',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.85),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 8,
+                // Título
+                Row(
                   children: [
-                    ChoiceChip(
-                      label: const Text('Reportero'),
-                      selected: _role == 'reportero',
-                      onSelected: _creando ? null : (_) => setState(() => _role = 'reportero'),
+                    const Expanded(
+                      child: Text(
+                        'Añadir Usuario',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      ),
                     ),
-                    ChoiceChip(
-                      label: const Text('Administrador'),
-                      selected: _role == 'admin',
-                      onSelected: _creando ? null : (_) => setState(() => _role = 'admin'),
+                    IconButton(
+                      tooltip: 'Cerrar',
+                      onPressed: _creando ? null : () => Navigator.of(context).pop(false),
+                      icon: const Icon(Icons.close),
                     ),
                   ],
+                ),
+                const SizedBox(height: 8),
+
+                Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        controller: _nombreCtrl,
+                        enabled: !_creando,
+                        decoration: const InputDecoration(
+                          labelText: 'Nombre',
+                          border: OutlineInputBorder(),
+                        ),
+                        textInputAction: TextInputAction.next,
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return 'El nombre es requerido';
+                          if (v.trim().length < 2) return 'Nombre demasiado corto';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+
+                      TextFormField(
+                        controller: _passCtrl,
+                        enabled: !_creando,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Contraseña',
+                          border: OutlineInputBorder(),
+                        ),
+                        textInputAction: TextInputAction.next,
+                        validator: (v) {
+                          final s = v?.trim() ?? '';
+                          if (s.isEmpty) return 'La contraseña es requerida';
+                          if (s.length < 6) return 'Mínimo 6 caracteres';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+
+                      TextFormField(
+                        controller: _pass2Ctrl,
+                        enabled: !_creando,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Confirmar contraseña',
+                          border: OutlineInputBorder(),
+                        ),
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _creando ? null : _crear(),
+                        validator: (v) {
+                          final s = v?.trim() ?? '';
+                          if (s.isEmpty) return 'Confirma la contraseña';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+
+                      DropdownButtonFormField<String>(
+                        value: _role,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Rol',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'reportero', child: Text('Reportero')),
+                          DropdownMenuItem(value: 'admin', child: Text('Administrador')),
+                        ],
+                        onChanged: _creando ? null : (v) => setState(() => _role = v ?? 'reportero'),
+                      ),
+                    ],
+                  ),
                 ),
 
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   Text(
                     _error!,
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
                     textAlign: TextAlign.center,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
                 ],
+
+                const SizedBox(height: 16),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _creando ? null : () => Navigator.of(context).pop(false),
+                        child: const Text('Cancelar'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _creando ? null : _crear,
+                        icon: _creando
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.person_add),
+                        label: Text(_creando ? 'Creando…' : 'Crear'),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: _creando ? null : () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton.icon(
-            onPressed: _creando ? null : _crear,
-            icon: _creando
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.person_add),
-            label: Text(_creando ? 'Creando…' : 'Crear'),
-          ),
-        ],
       ),
     );
   }
