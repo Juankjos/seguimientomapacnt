@@ -169,12 +169,14 @@ class ApiService {
   static Future<ReporteroAdmin> createReportero({
     required String nombre,
     required String password,
+    String role = 'reportero',
   }) async {
     final url = Uri.parse('$baseUrl/create_reportero.php');
 
     final resp = await http.post(url, body: {
       'nombre': nombre.trim(),
       'password': password.trim(),
+      'role': role.trim(),
     });
 
     if (resp.statusCode != 200) {
@@ -194,6 +196,7 @@ class ApiService {
     required int reporteroId,
     String? nombre,
     String? password,
+    String? role,
   }) async {
     final url = Uri.parse('$baseUrl/update_perfil.php');
 
@@ -206,6 +209,9 @@ class ApiService {
     }
     if (password != null && password.trim().isNotEmpty) {
       body['password'] = password.trim();
+    }
+    if (role != null && role.trim().isNotEmpty) {
+      body['role'] = role.trim();
     }
 
     final resp = await http.post(url, body: body);
@@ -268,6 +274,7 @@ class ApiService {
     required int reporteroId,
     String? nombre,
     String? password,
+    String? role, 
   }) async {
     final url = Uri.parse('$baseUrl/update_perfil.php');
 
@@ -281,6 +288,7 @@ class ApiService {
     if (password != null && password.trim().isNotEmpty) {
       body['password'] = password.trim();
     }
+    if (role != null && role.trim().isNotEmpty) body['role'] = role.trim();
 
     final response = await http.post(url, body: body);
 

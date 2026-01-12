@@ -1,3 +1,4 @@
+// lib/screens/gestion_reporteros_page.dart
 import 'package:flutter/material.dart';
 
 import '../models/reportero_admin.dart';
@@ -30,51 +31,21 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
     super.dispose();
   }
 
-  Color _colorFromId(int id) {
-    final colors = <Color>[
-      Colors.blue,
-      Colors.green,
-      Colors.orange,
-      Colors.purple,
-      Colors.teal,
-      Colors.indigo,
-      Colors.red,
-      Colors.brown,
-    ];
-    return colors[id % colors.length];
-  }
-
-  Widget _avatarDefault({required int id, required String nombre, double radius = 36}) {
-    final letter = nombre.trim().isNotEmpty ? nombre.trim()[0].toUpperCase() : '?';
-    final c = _colorFromId(id);
-
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: c.withOpacity(0.18),
-      child: Text(
-        letter,
-        style: TextStyle(
-          fontSize: radius * 0.65,
-          fontWeight: FontWeight.w800,
-          color: c,
-        ),
-      ),
-    );
-  }
-
   Future<void> _cargar({String q = ''}) async {
     setState(() {
-      _cargando = true;
+      _cargando = _items.isEmpty;
       _error = null;
     });
 
     try {
       final res = await ApiService.getReporterosAdmin(q: q);
+      if (!mounted) return;
       setState(() {
         _items = res;
         _cargando = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _cargando = false;
@@ -93,153 +64,68 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
     }
   }
 
-  Future<void> _mostrarDialogCrearReportero() async {
-    final nombreCtrl = TextEditingController();
-    final passCtrl = TextEditingController();
-    final pass2Ctrl = TextEditingController();
-    final formKey = GlobalKey<FormState>();
+  Color _colorFromId(int id) {
+    final colors = <Color>[
+      Colors.blue,
+      Colors.green,
+      Colors.orange,
+      Colors.purple,
+      Colors.teal,
+      Colors.indigo,
+      Colors.red,
+      Colors.brown,
+    ];
+    return colors[id % colors.length];
+  }
 
+  Widget _avatarDefault({
+    required int id,
+    required String nombre,
+    double radius = 36,
+  }) {
+    final letter = nombre.trim().isNotEmpty ? nombre.trim()[0].toUpperCase() : '?';
+    final c = _colorFromId(id);
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: c.withOpacity(0.18),
+      child: Text(
+        letter,
+        style: TextStyle(
+          fontSize: radius * 0.65,
+          fontWeight: FontWeight.w800,
+          color: c,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _mostrarDialogCrearReportero() async {
     final created = await showDialog<bool>(
       context: context,
-      barrierDismissible: true,
-      builder: (ctx) {
-        bool creando = false;
-
-        Future<void> crear(StateSetter setLocal) async {
-          if (creando) return;
-          if (!formKey.currentState!.validate()) return;
-
-          final nombre = nombreCtrl.text.trim();
-          final pass = passCtrl.text.trim();
-          final pass2 = pass2Ctrl.text.trim();
-
-          if (pass != pass2) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Las contraseñas no coinciden')),
-            );
-            return;
-          }
-
-          setLocal(() => creando = true);
-
-          try {
-            await ApiService.createReportero(nombre: nombre, password: pass);
-
-            if (!ctx.mounted) return;
-            // Cerrar el diálogo y regresar "true"
-            Navigator.pop(ctx, true);
-            return; // <-- importante: NO seguir ejecutando setLocal después del pop
-          } catch (e) {
-            if (ctx.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Error: $e')),
-              );
-              setLocal(() => creando = false);
-            }
-          }
-        }
-
-        return StatefulBuilder(
-          builder: (ctx, setLocal) {
-            return AlertDialog(
-              title: const Text('Añadir reportero'),
-              content: Form(
-                key: formKey,
-                child: SizedBox(
-                  width: 380,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextFormField(
-                        controller: nombreCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Nombre',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (v) {
-                          if (v == null || v.trim().isEmpty) return 'El nombre es requerido';
-                          if (v.trim().length < 2) return 'Nombre demasiado corto';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: passCtrl,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Contraseña',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (v) {
-                          final s = v?.trim() ?? '';
-                          if (s.isEmpty) return 'La contraseña es requerida';
-                          if (s.length < 6) return 'Mínimo 6 caracteres';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: pass2Ctrl,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Confirmar contraseña',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (v) {
-                          final s = v?.trim() ?? '';
-                          if (s.isEmpty) return 'Confirma la contraseña';
-                          return null;
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: creando ? null : () => Navigator.pop(ctx, false),
-                  child: const Text('Cancelar'),
-                ),
-                FilledButton.icon(
-                  onPressed: creando ? null : () => crear(setLocal),
-                  icon: creando
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.person_add),
-                  label: Text(creando ? 'Creando…' : 'Crear'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      barrierDismissible: false,
+      builder: (_) => const _CrearUsuarioDialog(),
     );
 
-    nombreCtrl.dispose();
-    passCtrl.dispose();
-    pass2Ctrl.dispose();
-
-    // Si se creó, refrescar lista
     if (created == true) {
       await _cargar(q: _searchCtrl.text.trim());
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Reportero creado')),
+        const SnackBar(content: Text('Usuario creado')),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final showTopLoader = !_cargando && _items.isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Gestión'),
         actions: [
           IconButton(
-            tooltip: 'Añadir reportero',
+            tooltip: 'Añadir usuario',
             onPressed: _mostrarDialogCrearReportero,
             icon: const Icon(Icons.person_add_alt_1),
           ),
@@ -252,13 +138,15 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
       ),
       body: Column(
         children: [
+          if (showTopLoader) const LinearProgressIndicator(minHeight: 2),
+
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: TextField(
               controller: _searchCtrl,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
-                hintText: 'Buscar reportero…',
+                hintText: 'Buscar usuario…',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchCtrl.text.isEmpty
                     ? null
@@ -276,6 +164,7 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
               onSubmitted: (v) => _cargar(q: v.trim()),
             ),
           ),
+
           Expanded(
             child: _cargando
                 ? const Center(child: CircularProgressIndicator())
@@ -299,6 +188,7 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
                           itemCount: _items.length,
                           itemBuilder: (context, i) {
                             final r = _items[i];
+                            final roleLabel = (r.role == 'admin') ? 'Administrador' : 'Reportero';
 
                             return InkWell(
                               borderRadius: BorderRadius.circular(16),
@@ -328,6 +218,14 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
                                       textAlign: TextAlign.center,
                                       style: const TextStyle(fontWeight: FontWeight.w600),
                                     ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      roleLabel,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.65),
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -335,6 +233,196 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
                           },
                         ),
                       ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CrearUsuarioDialog extends StatefulWidget {
+  const _CrearUsuarioDialog();
+
+  @override
+  State<_CrearUsuarioDialog> createState() => _CrearUsuarioDialogState();
+}
+
+class _CrearUsuarioDialogState extends State<_CrearUsuarioDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nombreCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  final _pass2Ctrl = TextEditingController();
+
+  bool _creando = false;
+  String _role = 'reportero';
+  String? _error;
+
+  @override
+  void dispose() {
+    _nombreCtrl.dispose();
+    _passCtrl.dispose();
+    _pass2Ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _crear() async {
+    if (_creando) return;
+    if (!_formKey.currentState!.validate()) return;
+
+    final nombre = _nombreCtrl.text.trim();
+    final pass = _passCtrl.text.trim();
+    final pass2 = _pass2Ctrl.text.trim();
+
+    if (pass != pass2) {
+      setState(() => _error = 'Las contraseñas no coinciden');
+      return;
+    }
+
+    final normalizedRole = (_role == 'admin') ? 'admin' : 'reportero';
+
+    setState(() {
+      _creando = true;
+      _error = null;
+    });
+
+    try {
+      await ApiService.createReportero(
+        nombre: nombre,
+        password: pass,
+        role: normalizedRole,
+      );
+
+      FocusManager.instance.primaryFocus?.unfocus();
+
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _creando = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async => !_creando,
+      child: AlertDialog(
+        title: const Text('Añadir Usuario'),
+        content: Form(
+          key: _formKey,
+          child: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _nombreCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre',
+                    border: OutlineInputBorder(),
+                  ),
+                  textInputAction: TextInputAction.next,
+                  enabled: !_creando,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'El nombre es requerido';
+                    if (v.trim().length < 2) return 'Nombre demasiado corto';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _passCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Contraseña',
+                    border: OutlineInputBorder(),
+                  ),
+                  textInputAction: TextInputAction.next,
+                  enabled: !_creando,
+                  validator: (v) {
+                    final s = v?.trim() ?? '';
+                    if (s.isEmpty) return 'La contraseña es requerida';
+                    if (s.length < 6) return 'Mínimo 6 caracteres';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _pass2Ctrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Confirmar contraseña',
+                    border: OutlineInputBorder(),
+                  ),
+                  textInputAction: TextInputAction.done,
+                  enabled: !_creando,
+                  onFieldSubmitted: (_) => _creando ? null : _crear(),
+                  validator: (v) {
+                    final s = v?.trim() ?? '';
+                    if (s.isEmpty) return 'Confirma la contraseña';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 14),
+
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Rol',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.85),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Reportero'),
+                      selected: _role == 'reportero',
+                      onSelected: _creando ? null : (_) => setState(() => _role = 'reportero'),
+                    ),
+                    ChoiceChip(
+                      label: const Text('Administrador'),
+                      selected: _role == 'admin',
+                      onSelected: _creando ? null : (_) => setState(() => _role = 'admin'),
+                    ),
+                  ],
+                ),
+
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _error!,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _creando ? null : () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            onPressed: _creando ? null : _crear,
+            icon: _creando
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.person_add),
+            label: Text(_creando ? 'Creando…' : 'Crear'),
           ),
         ],
       ),

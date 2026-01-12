@@ -11,6 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $nombre = isset($_POST['nombre']) ? trim($_POST['nombre']) : '';
 $password = isset($_POST['password']) ? trim($_POST['password']) : '';
+$role = isset($_POST['role']) ? trim($_POST['role']) : 'reportero';
 
 if ($nombre === '' || $password === '') {
     echo json_encode(['success' => false, 'message' => 'Nombre y contraseña son requeridos']);
@@ -22,8 +23,13 @@ if (strlen($password) < 6) {
     exit;
 }
 
+if ($role === '') $role = 'reportero';
+if (!in_array($role, ['reportero', 'admin'], true)) {
+    echo json_encode(['success' => false, 'message' => 'Role inválido']);
+    exit;
+}
+
 try {
-    // Evitar duplicados por nombre
     $stmt0 = $pdo->prepare("SELECT id FROM reporteros WHERE nombre = ? LIMIT 1");
     $stmt0->execute([$nombre]);
     if ($stmt0->fetch()) {
@@ -31,8 +37,8 @@ try {
         exit;
     }
 
-    $stmt = $pdo->prepare("INSERT INTO reporteros (nombre, password, role) VALUES (?, ?, 'reportero')");
-    $stmt->execute([$nombre, $password]);
+    $stmt = $pdo->prepare("INSERT INTO reporteros (nombre, password, role) VALUES (?, ?, ?)");
+    $stmt->execute([$nombre, $password, $role]);
 
     $newId = (int)$pdo->lastInsertId();
 

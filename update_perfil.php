@@ -12,6 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $reporteroId = isset($_POST['reportero_id']) ? intval($_POST['reportero_id']) : 0;
 $nombre      = isset($_POST['nombre']) ? trim($_POST['nombre']) : null;
 $password    = isset($_POST['password']) ? trim($_POST['password']) : null;
+$role = isset($_POST['role']) ? trim($_POST['role']) : null;
 
 if ($reporteroId <= 0) {
     echo json_encode(['success' => false, 'message' => 'reportero_id inválido']);
@@ -20,9 +21,15 @@ if ($reporteroId <= 0) {
 
 $nombre   = ($nombre !== null && $nombre !== '') ? $nombre : null;
 $password = ($password !== null && $password !== '') ? $password : null;
+$role = ($role !== null && $role !== '') ? $role : null;
 
-if ($nombre === null && $password === null) {
+if ($nombre === null && $password === null && $role === null) {
     echo json_encode(['success' => false, 'message' => 'No hay cambios para guardar']);
+    exit;
+}
+
+if ($role !== null && !in_array($role, ['reportero', 'admin'], true)) {
+    echo json_encode(['success' => false, 'message' => 'Role inválido']);
     exit;
 }
 
@@ -43,6 +50,11 @@ try {
     if ($password !== null) {
         $updates[] = "password = :password";
         $params[':password'] = $password;
+    }
+
+    if ($role !== null) {
+        $updates[] = "role = :role";
+        $params[':role'] = $role;
     }
 
     $sql = "UPDATE reporteros SET " . implode(", ", $updates) . " WHERE id = :id LIMIT 1";

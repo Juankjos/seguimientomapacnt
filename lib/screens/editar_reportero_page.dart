@@ -1,3 +1,4 @@
+// lib/screens/editar_reportero_page.dart
 import 'package:flutter/material.dart';
 
 import '../models/reportero_admin.dart';
@@ -18,6 +19,8 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
   final _pass2Ctrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
+  late String _role;
+
   bool _guardando = false;
   bool _borrando = false;
 
@@ -25,6 +28,9 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
   void initState() {
     super.initState();
     _nombreCtrl = TextEditingController(text: widget.reportero.nombre);
+
+    _role = (widget.reportero.role ?? 'reportero').trim();
+    if (_role != 'admin' && _role != 'reportero') _role = 'reportero';
   }
 
   @override
@@ -93,6 +99,7 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
         reporteroId: widget.reportero.id,
         nombre: nombre,
         password: passwordToSend,
+        role: _role,
       );
 
       if (!mounted) return;
@@ -187,11 +194,25 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
                 labelText: 'Nombre',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (_) => setState(() {}), // para actualizar inicial en avatar
+              onChanged: (_) => setState(() {}),
               validator: (v) {
                 if (v == null || v.trim().isEmpty) return 'El nombre es requerido';
                 return null;
               },
+            ),
+            const SizedBox(height: 14),
+
+            DropdownButtonFormField<String>(
+              value: _role,
+              decoration: const InputDecoration(
+                labelText: 'Rol',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'reportero', child: Text('Reportero')),
+                DropdownMenuItem(value: 'admin', child: Text('Administrador')),
+              ],
+              onChanged: (v) => setState(() => _role = (v ?? 'reportero')),
             ),
             const SizedBox(height: 14),
 

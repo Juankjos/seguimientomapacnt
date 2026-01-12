@@ -25,14 +25,18 @@ try {
         exit;
     }
     if ($u['role'] === 'admin') {
-        echo json_encode(['success' => false, 'message' => 'No se puede borrar un admin']);
-        exit;
+        $stmtCount = $pdo->query("SELECT COUNT(*) AS c FROM reporteros WHERE role='admin'");
+        $c = (int)($stmtCount->fetch()['c'] ?? 0);
+        if ($c <= 1) {
+            echo json_encode(['success' => false, 'message' => 'No se puede borrar el último admin']);
+            exit;
+        }
     }
 
     $stmt = $pdo->prepare("DELETE FROM reporteros WHERE id = ? LIMIT 1");
     $stmt->execute([$reporteroId]);
 
-    echo json_encode(['success' => true, 'message' => 'Reportero borrado']);
+    echo json_encode(['success' => true, 'message' => 'Usuario borrado']);
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Error al borrar reportero', 'error' => $e->getMessage()]);
