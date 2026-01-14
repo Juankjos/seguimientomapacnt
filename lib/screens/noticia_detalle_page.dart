@@ -46,7 +46,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
   String _formatearFechaCitaAmPm(DateTime dt) {
     final fecha = DateFormat("d 'de' MMMM 'del' y", 'es_MX').format(dt);
-    final hora = DateFormat("h:mm a", 'en_US').format(dt).toLowerCase(); // am/pm
+    final hora = DateFormat("h:mm a", 'en_US').format(dt).toLowerCase();
     return '$fecha, $hora';
   }
 
@@ -55,7 +55,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     super.initState();
     _noticia = widget.noticia;
 
-    // Re-evalúa cada 30s para habilitar/deshabilitar automáticamente según la hora actual
     _clockTick = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
       setState(() {});
@@ -94,7 +93,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
       );
     }
 
-    // 3) Después de la fecha (y por ende de la hora)
     if (nowDay.isAfter(citaDay)) {
       return (
         allowed: false,
@@ -102,7 +100,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
       );
     }
 
-    // 2) Misma fecha, pero después de la hora
     final nowMin = _aMinuto(now);
     final citaMin = _aMinuto(cita);
 
@@ -113,7 +110,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
       );
     }
 
-    // 1) Mismo día y antes (o igual) a la hora agendada
     return (allowed: true, message: null);
   }
 

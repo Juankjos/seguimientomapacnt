@@ -1,6 +1,8 @@
 <?php
 require 'config.php';
 
+header('Content-Type: application/json; charset=utf-8');
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['success' => false, 'message' => 'Método no permitido']);
@@ -26,7 +28,8 @@ $role        = isset($_POST['role']) ? trim($_POST['role']) : 'reportero';
 
 $titulo      = isset($_POST['noticia']) ? trim($_POST['noticia']) : null;
 $descripcion = isset($_POST['descripcion']) ? trim($_POST['descripcion']) : null;
-$fechaCita   = isset($_POST['fecha_cita']) ? trim($_POST['fecha_cita']) : null;
+
+$fechaNueva = normalize_mysql_datetime($_POST['fecha_cita'] ?? null);
 
 $ultimaMod = normalize_mysql_datetime($_POST['ultima_mod'] ?? null);
 if ($ultimaMod === null) {
@@ -46,7 +49,7 @@ try {
         LIMIT 1
     ");
     $stmt->execute([$noticiaId]);
-    $actual = $stmt->fetch();
+    $actual = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$actual) {
         echo json_encode(['success' => false, 'message' => 'Noticia no encontrada']);
@@ -58,9 +61,7 @@ try {
 
     $oldDesc  = $actual['descripcion'];
     $oldFecha = $actual['fecha_cita'];
-    $cambios  = intval($actual['fecha_cita_cambios'] ?? 0);
-
-    $fechaNueva = ($fechaCita !== null && $fechaCita !== '') ? $fechaCita : null;
+    $cambios  = (int)($actual['fecha_cita_cambios'] ?? 0);
 
     if ($role === 'admin') {
         if ($titulo !== null && $titulo !== '') {
@@ -73,7 +74,7 @@ try {
             $params[':descripcion'] = ($descripcion === '') ? null : $descripcion;
         }
 
-        if ($fechaCita !== null) {
+        if (array_key_exists('fecha_cita', $_POST)) {
             if (($oldFecha ?? '') !== ($fechaNueva ?? '')) {
                 $updates[] = "fecha_cita_anterior = :fecha_anterior";
                 $params[':fecha_anterior'] = $oldFecha;
@@ -104,7 +105,7 @@ try {
             $params[':descripcion'] = $descripcion;
         }
 
-        if ($fechaCita !== null) {
+        if (array_key_exists('fecha_cita', $_POST)) {
             $oldFechaStr = ($oldFecha ?? '');
             $newFechaStr = ($fechaNueva ?? '');
 
@@ -121,7 +122,7 @@ try {
                     $params[':fecha_anterior'] = $oldFecha;
                 }
 
-                $updates[] = "fecha_cita_cambios = fecha_cita_cambios + 1";
+                $updates[] = "fecha_cita_cambios = COALESCE(fecha_cita_cambios, 0) + 1";
             }
 
             $updates[] = "fecha_cita = :fecha_cita";
@@ -154,7 +155,7 @@ try {
         LIMIT 1
     ");
     $stmt2->execute([$noticiaId]);
-    $row = $stmt2->fetch();
+    $row = $stmt2->fetch(PDO::FETCH_ASSOC);
 
     echo json_encode(['success' => true, 'data' => $row]);
 } catch (Exception $e) {
