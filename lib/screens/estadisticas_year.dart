@@ -720,11 +720,19 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Text(
           _selectedMonth == null
               ? 'Meses • ${widget.year}'
               : '${_nombreMes(_selectedMonth!)} • ${widget.year}',
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Cerrar',
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
       ),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 220),
