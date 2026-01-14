@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart' as latlng;
 import 'package:flutter/services.dart';
+import 'dart:async';
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
@@ -33,6 +34,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   late Noticia _noticia;
   bool _eliminando = false;
 
+  Timer? _clockTick;
+
   bool get _soloLectura => widget.soloLectura || _noticia.pendiente == false;
 
   bool get _yaTieneHoraLlegada => _noticia.horaLlegada != null;
@@ -51,10 +54,68 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   void initState() {
     super.initState();
     _noticia = widget.noticia;
+
+    // Re-evalúa cada 30s para habilitar/deshabilitar automáticamente según la hora actual
+    _clockTick = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _clockTick?.cancel();
+    super.dispose();
   }
 
   DateTime _aMinuto(DateTime dt) =>
       DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+
+  ({bool allowed, String? message}) _validarInicioRuta() {
+    final cita = _noticia.fechaCita;
+    if (cita == null) {
+      return (
+        allowed: false,
+        message: 'No hay fecha de cita, asigna Fecha/Hora para iniciar ruta.',
+      );
+    }
+
+    final now = DateTime.now();
+
+    final nowDay = DateTime(now.year, now.month, now.day);
+    final citaDay = DateTime(cita.year, cita.month, cita.day);
+
+    // 3) Antes de la fecha
+    if (nowDay.isBefore(citaDay)) {
+      return (
+        allowed: false,
+        message:
+            'Estás adelantado a la cita, cambia la Fecha para iniciar ruta.',
+      );
+    }
+
+    // 3) Después de la fecha (y por ende de la hora)
+    if (nowDay.isAfter(citaDay)) {
+      return (
+        allowed: false,
+        message: 'Estás atrasado, cambia la Fecha/Hora para iniciar ruta.',
+      );
+    }
+
+    // 2) Misma fecha, pero después de la hora
+    final nowMin = _aMinuto(now);
+    final citaMin = _aMinuto(cita);
+
+    if (nowMin.isAfter(citaMin)) {
+      return (
+        allowed: false,
+        message: 'Estás atrasado, cambia la Hora para iniciar ruta.',
+      );
+    }
+
+    // 1) Mismo día y antes (o igual) a la hora agendada
+    return (allowed: true, message: null);
+  }
 
   Color? _colorHoraLlegada() {
     final llegada = _noticia.horaLlegada;
@@ -208,6 +269,10 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     final int cambios = _noticia.fechaCitaCambios ?? 0;
     final bool limiteCambiosFecha = (widget.role == 'reportero') && cambios >= 2;
     final bool esAdmin = widget.role == 'admin';
+
+    final routeGate = (!esAdmin && !_soloLectura)
+        ? _validarInicioRuta()
+        : (allowed: true, message: null);
 
     final domicilio = (_noticia.domicilio ?? '').trim();
     final domicilioTxt = domicilio.isNotEmpty ? domicilio : 'Sin domicilio';
@@ -499,79 +564,108 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                               width: double.infinity,
                               child: ElevatedButton.icon(
                                 icon: Icon(
-                                    _soloLectura ? Icons.map : Icons.directions),
-                                label: Text(_soloLectura
-                                    ? 'Mostrar mapa completo'
-                                    : 'Ir a destino ahora'),
-                                onPressed: () async {
-                                  if (_soloLectura) {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            MapaCompletoPage(noticia: _noticia),
-                                      ),
-                                    );
-                                    return;
-                                  }
+                                  _soloLectura ? Icons.map : Icons.directions,
+                                ),
+                                label: Text(
+                                  _soloLectura
+                                      ? 'Mostrar mapa completo'
+                                      : 'Ir a destino ahora',
+                                  textAlign: TextAlign.center,
+                                ),
+                                onPressed: _soloLectura
+                                    ? () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => MapaCompletoPage(
+                                              noticia: _noticia,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    : (routeGate.allowed
+                                        ? () async {
+                                            final result = await Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => TrayectoRutaPage(
+                                                  noticia: _noticia,
+                                                  wsToken: ApiService.wsToken,
+                                                  wsBaseUrl: ApiService.wsBaseUrl,
+                                                ),
+                                              ),
+                                            );
 
-                                  final result = await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => TrayectoRutaPage(
-                                        noticia: _noticia,
-                                        wsToken: ApiService.wsToken,
-                                        wsBaseUrl: ApiService.wsBaseUrl,
-                                      ),
-                                    ),
-                                  );
+                                            if (!mounted) return;
+                                            if (result == null) return;
 
-                                  if (!mounted) return;
-                                  if (result == null) return;
+                                            DateTime _parseMysqlDateTime(String? v) {
+                                              if (v == null || v.trim().isEmpty) {
+                                                return DateTime.now();
+                                              }
+                                              final s =
+                                                  v.trim().replaceFirst(' ', 'T');
+                                              return DateTime.tryParse(s) ??
+                                                  DateTime.now();
+                                            }
 
-                                  DateTime _parseMysqlDateTime(String? v) {
-                                    if (v == null || v.trim().isEmpty) {
-                                      return DateTime.now();
-                                    }
-                                    final s = v.trim().replaceFirst(' ', 'T');
-                                    return DateTime.tryParse(s) ?? DateTime.now();
-                                  }
+                                            final Map<String, dynamic> r =
+                                                Map<String, dynamic>.from(
+                                                    result as Map);
+                                            final lat =
+                                                (r['llegadaLatitud'] as num?)
+                                                    ?.toDouble();
+                                            final lon =
+                                                (r['llegadaLongitud'] as num?)
+                                                    ?.toDouble();
+                                            final horaStr =
+                                                r['horaLlegada']?.toString();
+                                            final hora =
+                                                _parseMysqlDateTime(horaStr);
 
-                                  final Map<String, dynamic> r =
-                                      Map<String, dynamic>.from(result as Map);
-                                  final lat =
-                                      (r['llegadaLatitud'] as num?)?.toDouble();
-                                  final lon =
-                                      (r['llegadaLongitud'] as num?)?.toDouble();
-                                  final horaStr = r['horaLlegada']?.toString();
-                                  final hora = _parseMysqlDateTime(horaStr);
-
-                                  if (lat != null && lon != null) {
-                                    setState(() {
-                                      _noticia = Noticia(
-                                        id: _noticia.id,
-                                        noticia: _noticia.noticia,
-                                        descripcion: _noticia.descripcion,
-                                        cliente: _noticia.cliente,
-                                        domicilio: _noticia.domicilio,
-                                        reportero: _noticia.reportero,
-                                        fechaCita: _noticia.fechaCita,
-                                        fechaCitaAnterior: _noticia.fechaCitaAnterior,
-                                        fechaCitaCambios: _noticia.fechaCitaCambios,
-                                        fechaPago: _noticia.fechaPago,
-                                        latitud: _noticia.latitud,
-                                        longitud: _noticia.longitud,
-                                        horaLlegada: hora,
-                                        llegadaLatitud: lat,
-                                        llegadaLongitud: lon,
-                                        pendiente: _noticia.pendiente,
-                                        ultimaMod: DateTime.now(),
-                                      );
-                                    });
-                                  }
-                                },
+                                            if (lat != null && lon != null) {
+                                              setState(() {
+                                                _noticia = Noticia(
+                                                  id: _noticia.id,
+                                                  noticia: _noticia.noticia,
+                                                  descripcion: _noticia.descripcion,
+                                                  cliente: _noticia.cliente,
+                                                  domicilio: _noticia.domicilio,
+                                                  reportero: _noticia.reportero,
+                                                  fechaCita: _noticia.fechaCita,
+                                                  fechaCitaAnterior:
+                                                      _noticia.fechaCitaAnterior,
+                                                  fechaCitaCambios:
+                                                      _noticia.fechaCitaCambios,
+                                                  fechaPago: _noticia.fechaPago,
+                                                  latitud: _noticia.latitud,
+                                                  longitud: _noticia.longitud,
+                                                  horaLlegada: hora,
+                                                  llegadaLatitud: lat,
+                                                  llegadaLongitud: lon,
+                                                  pendiente: _noticia.pendiente,
+                                                  ultimaMod: DateTime.now(),
+                                                );
+                                              });
+                                            }
+                                          }
+                                        : null),
                               ),
                             ),
+
+                            if (!_soloLectura &&
+                                !routeGate.allowed &&
+                                routeGate.message != null) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                routeGate.message!,
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
                           ],
 
                           if (!_soloLectura &&
