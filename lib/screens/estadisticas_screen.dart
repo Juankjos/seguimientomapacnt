@@ -102,6 +102,18 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     }
   }
 
+  // ------------------- Helpers de roles -------------------
+
+  bool _isAdmin(ReporteroAdmin? r) {
+    final role = (r?.role ?? 'reportero').toLowerCase().trim();
+    return role == 'admin';
+  }
+
+  bool _isAdminId(int rid, Map<int, ReporteroAdmin> repById) {
+    if (rid == 0) return false; // "Sin asignar" sí se muestra
+    return _isAdmin(repById[rid]);
+  }
+
   // ------------------- Helpers de fechas -------------------
 
   DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -147,7 +159,8 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     return !dt.isBefore(start) && dt.isBefore(endExclusive);
   }
 
-  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+  DateTime _aMinuto(DateTime dt) =>
+      DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
 
   bool _esAtrasada(Noticia n) {
     final llegada = n.horaLlegada;
@@ -161,20 +174,25 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
   List<ReporterStats> _buildStatsToday() {
     final b = _rangeBounds(StatsRange.day);
 
+    final repById = {for (final r in _reporteros) r.id: r};
+
     final Map<int, ReporterStats> map = {
       for (final r in _reporteros)
-        r.id: ReporterStats(
-          reporteroId: r.id,
-          nombre: r.nombre,
-          completadas: 0,
-          atrasadas: 0,
-          agendadas: 0,
-          enCurso: 0,
-        ),
+        if (!_isAdmin(r))
+          r.id: ReporterStats(
+            reporteroId: r.id,
+            nombre: r.nombre,
+            completadas: 0,
+            atrasadas: 0,
+            agendadas: 0,
+            enCurso: 0,
+          ),
     };
 
     for (final n in _noticias) {
       final rid = n.reporteroId ?? 0;
+
+      if (_isAdminId(rid, repById)) continue;
 
       if (!map.containsKey(rid)) {
         map[rid] = ReporterStats(
@@ -192,10 +210,9 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
       final isCompletadaHoy = _inRange(n.horaLlegada, b.start, b.end);
       final isAgendadaHoy =
           (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.end);
-      final isEnCursoHoy =
-        (n.pendiente == true) &&
-        (n.horaLlegada == null) &&
-        _inRange(n.fechaCita, b.start, b.end);
+      final isEnCursoHoy = (n.pendiente == true) &&
+          (n.horaLlegada == null) &&
+          _inRange(n.fechaCita, b.start, b.end);
 
       int addCompletada = 0;
       int addAtrasada = 0;
@@ -235,16 +252,19 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
   List<ReporterStats> _buildStatsLegacy(StatsRange range) {
     final bounds = _rangeBounds(range);
 
+    final repById = {for (final r in _reporteros) r.id: r};
+
     final Map<int, ReporterStats> map = {
       for (final r in _reporteros)
-        r.id: ReporterStats(
-          reporteroId: r.id,
-          nombre: r.nombre,
-          enCurso: 0,
-          completadas: 0,
-          atrasadas: 0,
-          agendadas: 0,
-        ),
+        if (!_isAdmin(r))
+          r.id: ReporterStats(
+            reporteroId: r.id,
+            nombre: r.nombre,
+            enCurso: 0,
+            completadas: 0,
+            atrasadas: 0,
+            agendadas: 0,
+          ),
     };
 
     for (final n in _noticias) {
@@ -252,6 +272,8 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
       if (!_inRange(ts, bounds.start, bounds.end)) continue;
 
       final rid = n.reporteroId ?? 0;
+
+      if (_isAdminId(rid, repById)) continue;
 
       if (!map.containsKey(rid)) {
         map[rid] = ReporterStats(
@@ -455,8 +477,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
                     LayoutBuilder(
                       builder: (context, c) {
                         final bool narrow = c.maxWidth < 380;
-                        final double? maxPillW =
-                            narrow ? (c.maxWidth - 8) / 2 : null;
+                        final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
 
                         final pills = <Widget>[
                           _pill('Total: $totalTareas', maxWidth: maxPillW, isTotal: true),

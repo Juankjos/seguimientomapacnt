@@ -36,6 +36,20 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
     _years = _buildYearsList();
   }
 
+  // ------------------- Roles (ocultar admins en la gráfica) -------------------
+
+  bool _isAdmin(ReporteroAdmin? r) {
+    final role = (r?.role ?? 'reportero').toLowerCase().trim();
+    return role == 'admin';
+  }
+
+  bool _isAdminId(int rid, Map<int, ReporteroAdmin> repById) {
+    if (rid == 0) return false;
+    final r = repById[rid];
+    if (r == null) return false;
+    return _isAdmin(r);
+  }
+
   // ------------------- Helpers -------------------
 
   ({DateTime start, DateTime end}) _yearBounds(int year) {
@@ -49,7 +63,8 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
     return !dt.isBefore(start) && dt.isBefore(endExclusive);
   }
 
-  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+  DateTime _aMinuto(DateTime dt) =>
+      DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
 
   bool _esAtrasada(Noticia n) {
     final llegada = n.horaLlegada;
@@ -74,7 +89,8 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
 
     years.add(nowYear);
 
-    final past = years.where((y) => y < nowYear).toList()..sort((a, b) => b.compareTo(a));
+    final past = years.where((y) => y < nowYear).toList()
+      ..sort((a, b) => b.compareTo(a));
     final future = years.where((y) => y > nowYear).toList()..sort();
 
     return [nowYear, ...past, ...future];
@@ -93,24 +109,28 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
     return c;
   }
 
-  // ✅ Incluye Atrasadas y En curso correcto (si ya es completada/atrasada, NO cuenta como en curso)
   List<_ReporterStats> _buildStatsForYear(int year, {required bool includeEnCurso}) {
     final b = _yearBounds(year);
 
+    final repById = {for (final r in widget.reporteros) r.id: r};
+
     final Map<int, _ReporterStats> map = {
       for (final r in widget.reporteros)
-        r.id: _ReporterStats(
-          reporteroId: r.id,
-          nombre: r.nombre,
-          completadas: 0,
-          atrasadas: 0,
-          agendadas: 0,
-          enCurso: 0,
-        ),
+        if (!_isAdmin(r))
+          r.id: _ReporterStats(
+            reporteroId: r.id,
+            nombre: r.nombre,
+            completadas: 0,
+            atrasadas: 0,
+            agendadas: 0,
+            enCurso: 0,
+          ),
     };
 
     for (final n in widget.noticias) {
       final rid = n.reporteroId ?? 0;
+
+      if (_isAdminId(rid, repById)) continue;
 
       map.putIfAbsent(
         rid,
@@ -128,16 +148,14 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
 
       final isCompletada = _inRange(n.horaLlegada, b.start, b.end);
 
-      final isEnCurso =
-        includeEnCurso &&
-        (n.pendiente == true) &&
-        (n.horaLlegada == null) &&
-        _inRange(n.fechaCita, b.start, b.end);
+      final isEnCurso = includeEnCurso &&
+          (n.pendiente == true) &&
+          (n.horaLlegada == null) &&
+          _inRange(n.fechaCita, b.start, b.end);
 
-      final isAgendada =
-        (n.pendiente == true) &&
-        _inRange(n.fechaCita, b.start, b.end) &&
-        !(includeEnCurso && isEnCurso);
+      final isAgendada = (n.pendiente == true) &&
+          _inRange(n.fechaCita, b.start, b.end) &&
+          !(includeEnCurso && isEnCurso);
 
       int addCompletada = 0;
       int addAtrasada = 0;
@@ -375,7 +393,8 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                         final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
 
                         final pills = <Widget>[
-                          _pill(theme, 'Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
+                          _pill(theme, 'Total: $totalTareas',
+                              maxWidth: maxPillW, isTotal: true),
                           if (isCurrent) ...[
                             _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
                             _pill(theme, 'Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
@@ -398,7 +417,10 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                     Expanded(
                       child: SfCartesianChart(
                         tooltipBehavior: _tooltip,
-                        legend: const Legend(isVisible: true, position: LegendPosition.bottom),
+                        legend: const Legend(
+                          isVisible: true,
+                          position: LegendPosition.bottom,
+                        ),
                         plotAreaBorderWidth: 0,
                         primaryXAxis: CategoryAxis(
                           labelRotation: hasMany ? 45 : 0,
@@ -420,7 +442,8 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                             dataSource: stats,
                             xValueMapper: (d, _) => d.nombre,
                             yValueMapper: (d, _) => d.completadas,
-                            dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
+                            dataLabelMapper: (d, _) =>
+                                d.completadas == 0 ? null : '${d.completadas}',
                             dataLabelSettings: const DataLabelSettings(isVisible: true),
                             animationDuration: 650,
                           ),
@@ -429,7 +452,8 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                             dataSource: stats,
                             xValueMapper: (d, _) => d.nombre,
                             yValueMapper: (d, _) => d.atrasadas,
-                            dataLabelMapper: (d, _) => d.atrasadas == 0 ? null : '${d.atrasadas}',
+                            dataLabelMapper: (d, _) =>
+                                d.atrasadas == 0 ? null : '${d.atrasadas}',
                             dataLabelSettings: const DataLabelSettings(isVisible: true),
                             animationDuration: 650,
                             color: Colors.red.shade900,
@@ -440,7 +464,8 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                               dataSource: stats,
                               xValueMapper: (d, _) => d.nombre,
                               yValueMapper: (d, _) => d.enCurso,
-                              dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
+                              dataLabelMapper: (d, _) =>
+                                  d.enCurso == 0 ? null : '${d.enCurso}',
                               dataLabelSettings: const DataLabelSettings(isVisible: true),
                               animationDuration: 650,
                             )
@@ -450,7 +475,8 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
                               dataSource: stats,
                               xValueMapper: (d, _) => d.nombre,
                               yValueMapper: (d, _) => d.agendadas,
-                              dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
+                              dataLabelMapper: (d, _) =>
+                                  d.agendadas == 0 ? null : '${d.agendadas}',
                               dataLabelSettings: const DataLabelSettings(isVisible: true),
                               animationDuration: 650,
                             ),
@@ -467,7 +493,12 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
     );
   }
 
-  Widget _pill(ThemeData theme, String text, {double? maxWidth, bool isTotal = false}) {
+  Widget _pill(
+    ThemeData theme,
+    String text, {
+    double? maxWidth,
+    bool isTotal = false,
+  }) {
     final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -494,7 +525,7 @@ class _EstadisticasYearState extends State<EstadisticasYear> {
   }
 }
 
-// ======================= Pantalla Meses por Año =======================
+// ======================= Meses por Año (para años anteriores) =======================
 
 class _YearMonthsPage extends StatefulWidget {
   final int year;
@@ -522,6 +553,22 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
     _tooltip = TooltipBehavior(enable: true);
   }
 
+  // ------------------- Roles (ocultar admins en la gráfica) -------------------
+
+  bool _isAdmin(ReporteroAdmin? r) {
+    final role = (r?.role ?? 'reportero').toLowerCase().trim();
+    return role == 'admin';
+  }
+
+  bool _isAdminId(int rid, Map<int, ReporteroAdmin> repById) {
+    if (rid == 0) return false;
+    final r = repById[rid];
+    if (r == null) return false;
+    return _isAdmin(r);
+  }
+
+  // ------------------- Helpers mes -------------------
+
   ({DateTime start, DateTime end}) _monthBounds(int year, int month) {
     final start = DateTime(year, month, 1);
     final end = (month == 12) ? DateTime(year + 1, 1, 1) : DateTime(year, month + 1, 1);
@@ -533,18 +580,21 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
     return !dt.isBefore(start) && dt.isBefore(endExclusive);
   }
 
-  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+  bool _isCurrentMonth(int year, int month) {
+    final now = DateTime.now();
+    return now.year == year && now.month == month;
+  }
+
+  // ------------------- ATRASADAS -------------------
+
+  DateTime _aMinuto(DateTime dt) =>
+      DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
 
   bool _esAtrasada(Noticia n) {
     final llegada = n.horaLlegada;
     final cita = n.fechaCita;
     if (llegada == null || cita == null) return false;
     return _aMinuto(llegada).isAfter(_aMinuto(cita));
-  }
-
-  bool _isCurrentMonth(int year, int month) {
-    final now = DateTime.now();
-    return now.year == year && now.month == month;
   }
 
   int _countNoticiasEnMes(int year, int month) {
@@ -567,20 +617,25 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
   }) {
     final b = _monthBounds(year, month);
 
+    final repById = {for (final r in widget.reporteros) r.id: r};
+
     final Map<int, _ReporterStats> map = {
       for (final r in widget.reporteros)
-        r.id: _ReporterStats(
-          reporteroId: r.id,
-          nombre: r.nombre,
-          completadas: 0,
-          atrasadas: 0,
-          agendadas: 0,
-          enCurso: 0,
-        ),
+        if (!_isAdmin(r))
+          r.id: _ReporterStats(
+            reporteroId: r.id,
+            nombre: r.nombre,
+            completadas: 0,
+            atrasadas: 0,
+            agendadas: 0,
+            enCurso: 0,
+          ),
     };
 
     for (final n in widget.noticias) {
       final rid = n.reporteroId ?? 0;
+
+      if (_isAdminId(rid, repById)) continue;
 
       map.putIfAbsent(
         rid,
@@ -598,16 +653,14 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
 
       final isCompletada = _inRange(n.horaLlegada, b.start, b.end);
 
-      final isEnCurso =
-        includeEnCurso &&
-        (n.pendiente == true) &&
-        (n.horaLlegada == null) &&
-        _inRange(n.fechaCita, b.start, b.end);
+      final isEnCurso = includeEnCurso &&
+          (n.pendiente == true) &&
+          (n.horaLlegada == null) &&
+          _inRange(n.fechaCita, b.start, b.end);
 
-      final isAgendada =
-        (n.pendiente == true) &&
-        _inRange(n.fechaCita, b.start, b.end) &&
-        !(includeEnCurso && isEnCurso);
+      final isAgendada = (n.pendiente == true) &&
+          _inRange(n.fechaCita, b.start, b.end) &&
+          !(includeEnCurso && isEnCurso);
 
       int addCompletada = 0;
       int addAtrasada = 0;
@@ -722,7 +775,6 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
               itemBuilder: (context, index) {
                 final month = index + 1;
                 final nombreMes = _nombreMes(month);
-                final efem = _efemerideMes(month, theme);
                 final count = _countNoticiasEnMes(widget.year, month);
                 final tiene = count > 0;
 
@@ -757,13 +809,10 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Tooltip(
-                          message: efem.tooltip,
-                          child: CircleAvatar(
-                            radius: 16,
-                            backgroundColor: efem.color,
-                            child: Icon(efem.icon, size: 18, color: Colors.white),
-                          ),
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor: theme.colorScheme.primary,
+                          child: const Icon(Icons.calendar_month, size: 18, color: Colors.white),
                         ),
                         const SizedBox(height: 8),
                         FittedBox(
@@ -816,7 +865,8 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
     final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
-    final totalTareas = totalCompletadas + totalAtrasadas + totalAgendadas + (isCurrent ? totalEnCurso : 0);
+    final totalTareas =
+        totalCompletadas + totalAtrasadas + (isCurrent ? totalEnCurso : totalAgendadas);
 
     final hasMany = stats.length > 8;
 
@@ -829,7 +879,7 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
             children: [
               OutlinedButton.icon(
                 icon: const Icon(Icons.arrow_back),
-                label: const Text('Año'),
+                label: const Text('Meses'),
                 onPressed: () => setState(() => _selectedMonth = null),
               ),
               const SizedBox(width: 8),
@@ -847,104 +897,123 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
             ],
           ),
           const SizedBox(height: 10),
-
-          Card(
-            elevation: 1,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: LayoutBuilder(
-                builder: (context, c) {
-                  final bool narrow = c.maxWidth < 380;
-                  final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
-
-                  final pills = <Widget>[
-                    _pill(theme, 'Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
-                    _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
-                    _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
-                    _pill(theme, 'Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
-                    if (isCurrent) _pill(theme, 'En curso: $totalEnCurso', maxWidth: maxPillW),
-                  ];
-
-                  return Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        child: Text(
-                          'Total',
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      ...pills,
-                    ],
-                  );
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-
           Expanded(
-            child: SfCartesianChart(
-              tooltipBehavior: _tooltip,
-              legend: const Legend(isVisible: true, position: LegendPosition.bottom),
-              plotAreaBorderWidth: 0,
-              primaryXAxis: CategoryAxis(
-                labelRotation: hasMany ? 45 : 0,
-                labelIntersectAction: AxisLabelIntersectAction.rotate45,
-                majorGridLines: const MajorGridLines(width: 0),
+            child: Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-              primaryYAxis: NumericAxis(
-                minimum: 0,
-                majorGridLines: MajorGridLines(
-                  width: 1,
-                  color: theme.dividerColor.withOpacity(0.35),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${_nombreMes(month)} ${widget.year}',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final bool narrow = c.maxWidth < 380;
+                        final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
+
+                        final pills = <Widget>[
+                          _pill(theme, 'Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
+                          _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
+                          _pill(theme, 'Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
+                          if (isCurrent)
+                            _pill(theme, 'En curso: $totalEnCurso', maxWidth: maxPillW)
+                          else
+                            _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
+                        ];
+
+                        return Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: pills,
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: SfCartesianChart(
+                        tooltipBehavior: _tooltip,
+                        legend: const Legend(isVisible: true, position: LegendPosition.bottom),
+                        plotAreaBorderWidth: 0,
+                        primaryXAxis: CategoryAxis(
+                          labelRotation: hasMany ? 45 : 0,
+                          labelIntersectAction: AxisLabelIntersectAction.rotate45,
+                          majorGridLines: const MajorGridLines(width: 0),
+                        ),
+                        primaryYAxis: NumericAxis(
+                          minimum: 0,
+                          interval: 1,
+                          numberFormat: NumberFormat('#0'),
+                          majorGridLines: MajorGridLines(
+                            width: 1,
+                            color: theme.dividerColor.withOpacity(0.35),
+                          ),
+                        ),
+                        series: [
+                          ColumnSeries<_ReporterStats, String>(
+                            name: 'Completadas',
+                            dataSource: stats,
+                            xValueMapper: (d, _) => d.nombre,
+                            yValueMapper: (d, _) => d.completadas,
+                            dataLabelMapper: (d, _) =>
+                                d.completadas == 0 ? null : '${d.completadas}',
+                            dataLabelSettings: const DataLabelSettings(isVisible: true),
+                            animationDuration: 650,
+                          ),
+                          ColumnSeries<_ReporterStats, String>(
+                            name: 'Atrasadas',
+                            dataSource: stats,
+                            xValueMapper: (d, _) => d.nombre,
+                            yValueMapper: (d, _) => d.atrasadas,
+                            dataLabelMapper: (d, _) =>
+                                d.atrasadas == 0 ? null : '${d.atrasadas}',
+                            dataLabelSettings: const DataLabelSettings(isVisible: true),
+                            animationDuration: 650,
+                            color: Colors.red.shade900,
+                          ),
+                          if (isCurrent)
+                            ColumnSeries<_ReporterStats, String>(
+                              name: 'En curso',
+                              dataSource: stats,
+                              xValueMapper: (d, _) => d.nombre,
+                              yValueMapper: (d, _) => d.enCurso,
+                              dataLabelMapper: (d, _) =>
+                                  d.enCurso == 0 ? null : '${d.enCurso}',
+                              dataLabelSettings: const DataLabelSettings(isVisible: true),
+                              animationDuration: 650,
+                            )
+                          else
+                            ColumnSeries<_ReporterStats, String>(
+                              name: 'Agendadas',
+                              dataSource: stats,
+                              xValueMapper: (d, _) => d.nombre,
+                              yValueMapper: (d, _) => d.agendadas,
+                              dataLabelMapper: (d, _) =>
+                                  d.agendadas == 0 ? null : '${d.agendadas}',
+                              dataLabelSettings: const DataLabelSettings(isVisible: true),
+                              animationDuration: 650,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              series: [
-                ColumnSeries<_ReporterStats, String>(
-                  name: 'Completadas',
-                  dataSource: stats,
-                  xValueMapper: (d, _) => d.nombre,
-                  yValueMapper: (d, _) => d.completadas,
-                  dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
-                  dataLabelSettings: const DataLabelSettings(isVisible: true),
-                  animationDuration: 650,
-                ),
-                ColumnSeries<_ReporterStats, String>(
-                  name: 'Atrasadas',
-                  dataSource: stats,
-                  xValueMapper: (d, _) => d.nombre,
-                  yValueMapper: (d, _) => d.atrasadas,
-                  dataLabelMapper: (d, _) => d.atrasadas == 0 ? null : '${d.atrasadas}',
-                  dataLabelSettings: const DataLabelSettings(isVisible: true),
-                  animationDuration: 650,
-                  color: Colors.red.shade900,
-                ),
-                if (isCurrent)
-                  ColumnSeries<_ReporterStats, String>(
-                    name: 'En curso',
-                    dataSource: stats,
-                    xValueMapper: (d, _) => d.nombre,
-                    yValueMapper: (d, _) => d.enCurso,
-                    dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
-                    dataLabelSettings: const DataLabelSettings(isVisible: true),
-                    animationDuration: 650,
-                  ),
-                ColumnSeries<_ReporterStats, String>(
-                  name: 'Agendadas',
-                  dataSource: stats,
-                  xValueMapper: (d, _) => d.nombre,
-                  yValueMapper: (d, _) => d.agendadas,
-                  dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
-                  dataLabelSettings: const DataLabelSettings(isVisible: true),
-                  animationDuration: 650,
-                ),
-              ],
             ),
           ),
         ],
@@ -952,7 +1021,12 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
     );
   }
 
-  Widget _pill(ThemeData theme, String text, {double? maxWidth, bool isTotal = false}) {
+  Widget _pill(
+    ThemeData theme,
+    String text, {
+    double? maxWidth,
+    bool isTotal = false,
+  }) {
     final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -984,102 +1058,6 @@ class _YearMonthsPageState extends State<_YearMonthsPage> {
       'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
     ];
     return nombres[month - 1];
-  }
-}
-
-// ------------------- MESES (decorativos) -------------------
-
-class _MesEfemeride {
-  final IconData icon;
-  final Color color;
-  final String tooltip;
-  const _MesEfemeride({
-    required this.icon,
-    required this.color,
-    required this.tooltip,
-  });
-}
-
-_MesEfemeride _efemerideMes(int month, ThemeData theme) {
-  switch (month) {
-    case 1:
-      return const _MesEfemeride(
-        icon: Icons.celebration,
-        color: Color(0xFFF94144),
-        tooltip: 'Año Nuevo',
-      );
-    case 2:
-      return const _MesEfemeride(
-        icon: Icons.favorite,
-        color: Color(0xFFF3722C),
-        tooltip: 'Día del Amor y la Amistad',
-      );
-    case 3:
-      return const _MesEfemeride(
-        icon: Icons.emoji_nature,
-        color: Color(0xFFF8961E),
-        tooltip: 'Primavera',
-      );
-    case 4:
-      return const _MesEfemeride(
-        icon: Icons.face_outlined,
-        color: Color(0xFFF9844A),
-        tooltip: 'Día del Niño',
-      );
-    case 5:
-      return const _MesEfemeride(
-        icon: Icons.face_2_rounded,
-        color: Color(0xFFF9C74F),
-        tooltip: 'Día de las Madres',
-      );
-    case 6:
-      return const _MesEfemeride(
-        icon: Icons.wb_sunny,
-        color: Color(0xFF90BE6D),
-        tooltip: 'Verano',
-      );
-    case 7:
-      return const _MesEfemeride(
-        icon: Icons.beach_access,
-        color: Color(0xFF43AA8B),
-        tooltip: 'Vacaciones de verano',
-      );
-    case 8:
-      return const _MesEfemeride(
-        icon: Icons.school,
-        color: Color(0xFF4D908E),
-        tooltip: 'Regreso a clases',
-      );
-    case 9:
-      return const _MesEfemeride(
-        icon: Icons.flag,
-        color: Color(0xFF577590),
-        tooltip: 'Independencia de México',
-      );
-    case 10:
-      return const _MesEfemeride(
-        icon: Icons.nights_stay,
-        color: Color(0xFF277DA1),
-        tooltip: 'Día de Muertos',
-      );
-    case 11:
-      return const _MesEfemeride(
-        icon: Icons.local_florist,
-        color: Color(0xFF4D908E),
-        tooltip: 'Día de Muertos / Revolución',
-      );
-    case 12:
-      return const _MesEfemeride(
-        icon: Icons.ice_skating_outlined,
-        color: Color(0xFFF94144),
-        tooltip: 'Navidad',
-      );
-    default:
-      return _MesEfemeride(
-        icon: Icons.event,
-        color: theme.colorScheme.primary,
-        tooltip: 'Mes',
-      );
   }
 }
 

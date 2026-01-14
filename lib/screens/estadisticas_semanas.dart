@@ -1,4 +1,4 @@
-// lib/screens/estadisticas_screen.dart
+// lib/screens/estadisticas_semanas.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
@@ -56,6 +56,18 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
   void dispose() {
     _page.dispose();
     super.dispose();
+  }
+
+  // ------------------- Roles (ocultar admins) -------------------
+
+  bool _isAdmin(ReporteroAdmin? r) {
+    final role = (r?.role ?? 'reportero').toLowerCase().trim();
+    return role == 'admin';
+  }
+
+  bool _isAdminId(int rid, Map<int, ReporteroAdmin> repById) {
+    if (rid == 0) return false; // "Sin asignar" sí se muestra
+    return _isAdmin(repById[rid]);
   }
 
   Future<void> _goPrev() async {
@@ -135,7 +147,8 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
 
   // ------------------- ATRASADAS -------------------
 
-  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+  DateTime _aMinuto(DateTime dt) =>
+      DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
 
   bool _esAtrasada(Noticia n) {
     final llegada = n.horaLlegada;
@@ -144,7 +157,7 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
     return _aMinuto(llegada).isAfter(_aMinuto(cita));
   }
 
-  // ------------------- Stats por semana (✅ nueva lógica con atrasadas) -------------------
+  // ------------------- Stats por semana -------------------
 
   List<_ReporterStats> _buildStatsWeek(
     _WeekRange w, {
@@ -153,20 +166,25 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
     final start = w.start;
     final endEx = w.endExclusive;
 
+    final repById = {for (final r in widget.reporteros) r.id: r};
+
     final Map<int, _ReporterStats> map = {
       for (final r in widget.reporteros)
-        r.id: _ReporterStats(
-          reporteroId: r.id,
-          nombre: r.nombre,
-          completadas: 0,
-          atrasadas: 0,
-          agendadas: 0,
-          enCurso: 0,
-        ),
+        if (!_isAdmin(r))
+          r.id: _ReporterStats(
+            reporteroId: r.id,
+            nombre: r.nombre,
+            completadas: 0,
+            atrasadas: 0,
+            agendadas: 0,
+            enCurso: 0,
+          ),
     };
 
     for (final n in widget.noticias) {
       final rid = n.reporteroId ?? 0;
+
+      if (_isAdminId(rid, repById)) continue;
 
       if (!map.containsKey(rid)) {
         map[rid] = _ReporterStats(
@@ -182,15 +200,15 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
       final cur = map[rid]!;
 
       final isCompletada = _inRange(n.horaLlegada, start, endEx);
-      final isEnCurso =
-        includeEnCurso &&
-        (n.pendiente == true) &&
-        (n.horaLlegada == null) &&
-        _inRange(n.fechaCita, start, endEx);
-      final isAgendada =
-        (n.pendiente == true) &&
-        _inRange(n.fechaCita, start, endEx) &&
-        !(includeEnCurso && isEnCurso);
+
+      final isEnCurso = includeEnCurso &&
+          (n.pendiente == true) &&
+          (n.horaLlegada == null) &&
+          _inRange(n.fechaCita, start, endEx);
+
+      final isAgendada = (n.pendiente == true) &&
+          _inRange(n.fechaCita, start, endEx) &&
+          !(includeEnCurso && isEnCurso);
 
       int addCompletada = 0;
       int addAtrasada = 0;
@@ -213,8 +231,11 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
       );
     }
 
-    final list = map.values.toList();
-    list.sort((a, b) => b.total.compareTo(a.total));
+    final list = map.values
+        .where((s) => s.total > 0)
+        .toList()
+      ..sort((a, b) => b.total.compareTo(a.total));
+
     return list;
   }
 
@@ -324,11 +345,17 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
                 includeEnCurso: isCurrent,
               );
 
-              final totalCompletadas = stats.fold<int>(0, (a, b) => a + b.completadas);
-              final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
-              final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
+              final totalCompletadas =
+                  stats.fold<int>(0, (a, b) => a + b.completadas);
+              final totalAtrasadas =
+                  stats.fold<int>(0, (a, b) => a + b.atrasadas);
+              final totalAgendadas =
+                  stats.fold<int>(0, (a, b) => a + b.agendadas);
               final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
-              final totalTareas = totalCompletadas + totalAtrasadas + (isCurrent ? totalEnCurso : totalAgendadas);
+
+              final totalTareas = totalCompletadas +
+                  totalAtrasadas +
+                  (isCurrent ? totalEnCurso : totalAgendadas);
 
               final hasMany = stats.length > 8;
 
@@ -362,20 +389,41 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
                           ],
                         ),
                         const SizedBox(height: 10),
-
                         LayoutBuilder(
                           builder: (context, c) {
                             final bool narrow = c.maxWidth < 380;
-                            final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
+                            final double? maxPillW =
+                                narrow ? (c.maxWidth - 8) / 2 : null;
 
                             final pills = <Widget>[
-                              _pill(theme, 'Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
-                              _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
-                              _pill(theme, 'Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
+                              _pill(
+                                theme,
+                                'Total: $totalTareas',
+                                maxWidth: maxPillW,
+                                isTotal: true,
+                              ),
+                              _pill(
+                                theme,
+                                'Completadas: $totalCompletadas',
+                                maxWidth: maxPillW,
+                              ),
+                              _pill(
+                                theme,
+                                'Atrasadas: $totalAtrasadas',
+                                maxWidth: maxPillW,
+                              ),
                               if (isCurrent)
-                                _pill(theme, 'En curso: $totalEnCurso', maxWidth: maxPillW)
+                                _pill(
+                                  theme,
+                                  'En curso: $totalEnCurso',
+                                  maxWidth: maxPillW,
+                                )
                               else
-                                _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
+                                _pill(
+                                  theme,
+                                  'Agendadas: $totalAgendadas',
+                                  maxWidth: maxPillW,
+                                ),
                             ];
 
                             return Wrap(
@@ -386,72 +434,105 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
                           },
                         ),
                         const SizedBox(height: 10),
-
                         Expanded(
-                          child: SfCartesianChart(
-                            key: chartKey,
-                            tooltipBehavior: _tooltip,
-                            legend: const Legend(
-                              isVisible: true,
-                              position: LegendPosition.bottom,
-                            ),
-                            plotAreaBorderWidth: 0,
-                            primaryXAxis: CategoryAxis(
-                              labelRotation: hasMany ? 45 : 0,
-                              labelIntersectAction: AxisLabelIntersectAction.rotate45,
-                              majorGridLines: const MajorGridLines(width: 0),
-                            ),
-                            primaryYAxis: NumericAxis(
-                              minimum: 0,
-                              interval: 1,
-                              numberFormat: NumberFormat('#0'),
-                              majorGridLines: MajorGridLines(
-                                width: 1,
-                                color: theme.dividerColor.withOpacity(0.35),
-                              ),
-                            ),
-                            series: [
-                              ColumnSeries<_ReporterStats, String>(
-                                name: 'Completadas',
-                                dataSource: stats,
-                                xValueMapper: (d, _) => d.nombre,
-                                yValueMapper: (d, _) => d.completadas,
-                                dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
-                                dataLabelSettings: const DataLabelSettings(isVisible: true),
-                                animationDuration: 650,
-                              ),
-                              ColumnSeries<_ReporterStats, String>(
-                                name: 'Atrasadas',
-                                dataSource: stats,
-                                xValueMapper: (d, _) => d.nombre,
-                                yValueMapper: (d, _) => d.atrasadas,
-                                dataLabelMapper: (d, _) => d.atrasadas == 0 ? null : '${d.atrasadas}',
-                                dataLabelSettings: const DataLabelSettings(isVisible: true),
-                                animationDuration: 650,
-                                color: Colors.red.shade900,
-                              ),
-                              if (isCurrent)
-                                ColumnSeries<_ReporterStats, String>(
-                                  name: 'En curso',
-                                  dataSource: stats,
-                                  xValueMapper: (d, _) => d.nombre,
-                                  yValueMapper: (d, _) => d.enCurso,
-                                  dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
-                                  dataLabelSettings: const DataLabelSettings(isVisible: true),
-                                  animationDuration: 650,
+                          child: stats.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    'Sin datos en esta semana.',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: theme.colorScheme.onSurface
+                                          .withOpacity(0.7),
+                                    ),
+                                  ),
                                 )
-                              else
-                                ColumnSeries<_ReporterStats, String>(
-                                  name: 'Agendadas',
-                                  dataSource: stats,
-                                  xValueMapper: (d, _) => d.nombre,
-                                  yValueMapper: (d, _) => d.agendadas,
-                                  dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
-                                  dataLabelSettings: const DataLabelSettings(isVisible: true),
-                                  animationDuration: 650,
+                              : SfCartesianChart(
+                                  key: chartKey,
+                                  tooltipBehavior: _tooltip,
+                                  legend: const Legend(
+                                    isVisible: true,
+                                    position: LegendPosition.bottom,
+                                  ),
+                                  plotAreaBorderWidth: 0,
+                                  primaryXAxis: CategoryAxis(
+                                    labelRotation: hasMany ? 45 : 0,
+                                    labelIntersectAction:
+                                        AxisLabelIntersectAction.rotate45,
+                                    majorGridLines:
+                                        const MajorGridLines(width: 0),
+                                  ),
+                                  primaryYAxis: NumericAxis(
+                                    minimum: 0,
+                                    interval: 1,
+                                    numberFormat: NumberFormat('#0'),
+                                    majorGridLines: MajorGridLines(
+                                      width: 1,
+                                      color:
+                                          theme.dividerColor.withOpacity(0.35),
+                                    ),
+                                  ),
+                                  series: [
+                                    ColumnSeries<_ReporterStats, String>(
+                                      name: 'Completadas',
+                                      dataSource: stats,
+                                      xValueMapper: (d, _) => d.nombre,
+                                      yValueMapper: (d, _) => d.completadas,
+                                      dataLabelMapper: (d, _) =>
+                                          d.completadas == 0
+                                              ? null
+                                              : '${d.completadas}',
+                                      dataLabelSettings:
+                                          const DataLabelSettings(
+                                              isVisible: true),
+                                      animationDuration: 650,
+                                    ),
+                                    ColumnSeries<_ReporterStats, String>(
+                                      name: 'Atrasadas',
+                                      dataSource: stats,
+                                      xValueMapper: (d, _) => d.nombre,
+                                      yValueMapper: (d, _) => d.atrasadas,
+                                      dataLabelMapper: (d, _) =>
+                                          d.atrasadas == 0
+                                              ? null
+                                              : '${d.atrasadas}',
+                                      dataLabelSettings:
+                                          const DataLabelSettings(
+                                              isVisible: true),
+                                      animationDuration: 650,
+                                      color: Colors.red.shade900,
+                                    ),
+                                    if (isCurrent)
+                                      ColumnSeries<_ReporterStats, String>(
+                                        name: 'En curso',
+                                        dataSource: stats,
+                                        xValueMapper: (d, _) => d.nombre,
+                                        yValueMapper: (d, _) => d.enCurso,
+                                        dataLabelMapper: (d, _) =>
+                                            d.enCurso == 0
+                                                ? null
+                                                : '${d.enCurso}',
+                                        dataLabelSettings:
+                                            const DataLabelSettings(
+                                                isVisible: true),
+                                        animationDuration: 650,
+                                      )
+                                    else
+                                      ColumnSeries<_ReporterStats, String>(
+                                        name: 'Agendadas',
+                                        dataSource: stats,
+                                        xValueMapper: (d, _) => d.nombre,
+                                        yValueMapper: (d, _) => d.agendadas,
+                                        dataLabelMapper: (d, _) =>
+                                            d.agendadas == 0
+                                                ? null
+                                                : '${d.agendadas}',
+                                        dataLabelSettings:
+                                            const DataLabelSettings(
+                                                isVisible: true),
+                                        animationDuration: 650,
+                                      ),
+                                  ],
                                 ),
-                            ],
-                          ),
                         ),
                       ],
                     ),
@@ -465,8 +546,13 @@ class _EstadisticasSemanasState extends State<EstadisticasSemanas> {
     );
   }
 
-  Widget _pill(ThemeData theme, String text, {double? maxWidth, bool isTotal = false,}) {
-      final core = Container(
+  Widget _pill(
+    ThemeData theme,
+    String text, {
+    double? maxWidth,
+    bool isTotal = false,
+  }) {
+    final core = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: isTotal ? Colors.black : theme.colorScheme.primaryContainer,

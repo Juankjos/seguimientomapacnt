@@ -1,4 +1,4 @@
-// lib/screens/estadisticas_screen.dart
+// lib/screens/estadisticas_mes.dart
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
@@ -36,11 +36,24 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
     _tooltip = TooltipBehavior(enable: true);
   }
 
+  // ------------------- Roles (ocultar admins en la gráfica) -------------------
+
+  bool _isAdmin(ReporteroAdmin? r) {
+    final role = (r?.role ?? 'reportero').toLowerCase().trim();
+    return role == 'admin';
+  }
+
+  bool _isAdminId(int rid, Map<int, ReporteroAdmin> repById) {
+    if (rid == 0) return false; // "Sin asignar" sí se muestra
+    return _isAdmin(repById[rid]);
+  }
+
   // ------------------- Helpers rango de mes -------------------
 
   ({DateTime start, DateTime end}) _monthBounds(int year, int month) {
     final start = DateTime(year, month, 1);
-    final end = (month == 12) ? DateTime(year + 1, 1, 1) : DateTime(year, month + 1, 1);
+    final end =
+        (month == 12) ? DateTime(year + 1, 1, 1) : DateTime(year, month + 1, 1);
     return (start: start, end: end);
   }
 
@@ -56,7 +69,8 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
 
   // ------------------- ATRASADAS -------------------
 
-  DateTime _aMinuto(DateTime dt) => DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
+  DateTime _aMinuto(DateTime dt) =>
+      DateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute);
 
   bool _esAtrasada(Noticia n) {
     final llegada = n.horaLlegada;
@@ -65,7 +79,7 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
     return _aMinuto(llegada).isAfter(_aMinuto(cita));
   }
 
-  // ------------------- Stats internos (✅ nueva lógica con atrasadas) -------------------
+  // ------------------- Stats internos -------------------
 
   List<_ReporterStats> _buildStatsForMonth(
     int year,
@@ -74,20 +88,25 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
   }) {
     final b = _monthBounds(year, month);
 
+    final repById = {for (final r in widget.reporteros) r.id: r};
+
     final Map<int, _ReporterStats> map = {
       for (final r in widget.reporteros)
-        r.id: _ReporterStats(
-          reporteroId: r.id,
-          nombre: r.nombre,
-          completadas: 0,
-          atrasadas: 0,
-          agendadas: 0,
-          enCurso: 0,
-        ),
+        if (!_isAdmin(r))
+          r.id: _ReporterStats(
+            reporteroId: r.id,
+            nombre: r.nombre,
+            completadas: 0,
+            atrasadas: 0,
+            agendadas: 0,
+            enCurso: 0,
+          ),
     };
 
     for (final n in widget.noticias) {
       final rid = n.reporteroId ?? 0;
+
+      if (_isAdminId(rid, repById)) continue;
 
       if (!map.containsKey(rid)) {
         map[rid] = _ReporterStats(
@@ -103,15 +122,15 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
       final cur = map[rid]!;
 
       final isCompletada = _inRange(n.horaLlegada, b.start, b.end);
-      final isEnCurso =
-        includeEnCurso &&
-        (n.pendiente == true) &&
-        (n.horaLlegada == null) &&
-        _inRange(n.fechaCita, b.start, b.end);
-      final isAgendada =
-        (n.pendiente == true) &&
-        _inRange(n.fechaCita, b.start, b.end) &&
-        !(includeEnCurso && isEnCurso);
+
+      final isEnCurso = includeEnCurso &&
+          (n.pendiente == true) &&
+          (n.horaLlegada == null) &&
+          _inRange(n.fechaCita, b.start, b.end);
+
+      final isAgendada = (n.pendiente == true) &&
+          _inRange(n.fechaCita, b.start, b.end) &&
+          !(includeEnCurso && isEnCurso);
 
       int addCompletada = 0;
       int addAtrasada = 0;
@@ -187,7 +206,9 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
             child: Text(
               '$_year',
               textAlign: TextAlign.center,
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -255,7 +276,10 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                             nombreMes,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -395,7 +419,8 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                         final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
 
                         final pills = <Widget>[
-                          _pill('Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
+                          _pill('Total: $totalTareas',
+                              maxWidth: maxPillW, isTotal: true),
                           _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
                           _pill('Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
                           if (isCurrent)
@@ -414,69 +439,89 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
                     const SizedBox(height: 10),
 
                     Expanded(
-                      child: SfCartesianChart(
-                        tooltipBehavior: _tooltip,
-                        legend: const Legend(
-                          isVisible: true,
-                          position: LegendPosition.bottom,
-                        ),
-                        plotAreaBorderWidth: 0,
-                        primaryXAxis: CategoryAxis(
-                          labelRotation: hasMany ? 45 : 0,
-                          labelIntersectAction: AxisLabelIntersectAction.rotate45,
-                          majorGridLines: const MajorGridLines(width: 0),
-                        ),
-                        primaryYAxis: NumericAxis(
-                          minimum: 0,
-                          interval: 1,
-                          numberFormat: NumberFormat('#0'),
-                          majorGridLines: MajorGridLines(
-                            width: 1,
-                            color: theme.dividerColor.withOpacity(0.35),
-                          ),
-                        ),
-                        series: [
-                          ColumnSeries<_ReporterStats, String>(
-                            name: 'Completadas',
-                            dataSource: stats,
-                            xValueMapper: (d, _) => d.nombre,
-                            yValueMapper: (d, _) => d.completadas,
-                            dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
-                            dataLabelSettings: const DataLabelSettings(isVisible: true),
-                            animationDuration: 650,
-                          ),
-                          ColumnSeries<_ReporterStats, String>(
-                            name: 'Atrasadas',
-                            dataSource: stats,
-                            xValueMapper: (d, _) => d.nombre,
-                            yValueMapper: (d, _) => d.atrasadas,
-                            dataLabelMapper: (d, _) => d.atrasadas == 0 ? null : '${d.atrasadas}',
-                            dataLabelSettings: const DataLabelSettings(isVisible: true),
-                            animationDuration: 650,
-                            color: Colors.red.shade900,
-                          ),
-                          if (isCurrent)
-                            ColumnSeries<_ReporterStats, String>(
-                              name: 'En curso',
-                              dataSource: stats,
-                              xValueMapper: (d, _) => d.nombre,
-                              yValueMapper: (d, _) => d.enCurso,
-                              dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
-                              dataLabelSettings: const DataLabelSettings(isVisible: true),
-                              animationDuration: 650,
+                      child: stats.isEmpty
+                          ? Center(
+                              child: Text(
+                                'No hay datos para mostrar.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color:
+                                      theme.colorScheme.onSurface.withOpacity(0.7),
+                                ),
+                              ),
                             )
-                          else
-                            ColumnSeries<_ReporterStats, String>(
-                              name: 'Agendadas',
-                              dataSource: stats,
-                              xValueMapper: (d, _) => d.nombre,
-                              yValueMapper: (d, _) => d.agendadas,
-                              dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
-                              dataLabelSettings: const DataLabelSettings(isVisible: true),
-                              animationDuration: 650,
+                          : SfCartesianChart(
+                              tooltipBehavior: _tooltip,
+                              legend: const Legend(
+                                isVisible: true,
+                                position: LegendPosition.bottom,
+                              ),
+                              plotAreaBorderWidth: 0,
+                              primaryXAxis: CategoryAxis(
+                                labelRotation: hasMany ? 45 : 0,
+                                labelIntersectAction:
+                                    AxisLabelIntersectAction.rotate45,
+                                majorGridLines: const MajorGridLines(width: 0),
+                              ),
+                              primaryYAxis: NumericAxis(
+                                minimum: 0,
+                                interval: 1,
+                                numberFormat: NumberFormat('#0'),
+                                majorGridLines: MajorGridLines(
+                                  width: 1,
+                                  color: theme.dividerColor.withOpacity(0.35),
+                                ),
+                              ),
+                              series: [
+                                ColumnSeries<_ReporterStats, String>(
+                                  name: 'Completadas',
+                                  dataSource: stats,
+                                  xValueMapper: (d, _) => d.nombre,
+                                  yValueMapper: (d, _) => d.completadas,
+                                  dataLabelMapper: (d, _) =>
+                                      d.completadas == 0 ? null : '${d.completadas}',
+                                  dataLabelSettings:
+                                      const DataLabelSettings(isVisible: true),
+                                  animationDuration: 650,
+                                ),
+                                ColumnSeries<_ReporterStats, String>(
+                                  name: 'Atrasadas',
+                                  dataSource: stats,
+                                  xValueMapper: (d, _) => d.nombre,
+                                  yValueMapper: (d, _) => d.atrasadas,
+                                  dataLabelMapper: (d, _) =>
+                                      d.atrasadas == 0 ? null : '${d.atrasadas}',
+                                  dataLabelSettings:
+                                      const DataLabelSettings(isVisible: true),
+                                  animationDuration: 650,
+                                  color: Colors.red.shade900,
+                                ),
+                                if (isCurrent)
+                                  ColumnSeries<_ReporterStats, String>(
+                                    name: 'En curso',
+                                    dataSource: stats,
+                                    xValueMapper: (d, _) => d.nombre,
+                                    yValueMapper: (d, _) => d.enCurso,
+                                    dataLabelMapper: (d, _) =>
+                                        d.enCurso == 0 ? null : '${d.enCurso}',
+                                    dataLabelSettings:
+                                        const DataLabelSettings(isVisible: true),
+                                    animationDuration: 650,
+                                  )
+                                else
+                                  ColumnSeries<_ReporterStats, String>(
+                                    name: 'Agendadas',
+                                    dataSource: stats,
+                                    xValueMapper: (d, _) => d.nombre,
+                                    yValueMapper: (d, _) => d.agendadas,
+                                    dataLabelMapper: (d, _) =>
+                                        d.agendadas == 0 ? null : '${d.agendadas}',
+                                    dataLabelSettings:
+                                        const DataLabelSettings(isVisible: true),
+                                    animationDuration: 650,
+                                  ),
+                              ],
                             ),
-                        ],
-                      ),
                     ),
                   ],
                 ),
@@ -531,37 +576,93 @@ class _MesEfemeride {
   final IconData icon;
   final Color color;
   final String tooltip;
-  const _MesEfemeride({required this.icon, required this.color, required this.tooltip});
+  const _MesEfemeride({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+  });
 }
 
 _MesEfemeride _efemerideMes(int month, ThemeData theme) {
   switch (month) {
     case 1:
-      return const _MesEfemeride(icon: Icons.celebration, color: Color(0xFFF94144), tooltip: 'Año Nuevo');
+      return const _MesEfemeride(
+        icon: Icons.celebration,
+        color: Color(0xFFF94144),
+        tooltip: 'Año Nuevo',
+      );
     case 2:
-      return const _MesEfemeride(icon: Icons.favorite, color: Color(0xFFF3722C), tooltip: 'Día del Amor y la Amistad');
+      return const _MesEfemeride(
+        icon: Icons.favorite,
+        color: Color(0xFFF3722C),
+        tooltip: 'Día del Amor y la Amistad',
+      );
     case 3:
-      return const _MesEfemeride(icon: Icons.emoji_nature, color: Color(0xFFF8961E), tooltip: 'Primavera');
+      return const _MesEfemeride(
+        icon: Icons.emoji_nature,
+        color: Color(0xFFF8961E),
+        tooltip: 'Primavera',
+      );
     case 4:
-      return const _MesEfemeride(icon: Icons.face_outlined, color: Color(0xFFF9844A), tooltip: 'Día del Niño');
+      return const _MesEfemeride(
+        icon: Icons.face_outlined,
+        color: Color(0xFFF9844A),
+        tooltip: 'Día del Niño',
+      );
     case 5:
-      return const _MesEfemeride(icon: Icons.face_2_rounded, color: Color(0xFFF9C74F), tooltip: 'Día de las Madres');
+      return const _MesEfemeride(
+        icon: Icons.face_2_rounded,
+        color: Color(0xFFF9C74F),
+        tooltip: 'Día de las Madres',
+      );
     case 6:
-      return const _MesEfemeride(icon: Icons.wb_sunny, color: Color(0xFF90BE6D), tooltip: 'Verano');
+      return const _MesEfemeride(
+        icon: Icons.wb_sunny,
+        color: Color(0xFF90BE6D),
+        tooltip: 'Verano',
+      );
     case 7:
-      return const _MesEfemeride(icon: Icons.beach_access, color: Color(0xFF43AA8B), tooltip: 'Vacaciones de verano');
+      return const _MesEfemeride(
+        icon: Icons.beach_access,
+        color: Color(0xFF43AA8B),
+        tooltip: 'Vacaciones de verano',
+      );
     case 8:
-      return const _MesEfemeride(icon: Icons.school, color: Color(0xFF4D908E), tooltip: 'Regreso a clases');
+      return const _MesEfemeride(
+        icon: Icons.school,
+        color: Color(0xFF4D908E),
+        tooltip: 'Regreso a clases',
+      );
     case 9:
-      return const _MesEfemeride(icon: Icons.flag, color: Color(0xFF577590), tooltip: 'Independencia de México');
+      return const _MesEfemeride(
+        icon: Icons.flag,
+        color: Color(0xFF577590),
+        tooltip: 'Independencia de México',
+      );
     case 10:
-      return const _MesEfemeride(icon: Icons.nights_stay, color: Color(0xFF277DA1), tooltip: 'Día de Muertos');
+      return const _MesEfemeride(
+        icon: Icons.nights_stay,
+        color: Color(0xFF277DA1),
+        tooltip: 'Día de Muertos',
+      );
     case 11:
-      return const _MesEfemeride(icon: Icons.local_florist, color: Color(0xFF4D908E), tooltip: 'Día de Muertos / Revolución');
+      return const _MesEfemeride(
+        icon: Icons.local_florist,
+        color: Color(0xFF4D908E),
+        tooltip: 'Día de Muertos / Revolución',
+      );
     case 12:
-      return const _MesEfemeride(icon: Icons.ice_skating_outlined, color: Color(0xFFF94144), tooltip: 'Navidad');
+      return const _MesEfemeride(
+        icon: Icons.ice_skating_outlined,
+        color: Color(0xFFF94144),
+        tooltip: 'Navidad',
+      );
     default:
-      return _MesEfemeride(icon: Icons.event, color: theme.colorScheme.primary, tooltip: 'Mes');
+      return _MesEfemeride(
+        icon: Icons.event,
+        color: theme.colorScheme.primary,
+        tooltip: 'Mes',
+      );
   }
 }
 
