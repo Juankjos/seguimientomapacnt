@@ -13,6 +13,12 @@ $nombre = isset($_POST['nombre']) ? trim($_POST['nombre']) : '';
 $password = isset($_POST['password']) ? trim($_POST['password']) : '';
 $role = isset($_POST['role']) ? trim($_POST['role']) : 'reportero';
 
+$puedeCrearNoticias = 0;
+if (array_key_exists('puede_crear_noticias', $_POST)) {
+    $v = strtolower(trim((string)$_POST['puede_crear_noticias']));
+    $puedeCrearNoticias = ($v === '1' || $v === 'true') ? 1 : 0;
+}
+
 if ($nombre === '' || $password === '') {
     echo json_encode(['success' => false, 'message' => 'Nombre y contraseña son requeridos']);
     exit;
@@ -37,14 +43,17 @@ try {
         exit;
     }
 
-    $stmt = $pdo->prepare("INSERT INTO reporteros (nombre, password, role) VALUES (?, ?, ?)");
-    $stmt->execute([$nombre, $password, $role]);
+    $stmt = $pdo->prepare("
+        INSERT INTO reporteros (nombre, password, role, puede_crear_noticias)
+        VALUES (?, ?, ?, ?)
+    ");
+    $stmt->execute([$nombre, $password, $role, $puedeCrearNoticias]);
 
     $newId = (int)$pdo->lastInsertId();
 
-    $stmt2 = $pdo->prepare("SELECT id, nombre, role FROM reporteros WHERE id = ? LIMIT 1");
+    $stmt2 = $pdo->prepare("SELECT id, nombre, role, puede_crear_noticias FROM reporteros WHERE id = ? LIMIT 1");
     $stmt2->execute([$newId]);
-    $row = $stmt2->fetch();
+    $row = $stmt2->fetch(PDO::FETCH_ASSOC);
 
     echo json_encode([
         'success' => true,

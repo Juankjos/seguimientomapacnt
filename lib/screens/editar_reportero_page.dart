@@ -1,6 +1,8 @@
 // lib/screens/editar_reportero_page.dart
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../auth_controller.dart';
 import '../models/reportero_admin.dart';
 import '../services/api_service.dart';
 
@@ -20,6 +22,7 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
   final _formKey = GlobalKey<FormState>();
 
   late String _role;
+  late bool _puedeCrearNoticias;
 
   bool _guardando = false;
   bool _borrando = false;
@@ -29,8 +32,10 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
     super.initState();
     _nombreCtrl = TextEditingController(text: widget.reportero.nombre);
 
-    _role = (widget.reportero.role ?? 'reportero').trim();
+    _role = (widget.reportero.role).trim();
     if (_role != 'admin' && _role != 'reportero') _role = 'reportero';
+
+    _puedeCrearNoticias = widget.reportero.puedeCrearNoticias;
   }
 
   @override
@@ -43,13 +48,23 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
 
   Color _colorFromId(int id) {
     final colors = <Color>[
-      Colors.blue, Colors.green, Colors.orange, Colors.purple,
-      Colors.teal, Colors.indigo, Colors.red, Colors.brown,
+      Colors.blue,
+      Colors.green,
+      Colors.orange,
+      Colors.purple,
+      Colors.teal,
+      Colors.indigo,
+      Colors.red,
+      Colors.brown,
     ];
     return colors[id % colors.length];
   }
 
-  Widget _avatarDefault({required int id, required String nombre, double radius = 52}) {
+  Widget _avatarDefault({
+    required int id,
+    required String nombre,
+    double radius = 52,
+  }) {
     final letter = nombre.trim().isNotEmpty ? nombre.trim()[0].toUpperCase() : '?';
     final c = _colorFromId(id);
 
@@ -100,7 +115,16 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
         nombre: nombre,
         password: passwordToSend,
         role: _role,
+        puedeCrearNoticias: _puedeCrearNoticias,
       );
+
+      final prefs = await SharedPreferences.getInstance();
+      final myId = prefs.getInt('auth_reportero_id') ?? 0;
+
+      if (myId == widget.reportero.id) {
+        await prefs.setBool('auth_puede_crear_noticias', _puedeCrearNoticias);
+        AuthController.puedeCrearNoticias.value = _puedeCrearNoticias;
+      }
 
       if (!mounted) return;
 
@@ -125,10 +149,15 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Borrar reportero'),
-        content: const Text('¿Seguro que deseas borrar este reportero? Esta acción no se puede deshacer.'),
+        title: const Text('Borrar usuario'),
+        content: const Text(
+          '¿Seguro que deseas borrar este reportero? Esta acción no se puede deshacer.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -163,6 +192,7 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: Text('Editar: ${widget.reportero.nombre}'),
@@ -212,8 +242,25 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
                 DropdownMenuItem(value: 'reportero', child: Text('Reportero')),
                 DropdownMenuItem(value: 'admin', child: Text('Administrador')),
               ],
-              onChanged: (v) => setState(() => _role = (v ?? 'reportero')),
+              onChanged: _guardando ? null : (v) => setState(() => _role = (v ?? 'reportero')),
             ),
+
+            const SizedBox(height: 12),
+
+            Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: theme.dividerColor),
+              ),
+              child: SwitchListTile.adaptive(
+                value: _puedeCrearNoticias,
+                onChanged: _guardando ? null : (v) => setState(() => _puedeCrearNoticias = v),
+                title: const Text('Puede crear noticias'),
+                subtitle: const Text('Si está activo, podrá "Crear noticia" desde Agenda.'),
+              ),
+            ),
+
             const SizedBox(height: 14),
 
             TextFormField(

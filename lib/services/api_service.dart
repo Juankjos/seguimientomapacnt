@@ -165,11 +165,12 @@ class ApiService {
     }
   }
 
-  // 🔹 Crear reportero (nuevo) - requiere create_reportero.php
+  // 🔹 Crear reportero
   static Future<ReporteroAdmin> createReportero({
     required String nombre,
     required String password,
     String role = 'reportero',
+    bool puedeCrearNoticias = false,
   }) async {
     final url = Uri.parse('$baseUrl/create_reportero.php');
 
@@ -177,6 +178,7 @@ class ApiService {
       'nombre': nombre.trim(),
       'password': password.trim(),
       'role': role.trim(),
+      'puede_crear_noticias': puedeCrearNoticias ? '1' : '0',
     });
 
     if (resp.statusCode != 200) {
@@ -197,6 +199,7 @@ class ApiService {
     String? nombre,
     String? password,
     String? role,
+    bool? puedeCrearNoticias,
   }) async {
     final url = Uri.parse('$baseUrl/update_perfil.php');
 
@@ -212,6 +215,9 @@ class ApiService {
     }
     if (role != null && role.trim().isNotEmpty) {
       body['role'] = role.trim();
+    }
+    if (puedeCrearNoticias != null) {
+      body['puede_crear_noticias'] = puedeCrearNoticias ? '1' : '0';
     }
 
     final resp = await http.post(url, body: body);

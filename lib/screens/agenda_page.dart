@@ -1,6 +1,9 @@
+// lib/screens/agenda_page.dart
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../auth_controller.dart';
 import '../models/noticia.dart';
 import '../services/api_service.dart';
 import 'noticia_detalle_page.dart';
@@ -12,8 +15,6 @@ import 'gestion_noticias_page.dart';
 import 'estadisticas_screen.dart';
 
 enum AgendaView { year, month, day }
-
-/// ------------ EFEMÉRIDES POR MES (TOP-LEVEL) ------------
 
 class MesEfemeride {
   final IconData icon;
@@ -30,89 +31,77 @@ class MesEfemeride {
 MesEfemeride efemerideMes(int month, ThemeData theme) {
   switch (month) {
     case 1:
-        // Enero – Año Nuevo
-        return MesEfemeride(
-          icon: Icons.celebration,
-          color: Color(0xFFF94144),
-          tooltip: 'Año Nuevo',
-        );
-      case 2:
-        // Febrero – San Valentín / Amor y amistad
-        return MesEfemeride(
-          icon: Icons.favorite,
-          color: Color(0xFFF3722C),
-          tooltip: 'Día del Amor y la Amistad',
-        );
-      case 3:
-        // Marzo – Primavera / Natalicio de Benito Juárez
-        return MesEfemeride(
-          icon: Icons.emoji_nature ,
-          color: Color(0xFFF8961E),
-          tooltip: 'Primavera',
-        );
-      case 4:
-        // Abril – Día del Niño
-        return MesEfemeride(
-          icon: Icons.face_outlined,
-          color: Color(0xFFF9844A),
-          tooltip: 'Día del Niño',
-        );
-      case 5:
-        // Mayo – Día de las Madres
-        return MesEfemeride(
-          icon: Icons.face_2_rounded,
-          color: Color(0xFFF9C74F),
-          tooltip: 'Día de las Madres',
-        );
-      case 6:
-        // Junio – Verano
-        return MesEfemeride(
-          icon: Icons.wb_sunny,
-          color: Color(0xFF90BE6D),
-          tooltip: 'Verano',
-        );
-      case 7:
-        // Julio – Vacaciones de verano
-        return MesEfemeride(
-          icon: Icons.beach_access,
-          color: Color(0xFF43AA8B),
-          tooltip: 'Vacaciones de verano',
-        );
-      case 8:
-        // Agosto – Regreso a clases
-        return MesEfemeride(
-          icon: Icons.school,
-          color: Color(0xFF4D908E),
-          tooltip: 'Regreso a clases',
-        );
-      case 9:
-        // Septiembre – Independencia de México
-        return MesEfemeride(
-          icon: Icons.flag,
-          color: Color(0xFF577590),
-          tooltip: 'Independencia de México',
-        );
-      case 10:
-        // Octubre – Otoño / Día de Muertos cerca
-        return MesEfemeride(
-          icon: Icons.nights_stay,
-          color: Color(0xFF277DA1),
-          tooltip: 'Día de Muertos',
-        );
-      case 11:
-        // Noviembre – Día de Muertos / Revolución Mexicana
-        return MesEfemeride(
-          icon: Icons.local_florist,
-          color: Color(0xFF4D908E),
-          tooltip: 'Día de Muertos',
-        );
-      case 12:
-        // Diciembre – Navidad
-        return MesEfemeride(
-          icon: Icons.ice_skating_outlined,
-          color: Color(0xFFF94144),
-          tooltip: 'Navidad',
-        );
+      return MesEfemeride(
+        icon: Icons.celebration,
+        color: const Color(0xFFF94144),
+        tooltip: 'Año Nuevo',
+      );
+    case 2:
+      return MesEfemeride(
+        icon: Icons.favorite,
+        color: const Color(0xFFF3722C),
+        tooltip: 'Día del Amor y la Amistad',
+      );
+    case 3:
+      return MesEfemeride(
+        icon: Icons.emoji_nature,
+        color: const Color(0xFFF8961E),
+        tooltip: 'Primavera',
+      );
+    case 4:
+      return MesEfemeride(
+        icon: Icons.face_outlined,
+        color: const Color(0xFFF9844A),
+        tooltip: 'Día del Niño',
+      );
+    case 5:
+      return MesEfemeride(
+        icon: Icons.face_2_rounded,
+        color: const Color(0xFFF9C74F),
+        tooltip: 'Día de las Madres',
+      );
+    case 6:
+      return MesEfemeride(
+        icon: Icons.wb_sunny,
+        color: const Color(0xFF90BE6D),
+        tooltip: 'Verano',
+      );
+    case 7:
+      return MesEfemeride(
+        icon: Icons.beach_access,
+        color: const Color(0xFF43AA8B),
+        tooltip: 'Vacaciones de verano',
+      );
+    case 8:
+      return MesEfemeride(
+        icon: Icons.school,
+        color: const Color(0xFF4D908E),
+        tooltip: 'Regreso a clases',
+      );
+    case 9:
+      return MesEfemeride(
+        icon: Icons.flag,
+        color: const Color(0xFF577590),
+        tooltip: 'Independencia de México',
+      );
+    case 10:
+      return MesEfemeride(
+        icon: Icons.nights_stay,
+        color: const Color(0xFF277DA1),
+        tooltip: 'Día de Muertos',
+      );
+    case 11:
+      return MesEfemeride(
+        icon: Icons.local_florist,
+        color: const Color(0xFF4D908E),
+        tooltip: 'Día de Muertos',
+      );
+    case 12:
+      return MesEfemeride(
+        icon: Icons.ice_skating_outlined,
+        color: const Color(0xFFF94144),
+        tooltip: 'Navidad',
+      );
     default:
       return MesEfemeride(
         icon: Icons.event,
@@ -126,12 +115,14 @@ class AgendaPage extends StatefulWidget {
   final int reporteroId;
   final String reporteroNombre;
   final bool esAdmin;
+  final bool? puedeCrearNoticias;
 
   const AgendaPage({
     super.key,
     required this.reporteroId,
     required this.reporteroNombre,
     this.esAdmin = false,
+    this.puedeCrearNoticias,
   });
 
   @override
@@ -142,17 +133,13 @@ class _AgendaPageState extends State<AgendaPage> {
   bool _loading = false;
   String? _error;
 
-  // Noticias por día (clave = fecha sin hora)
   final Map<DateTime, List<Noticia>> _eventosPorDia = {};
 
-  // Vista actual
   AgendaView _vista = AgendaView.month;
 
-  // Día y mes enfocados
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
 
-  // Último mes visitado (para marcar en vista Año)
   late int _selectedMonthInYear;
   late String _nombreActual;
 
@@ -161,13 +148,34 @@ class _AgendaPageState extends State<AgendaPage> {
     super.initState();
     _nombreActual = widget.reporteroNombre;
     _selectedMonthInYear = _focusedDay.month;
+
+    _initPermisoCrearNoticias();
     _cargarNoticias();
+  }
+
+  Future<void> _initPermisoCrearNoticias() async {
+    // 1) Si viene por constructor, úsalo
+    if (widget.puedeCrearNoticias != null) {
+      AuthController.puedeCrearNoticias.value = widget.puedeCrearNoticias!;
+      return;
+    }
+
+    // 2) Si no, lee de prefs
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final v = prefs.getBool('auth_puede_crear_noticias') ??
+          prefs.getBool('last_puede_crear_noticias') ??
+          false;
+      AuthController.puedeCrearNoticias.value = v;
+    } catch (_) {
+      AuthController.puedeCrearNoticias.value = false;
+    }
   }
 
   DateTime _soloFecha(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
 
   Future<void> _abrirPerfilAdmin() async {
-    Navigator.pop(context); // cierra drawer
+    Navigator.pop(context);
 
     final nuevoNombre = await Navigator.push<String>(
       context,
@@ -184,8 +192,21 @@ class _AgendaPageState extends State<AgendaPage> {
     }
   }
 
+  Future<void> _limpiarSesionLocal() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('ws_token');
+      await prefs.remove('auth_reportero_id');
+      await prefs.remove('auth_nombre');
+      await prefs.remove('auth_role');
+      await prefs.remove('auth_puede_crear_noticias');
+      await prefs.setBool('auth_logged_in', false);
+    } catch (_) {}
+    AuthController.puedeCrearNoticias.value = false;
+  }
+
   void _confirmarCerrarSesion() {
-    Navigator.pop(context); // cierra drawer
+    Navigator.pop(context);
 
     showDialog(
       context: context,
@@ -198,8 +219,10 @@ class _AgendaPageState extends State<AgendaPage> {
             child: const Text('Cancelar'),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context); // cierra dialog
+            onPressed: () async {
+              Navigator.pop(context);
+              await _limpiarSesionLocal();
+              if (!mounted) return;
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -285,13 +308,12 @@ class _AgendaPageState extends State<AgendaPage> {
 
     try {
       final noticias = widget.esAdmin
-        ? await ApiService.getNoticiasAdmin()
-        : await ApiService.getNoticiasAgenda(widget.reporteroId);
+          ? await ApiService.getNoticiasAdmin()
+          : await ApiService.getNoticiasAgenda(widget.reporteroId);
 
       _eventosPorDia.clear();
 
       for (final n in noticias) {
-        // Asumimos que fechaCita es opcional
         if (n.fechaCita == null) continue;
         final fechaClave = _soloFecha(n.fechaCita!);
         _eventosPorDia.putIfAbsent(fechaClave, () => []);
@@ -317,7 +339,6 @@ class _AgendaPageState extends State<AgendaPage> {
     return _eventosPorDia[clave] ?? [];
   }
 
-  // Todas las noticias del mes actual (según _focusedDay)
   List<Noticia> _eventosDelMes(DateTime mesRef) {
     final List<Noticia> result = [];
     _eventosPorDia.forEach((fecha, lista) {
@@ -326,7 +347,6 @@ class _AgendaPageState extends State<AgendaPage> {
       }
     });
 
-    // Ordenar por fecha
     result.sort((a, b) {
       final fa = a.fechaCita ?? DateTime(2100);
       final fb = b.fechaCita ?? DateTime(2100);
@@ -338,18 +358,8 @@ class _AgendaPageState extends State<AgendaPage> {
 
   String _nombreMes(int month) {
     const nombres = [
-      'Enero',
-      'Febrero',
-      'Marzo',
-      'Abril',
-      'Mayo',
-      'Junio',
-      'Julio',
-      'Agosto',
-      'Septiembre',
-      'Octubre',
-      'Noviembre',
-      'Diciembre',
+      'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+      'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
     ];
     return nombres[month - 1];
   }
@@ -363,40 +373,43 @@ class _AgendaPageState extends State<AgendaPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Agenda de ${widget.reporteroNombre}'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Actualizar',
-            onPressed: _loading ? null : _cargarNoticias,
-          ),
-        ],
-      ),
-      drawer: widget.esAdmin ? _buildDrawerAdmin() : null, 
-      body: _buildBody(),
-      floatingActionButton: widget.esAdmin
-      ? FloatingActionButton.extended(
-          icon: const Icon(Icons.add),
-          label: const Text('Crear noticia'),
-          onPressed: () async {
-            final creado = await Navigator.push<bool>(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const CrearNoticiaPage(),
+    return ValueListenableBuilder<bool>(
+      valueListenable: AuthController.puedeCrearNoticias,
+      builder: (context, showFabCrear, _) {
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('Agenda de ${widget.reporteroNombre}'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Actualizar',
+                onPressed: _loading ? null : _cargarNoticias,
               ),
-            );
-            if (creado == true) {
-              _cargarNoticias();
-            }
-          },
-        )
-      : null,
+            ],
+          ),
+          drawer: widget.esAdmin ? _buildDrawerAdmin() : null,
+          body: _buildBody(showFabCrear: showFabCrear),
+          floatingActionButton: showFabCrear
+              ? FloatingActionButton.extended(
+                  icon: const Icon(Icons.add),
+                  label: const Text('Crear noticia'),
+                  onPressed: () async {
+                    final creado = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(builder: (_) => const CrearNoticiaPage()),
+                    );
+                    if (creado == true) {
+                      _cargarNoticias();
+                    }
+                  },
+                )
+              : null,
+        );
+      },
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody({required bool showFabCrear}) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -416,9 +429,7 @@ class _AgendaPageState extends State<AgendaPage> {
         const SizedBox(height: 8),
         _buildSelectorVista(),
         const SizedBox(height: 8),
-        Expanded(
-          child: _buildVistaActual(),
-        ),
+        Expanded(child: _buildVistaActual(showFabCrear: showFabCrear)),
       ],
     );
   }
@@ -454,24 +465,22 @@ class _AgendaPageState extends State<AgendaPage> {
     );
   }
 
-  Widget _buildVistaActual() {
+  Widget _buildVistaActual({required bool showFabCrear}) {
     switch (_vista) {
       case AgendaView.year:
-        return _buildVistaYear();
+        return _buildVistaYear(showFabCrear: showFabCrear);
       case AgendaView.month:
-        return _buildVistaMonth();
+        return _buildVistaMonth(showFabCrear: showFabCrear);
       case AgendaView.day:
-        return _buildVistaDay();
+        return _buildVistaDay(showFabCrear: showFabCrear);
     }
   }
 
   // ---------- Vista Año ----------
-
-  Widget _buildVistaYear() {
+  Widget _buildVistaYear({required bool showFabCrear}) {
     final year = _focusedDay.year;
     final theme = Theme.of(context);
 
-    // Calculamos eventos por mes
     final Map<int, int> eventosPorMes = {};
     _eventosPorDia.forEach((fecha, lista) {
       if (fecha.year == year) {
@@ -485,7 +494,6 @@ class _AgendaPageState extends State<AgendaPage> {
 
     return Column(
       children: [
-        // Header del año con fondo y flechas
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 12),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -527,7 +535,7 @@ class _AgendaPageState extends State<AgendaPage> {
           child: Builder(
             builder: (context) {
               final bottomSafe = MediaQuery.of(context).padding.bottom;
-              const fabClearance = 110.0;
+              final fabClearance = showFabCrear ? 110.0 : 0.0;
 
               return GridView.builder(
                 padding: EdgeInsets.fromLTRB(12, 8, 12, 8 + fabClearance + bottomSafe),
@@ -639,27 +647,21 @@ class _AgendaPageState extends State<AgendaPage> {
   }
 
   // ---------- Vista Mes ----------
-
-  Widget _buildVistaMonth() {
+  Widget _buildVistaMonth({required bool showFabCrear}) {
     final theme = Theme.of(context);
     final eventosMes = _eventosDelMes(_focusedDay);
 
     int _cmpFecha(Noticia a, Noticia b) {
-      // null al final
       final da = a.fechaCita ?? DateTime(9999);
       final db = b.fechaCita ?? DateTime(9999);
 
       final c = da.compareTo(db);
       if (c != 0) return c;
-
-      // desempate estable
       return a.id.compareTo(b.id);
     }
 
     final pendientes = eventosMes.where((n) => n.pendiente == true).toList()..sort(_cmpFecha);
-    final cerradas   = eventosMes.where((n) => n.pendiente == false).toList()..sort(_cmpFecha);
-
-    // Pendientes primero, luego cerradas
+    final cerradas = eventosMes.where((n) => n.pendiente == false).toList()..sort(_cmpFecha);
     final eventosMesOrdenados = [...pendientes, ...cerradas];
 
     return LayoutBuilder(
@@ -670,9 +672,11 @@ class _AgendaPageState extends State<AgendaPage> {
         final double calendarH = totalH * calendarFactor;
         final double listH = totalH - calendarH - 8;
 
+        final bottomSafe = MediaQuery.of(context).padding.bottom;
+        final fabClearance = showFabCrear ? 110.0 : 0.0;
+
         return Column(
           children: [
-            // ---------------- CALENDARIO ----------------
             SizedBox(
               height: calendarH,
               child: Padding(
@@ -690,11 +694,9 @@ class _AgendaPageState extends State<AgendaPage> {
                         const int rows = 6;
 
                         final double computedRowHeight =
-                            (calConstraints.maxHeight - headerAndWeekdaysApprox) /
-                                rows;
+                            (calConstraints.maxHeight - headerAndWeekdaysApprox) / rows;
 
-                        final double rowHeight = computedRowHeight
-                            .clamp(32.0, 46.0);
+                        final double rowHeight = computedRowHeight.clamp(32.0, 46.0);
 
                         return TableCalendar<Noticia>(
                           locale: 'es_MX',
@@ -703,16 +705,11 @@ class _AgendaPageState extends State<AgendaPage> {
                           focusedDay: _focusedDay,
                           startingDayOfWeek: StartingDayOfWeek.monday,
                           calendarFormat: CalendarFormat.month,
-
                           rowHeight: rowHeight,
                           daysOfWeekHeight: 18,
-
                           selectedDayPredicate: (day) =>
-                              _selectedDay != null &&
-                              _soloFecha(day) == _soloFecha(_selectedDay!),
-
+                              _selectedDay != null && _soloFecha(day) == _soloFecha(_selectedDay!),
                           eventLoader: _eventosDeDia,
-
                           onDaySelected: (selectedDay, focusedDay) {
                             setState(() {
                               _selectedDay = _soloFecha(selectedDay);
@@ -721,14 +718,12 @@ class _AgendaPageState extends State<AgendaPage> {
                               _vista = AgendaView.day;
                             });
                           },
-
                           onPageChanged: (focusedDay) {
                             setState(() {
                               _focusedDay = focusedDay;
                               _selectedMonthInYear = focusedDay.month;
                             });
                           },
-
                           calendarStyle: CalendarStyle(
                             todayDecoration: BoxDecoration(
                               color: theme.colorScheme.primary.withOpacity(0.7),
@@ -746,31 +741,23 @@ class _AgendaPageState extends State<AgendaPage> {
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
                             ),
-                            weekendTextStyle: TextStyle(
-                              color: theme.colorScheme.error,
-                            ),
+                            weekendTextStyle: TextStyle(color: theme.colorScheme.error),
                             outsideDaysVisible: false,
                             markersAlignment: Alignment.bottomRight,
                             markersMaxCount: 1,
                           ),
-
                           headerStyle: HeaderStyle(
                             formatButtonVisible: false,
                             titleCentered: true,
-                            titleTextStyle: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            titleTextStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                             titleTextFormatter: (date, locale) {
                               final mes = _nombreMes(date.month);
                               return '$mes ${date.year}';
                             },
                             leftChevronIcon: const Icon(Icons.chevron_left),
                             rightChevronIcon: const Icon(Icons.chevron_right),
-                            headerPadding:
-                                const EdgeInsets.symmetric(vertical: 6),
+                            headerPadding: const EdgeInsets.symmetric(vertical: 6),
                           ),
-
                           daysOfWeekStyle: DaysOfWeekStyle(
                             weekdayStyle: TextStyle(
                               color: theme.colorScheme.onSurface.withOpacity(0.7),
@@ -781,7 +768,6 @@ class _AgendaPageState extends State<AgendaPage> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-
                           calendarBuilders: CalendarBuilders(
                             markerBuilder: (context, day, events) {
                               if (events.isEmpty) return const SizedBox.shrink();
@@ -791,20 +777,14 @@ class _AgendaPageState extends State<AgendaPage> {
                                 bottom: 2,
                                 right: 2,
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                    vertical: 1,
-                                  ),
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                                   decoration: BoxDecoration(
                                     color: theme.colorScheme.primary,
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Text(
                                     '$count',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                    ),
+                                    style: const TextStyle(color: Colors.white, fontSize: 10),
                                   ),
                                 ),
                               );
@@ -820,7 +800,6 @@ class _AgendaPageState extends State<AgendaPage> {
 
             const SizedBox(height: 8),
 
-            // ---------------- NOTICIAS DEL MES (altura fija) ----------------
             SizedBox(
               height: listH < 0 ? 0 : listH,
               child: Padding(
@@ -833,28 +812,19 @@ class _AgendaPageState extends State<AgendaPage> {
                   child: Column(
                     children: [
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         child: Row(
                           children: [
                             Expanded(
                               child: Text(
                                 '${_nombreMes(_focusedDay.month)} ${_focusedDay.year}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                ),
+                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                               decoration: BoxDecoration(
                                 color: theme.colorScheme.primaryContainer,
                                 borderRadius: BorderRadius.circular(999),
@@ -873,15 +843,11 @@ class _AgendaPageState extends State<AgendaPage> {
                       const Divider(height: 1),
                       Expanded(
                         child: eventosMes.isEmpty
-                            ? const Center(
-                                child:
-                                    Text('No hay noticias registradas en este mes.'),
-                              )
+                            ? const Center(child: Text('No hay noticias registradas en este mes.'))
                             : ListView.separated(
-                                padding: const EdgeInsets.symmetric(vertical: 6),
+                                padding: EdgeInsets.fromLTRB(0, 6, 0, 6 + fabClearance + bottomSafe),
                                 itemCount: eventosMesOrdenados.length,
-                                separatorBuilder: (_, __) =>
-                                    const Divider(height: 1),
+                                separatorBuilder: (_, __) => const Divider(height: 1),
                                 itemBuilder: (context, index) {
                                   final n = eventosMesOrdenados[index];
                                   final fecha = n.fechaCita != null
@@ -892,20 +858,16 @@ class _AgendaPageState extends State<AgendaPage> {
                                   return ListTile(
                                     dense: true,
                                     leading: Icon(
-                                      cerrada
-                                          ? Icons.check_circle
-                                          : Icons.schedule,
+                                      cerrada ? Icons.check_circle : Icons.schedule,
                                       color: cerrada
-                                          ? theme.colorScheme.secondary 
+                                          ? theme.colorScheme.secondary
                                           : theme.colorScheme.primary,
                                     ),
                                     title: Text(
                                       n.noticia,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                      style: const TextStyle(fontWeight: FontWeight.w600),
                                     ),
                                     subtitle: Text(
                                       'Fecha: $fecha',
@@ -920,9 +882,7 @@ class _AgendaPageState extends State<AgendaPage> {
                                           builder: (_) => NoticiaDetallePage(
                                             noticia: n,
                                             soloLectura: (n.pendiente == false),
-                                            role: widget.esAdmin
-                                                ? 'admin'
-                                                : 'reportero',
+                                            role: widget.esAdmin ? 'admin' : 'reportero',
                                           ),
                                         ),
                                       );
@@ -944,12 +904,14 @@ class _AgendaPageState extends State<AgendaPage> {
   }
 
   // ---------- Vista Día ----------
-
-  Widget _buildVistaDay() {
+  Widget _buildVistaDay({required bool showFabCrear}) {
     final dia = _selectedDay ?? _soloFecha(DateTime.now());
     final eventos = _eventosDeDia(dia);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
+    final fabClearance = showFabCrear ? 110.0 : 0.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -970,21 +932,14 @@ class _AgendaPageState extends State<AgendaPage> {
         ),
         Expanded(
           child: eventos.isEmpty
-              ? const Center(
-                  child: Text('No hay noticias para este día.'),
-                )
+              ? const Center(child: Text('No hay noticias para este día.'))
               : ListView.builder(
-                  padding: EdgeInsets.only(
-                    bottom: 16 + (widget.esAdmin ? 110.0 : 0.0) + MediaQuery.of(context).padding.bottom,
-                  ),
+                  padding: EdgeInsets.only(bottom: 16 + fabClearance + bottomSafe),
                   physics: const AlwaysScrollableScrollPhysics(),
                   itemCount: eventos.length,
                   itemBuilder: (context, index) {
                     final n = eventos[index];
-
                     final bool cerrada = (n.pendiente == false);
-                    final theme = Theme.of(context);
-                    final isDark = theme.brightness == Brightness.dark;
 
                     final Color? bg = cerrada
                         ? (isDark
@@ -998,10 +953,7 @@ class _AgendaPageState extends State<AgendaPage> {
 
                     return Card(
                       color: bg,
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
+                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -1025,20 +977,14 @@ class _AgendaPageState extends State<AgendaPage> {
                                 if (cerrada) ...[
                                   const SizedBox(width: 8),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(
                                       color: Colors.black.withOpacity(0.08),
                                       borderRadius: BorderRadius.circular(999),
                                     ),
                                     child: const Text(
                                       'Cerrada',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                                     ),
                                   ),
                                 ],
@@ -1052,10 +998,7 @@ class _AgendaPageState extends State<AgendaPage> {
                             const SizedBox(height: 2),
                             Text(
                               'Fecha: $fecha',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: theme.colorScheme.onSurface,
-                              ),
+                              style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface),
                             ),
                             const SizedBox(height: 8),
                             Align(
@@ -1067,11 +1010,11 @@ class _AgendaPageState extends State<AgendaPage> {
                                   await Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) =>
-                                          NoticiaDetallePage(
-                                            noticia: n,
-                                            soloLectura: (n.pendiente == false),
-                                            role: widget.esAdmin ? 'admin' : 'reportero',)
+                                      builder: (_) => NoticiaDetallePage(
+                                        noticia: n,
+                                        soloLectura: (n.pendiente == false),
+                                        role: widget.esAdmin ? 'admin' : 'reportero',
+                                      ),
                                     ),
                                   );
                                   await _cargarNoticias();

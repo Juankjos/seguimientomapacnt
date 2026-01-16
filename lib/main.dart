@@ -34,6 +34,13 @@ const fln.AndroidNotificationChannel _newsChannel = fln.AndroidNotificationChann
   importance: fln.Importance.max,
 );
 
+const fln.AndroidNotificationChannel _citasChannel = fln.AndroidNotificationChannel(
+  'tvc_citas_high',
+  'Citas',
+  description: 'Recordatorios de citas próximas',
+  importance: fln.Importance.max,
+);
+
 // ------------------ Navigation (tap notifications) ------------------
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -84,6 +91,7 @@ Future<void> _initFirebaseAndNotifications() async {
   final androidImpl = _localNotifs
       .resolvePlatformSpecificImplementation<fln.AndroidFlutterLocalNotificationsPlugin>();
   await androidImpl?.createNotificationChannel(_newsChannel);
+  await androidImpl?.createNotificationChannel(_citasChannel);
 
   await FirebaseMessaging.instance.requestPermission(
     alert: true,
@@ -101,15 +109,18 @@ Future<void> _initFirebaseAndNotifications() async {
     final notif = message.notification;
     if (notif == null) return;
 
+    final tipo = message.data['tipo']?.toString() ?? '';
+    final channel = (tipo == 'cita_proxima') ? _citasChannel : _newsChannel;
+
     await _localNotifs.show(
       notif.hashCode,
       notif.title ?? 'Nueva notificación',
       notif.body ?? '',
       fln.NotificationDetails(
         android: fln.AndroidNotificationDetails(
-          _newsChannel.id,
-          _newsChannel.name,
-          channelDescription: _newsChannel.description,
+          channel.id,
+          channel.name,
+          channelDescription: channel.description,
           importance: fln.Importance.max,
           priority: fln.Priority.high,
           visibility: fln.NotificationVisibility.public,

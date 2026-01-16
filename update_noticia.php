@@ -15,7 +15,10 @@ function normalize_mysql_datetime($v) {
     if ($s === '') return null;
 
     $s = str_replace('T', ' ', $s);
-    $s = substr($s, 0, 19);
+
+    if (strlen($s) >= 19) {
+        $s = substr($s, 0, 19);
+    }
 
     $dt = DateTime::createFromFormat('Y-m-d H:i:s', $s);
     if (!$dt) return null;
@@ -29,7 +32,9 @@ $role        = isset($_POST['role']) ? trim($_POST['role']) : 'reportero';
 $titulo      = isset($_POST['noticia']) ? trim($_POST['noticia']) : null;
 $descripcion = isset($_POST['descripcion']) ? trim($_POST['descripcion']) : null;
 
-$fechaNueva = normalize_mysql_datetime($_POST['fecha_cita'] ?? null);
+$fechaNueva = array_key_exists('fecha_cita', $_POST)
+    ? normalize_mysql_datetime($_POST['fecha_cita'])
+    : null;
 
 $ultimaMod = normalize_mysql_datetime($_POST['ultima_mod'] ?? null);
 if ($ultimaMod === null) {
@@ -63,6 +68,11 @@ try {
     $oldFecha = $actual['fecha_cita'];
     $cambios  = (int)($actual['fecha_cita_cambios'] ?? 0);
 
+    $oldFechaStr = ($oldFecha ?? '');
+    $newFechaStr = ($fechaNueva ?? '');
+    $cambiaFecha = array_key_exists('fecha_cita', $_POST) && ($oldFechaStr !== $newFechaStr);
+
+    // ========================= ADMIN =========================
     if ($role === 'admin') {
         if ($titulo !== null && $titulo !== '') {
             $updates[] = "noticia = :noticia";
@@ -75,9 +85,12 @@ try {
         }
 
         if (array_key_exists('fecha_cita', $_POST)) {
-            if (($oldFecha ?? '') !== ($fechaNueva ?? '')) {
+            if ($cambiaFecha) {
                 $updates[] = "fecha_cita_anterior = :fecha_anterior";
                 $params[':fecha_anterior'] = $oldFecha;
+
+                $updates[] = "notificacion_cita_30m_enviada = 0";
+                $updates[] = "notificacion_cita_30m_at = NULL";
             }
 
             $updates[] = "fecha_cita = :fecha_cita";
@@ -106,12 +119,7 @@ try {
         }
 
         if (array_key_exists('fecha_cita', $_POST)) {
-            $oldFechaStr = ($oldFecha ?? '');
-            $newFechaStr = ($fechaNueva ?? '');
-
-            $cambia = ($oldFechaStr !== $newFechaStr);
-
-            if ($cambia) {
+            if ($cambiaFecha) {
                 if ($cambios >= 2) {
                     echo json_encode(['success' => false, 'message' => 'Límite alcanzado: ya no puedes cambiar la fecha de cita']);
                     exit;
@@ -123,6 +131,9 @@ try {
                 }
 
                 $updates[] = "fecha_cita_cambios = COALESCE(fecha_cita_cambios, 0) + 1";
+
+                $updates[] = "notificacion_cita_30m_enviada = 0";
+                $updates[] = "notificacion_cita_30m_at = NULL";
             }
 
             $updates[] = "fecha_cita = :fecha_cita";

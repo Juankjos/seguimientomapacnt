@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'noticias_page.dart';
 import 'agenda_page.dart';
+import '../auth_controller.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -55,6 +56,12 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.setString('last_role', role);
   }
 
+  bool _parseBoolish(dynamic v) {
+    if (v is bool) return v;
+    final s = v?.toString().trim().toLowerCase() ?? '';
+    return s == '1' || s == 'true' || s == 'yes' || s == 'si';
+  }
+
   Future<void> _doLogin() async {
     setState(() {
       _loading = true;
@@ -69,9 +76,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (data['success'] == true) {
         final int reporteroId = int.parse(data['reportero_id'].toString());
-        final String nombre = data['nombre'] ?? '';
-        final String role = data['role']?.toString() ?? 'reportero';
-        final String wsToken = data['ws_token']?.toString() ?? '';
+        final String nombre = (data['nombre'] ?? '').toString();
+        final String role = (data['role'] ?? 'reportero').toString();
+        final String wsToken = (data['ws_token'] ?? '').toString();
+
+        final bool puedeCrearNoticias = _parseBoolish(data['puede_crear_noticias']);
 
         // deja token en memoria
         ApiService.wsToken = wsToken;
@@ -84,19 +93,27 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.setString('auth_role', role);
         await prefs.setBool('auth_logged_in', true);
 
+        await prefs.setBool('auth_puede_crear_noticias', puedeCrearNoticias);
+        await prefs.setBool('last_puede_crear_noticias', puedeCrearNoticias);
+
+        AuthController.puedeCrearNoticias.value = puedeCrearNoticias;
+
         // topics FCM (y last_role/last_reportero_id)
         await configurarTopicsFCM(role: role, reporteroId: reporteroId);
 
         if (!mounted) return;
 
-        if (role == 'admin') {
+        final bool irAgenda = (role == 'admin') || puedeCrearNoticias;
+
+        if (irAgenda) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
               builder: (_) => AgendaPage(
                 reporteroId: reporteroId,
                 reporteroNombre: nombre,
-                esAdmin: true,
+                esAdmin: role == 'admin',
+                puedeCrearNoticias: puedeCrearNoticias,
               ),
             ),
           );

@@ -18,7 +18,12 @@ if ($nombre === '' || $password === '') {
 }
 
 // 1) Buscar usuario
-$stmt = $pdo->prepare('SELECT id, nombre, password, role FROM reporteros WHERE nombre = ? LIMIT 1');
+$stmt = $pdo->prepare('
+    SELECT id, nombre, password, role, puede_crear_noticias
+    FROM reporteros
+    WHERE nombre = ?
+    LIMIT 1
+');
 $stmt->execute([$nombre]);
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -34,14 +39,13 @@ if ($password !== $user['password']) {
 }
 
 /*
-// ✅ Si usas password_hash en la BD, usa esto:
+// password_hash en la BD:
 // if (!password_verify($password, $user['password'])) {
 //     echo json_encode(['success' => false, 'message' => 'Contraseña incorrecta']);
 //     exit;
 // }
 */
 
-// 3) Generar token y guardarlo (YA con id válido)
 $token = bin2hex(random_bytes(32));
 $exp = date('Y-m-d H:i:s', time() + 86400); // 24h
 
@@ -56,5 +60,6 @@ echo json_encode([
     'role'         => $user['role'],
     'ws_token'     => $token,
     'ws_token_exp' => $exp,
+    'puede_crear_noticias' => (int)($user['puede_crear_noticias'] ?? 0),
 ]);
 exit;

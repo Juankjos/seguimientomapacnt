@@ -5,7 +5,7 @@ header('Content-Type: application/json; charset=utf-8');
 $q = isset($_GET['q']) ? trim($_GET['q']) : '';
 
 $sql = "
-    SELECT id, nombre, role
+    SELECT id, nombre, role, puede_crear_noticias
     FROM reporteros
     WHERE 1=1
 ";

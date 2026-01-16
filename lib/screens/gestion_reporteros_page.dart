@@ -120,9 +120,6 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
 
-    // ✅ Esto evita el overflow en la grilla:
-    // - en pantallas pequeñas baja a 2 columnas
-    // - da más altura a cada tile cuando hay 3+ columnas
     final crossAxisCount = (width / 180).floor().clamp(2, 4);
     final childAspectRatio = (crossAxisCount >= 3) ? 0.70 : 0.95;
 
@@ -214,8 +211,6 @@ class _GestionReporterosPageState extends State<GestionReporterosPage> {
                                     const SizedBox(height: 8),
                                     _avatarDefault(id: r.id, nombre: r.nombre, radius: 32),
                                     const SizedBox(height: 8),
-
-                                    // ✅ Flexible evita RenderFlex overflow dentro del tile
                                     Expanded(
                                       child: Column(
                                         mainAxisAlignment: MainAxisAlignment.center,
@@ -275,6 +270,7 @@ class _CrearUsuarioDialogState extends State<_CrearUsuarioDialog> {
   bool _creando = false;
   String _role = 'reportero';
   String? _error;
+  bool _puedeCrearNoticias = false;
 
   @override
   void dispose() {
@@ -309,6 +305,7 @@ class _CrearUsuarioDialogState extends State<_CrearUsuarioDialog> {
         nombre: nombre,
         password: pass,
         role: normalizedRole,
+        puedeCrearNoticias: _puedeCrearNoticias,
       );
 
       FocusManager.instance.primaryFocus?.unfocus();
@@ -342,7 +339,6 @@ class _CrearUsuarioDialogState extends State<_CrearUsuarioDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Título
                 Row(
                   children: [
                     const Expanded(
@@ -428,6 +424,16 @@ class _CrearUsuarioDialogState extends State<_CrearUsuarioDialog> {
                           DropdownMenuItem(value: 'admin', child: Text('Administrador')),
                         ],
                         onChanged: _creando ? null : (v) => setState(() => _role = v ?? 'reportero'),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      SwitchListTile.adaptive(
+                        value: _puedeCrearNoticias,
+                        onChanged: _creando ? null : (v) => setState(() => _puedeCrearNoticias = v),
+                        title: const Text('Puede crear noticias'),
+                        subtitle: const Text('Si está activo, podrá "Crear noticia" desde Agenda.'),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
                       ),
                     ],
                   ),
