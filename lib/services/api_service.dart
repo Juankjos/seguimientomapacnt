@@ -27,6 +27,13 @@ class ApiService {
   static const String wsBaseUrl = 'ws://167.99.163.209:3001';
   static String wsToken = '';
   static String _mysqlDateTime(DateTime dt) => DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
+  static bool _toBool(dynamic x) {
+    if (x == null) return false;
+    if (x is bool) return x;
+    if (x is num) return x.toInt() == 1;
+    final s = x.toString().trim().toLowerCase();
+    return s == '1' || s == 'true' || s == 'yes' || s == 'si';
+  }
 
   // 🔹 Login
   static Future<Map<String, dynamic>> login(
@@ -350,6 +357,28 @@ class ApiService {
     } else {
       throw Exception('Error en el servidor (${response.statusCode})');
     }
+  }
+
+  // 🔹 Toma los permisos de crear noticias en usuarios
+  static Future<bool> getPermisoCrearNoticias() async {
+    final uri = Uri.parse('$baseUrl/get_perfil.php');
+
+    final resp = await http.post(uri, body: {
+      'ws_token': wsToken,
+    });
+
+    final decoded = jsonDecode(resp.body);
+    if (decoded is! Map) {
+      throw Exception('Respuesta inválida');
+    }
+    if (decoded['success'] != true) {
+      throw Exception(decoded['message']?.toString() ?? 'No autorizado');
+    }
+
+    final data = decoded['data'];
+    if (data is! Map) return false;
+
+    return _toBool(data['puede_crear_noticias']);
   }
 
   // 🔹 Noticias de un reportero (incluye cerradas opcional)

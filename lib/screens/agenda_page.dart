@@ -150,6 +150,7 @@ class _AgendaPageState extends State<AgendaPage> {
     _selectedMonthInYear = _focusedDay.month;
 
     _initPermisoCrearNoticias();
+    _refrescarPermisoCrearNoticiasDesdeServidor(showError: false);
     _cargarNoticias();
   }
 
@@ -169,6 +170,24 @@ class _AgendaPageState extends State<AgendaPage> {
       AuthController.puedeCrearNoticias.value = v;
     } catch (_) {
       AuthController.puedeCrearNoticias.value = false;
+    }
+  }
+
+  Future<void> _refrescarPermisoCrearNoticiasDesdeServidor({bool showError = false}) async {
+    try {
+      final v = await ApiService.getPermisoCrearNoticias();
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('auth_puede_crear_noticias', v);
+      await prefs.setBool('last_puede_crear_noticias', v);
+
+      AuthController.puedeCrearNoticias.value = v;
+    } catch (e) {
+      if (showError && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No pude refrescar permiso: $e')),
+        );
+      }
     }
   }
 
@@ -358,8 +377,18 @@ class _AgendaPageState extends State<AgendaPage> {
 
   String _nombreMes(int month) {
     const nombres = [
-      'Enero','Febrero','Marzo','Abril','Mayo','Junio',
-      'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
+      'Enero',
+      'Febrero',
+      'Marzo',
+      'Abril',
+      'Mayo',
+      'Junio',
+      'Julio',
+      'Agosto',
+      'Septiembre',
+      'Octubre',
+      'Noviembre',
+      'Diciembre',
     ];
     return nombres[month - 1];
   }
@@ -383,7 +412,12 @@ class _AgendaPageState extends State<AgendaPage> {
               IconButton(
                 icon: const Icon(Icons.refresh),
                 tooltip: 'Actualizar',
-                onPressed: _loading ? null : _cargarNoticias,
+                onPressed: _loading
+                    ? null
+                    : () async {
+                        await _refrescarPermisoCrearNoticiasDesdeServidor(showError: false);
+                        await _cargarNoticias();
+                      },
               ),
             ],
           ),
@@ -399,7 +433,8 @@ class _AgendaPageState extends State<AgendaPage> {
                       MaterialPageRoute(builder: (_) => const CrearNoticiaPage()),
                     );
                     if (creado == true) {
-                      _cargarNoticias();
+                      await _refrescarPermisoCrearNoticiasDesdeServidor(showError: false);
+                      await _cargarNoticias();
                     }
                   },
                 )
@@ -651,7 +686,7 @@ class _AgendaPageState extends State<AgendaPage> {
     final theme = Theme.of(context);
     final eventosMes = _eventosDelMes(_focusedDay);
 
-    int _cmpFecha(Noticia a, Noticia b) {
+    int cmpFecha(Noticia a, Noticia b) {
       final da = a.fechaCita ?? DateTime(9999);
       final db = b.fechaCita ?? DateTime(9999);
 
@@ -660,8 +695,8 @@ class _AgendaPageState extends State<AgendaPage> {
       return a.id.compareTo(b.id);
     }
 
-    final pendientes = eventosMes.where((n) => n.pendiente == true).toList()..sort(_cmpFecha);
-    final cerradas = eventosMes.where((n) => n.pendiente == false).toList()..sort(_cmpFecha);
+    final pendientes = eventosMes.where((n) => n.pendiente == true).toList()..sort(cmpFecha);
+    final cerradas = eventosMes.where((n) => n.pendiente == false).toList()..sort(cmpFecha);
     final eventosMesOrdenados = [...pendientes, ...cerradas];
 
     return LayoutBuilder(
