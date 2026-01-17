@@ -203,6 +203,12 @@ Future<void> _openNoticiaFromData(Map<String, dynamic> data) async {
   final wsToken = prefs.getString('ws_token') ?? '';
   if (wsToken.isNotEmpty) {
     ApiService.wsToken = wsToken;
+
+    if (!kIsWeb) {
+      try {
+        await FlutterForegroundTask.saveData(key: 'ws_token_latest', value: wsToken);
+      } catch (_) {}
+    }
   }
 
   final role = prefs.getString('auth_role') ??

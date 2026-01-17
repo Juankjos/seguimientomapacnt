@@ -1,6 +1,7 @@
-// session_gate.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../services/api_service.dart';
 import 'login_screen.dart';
@@ -24,6 +25,60 @@ class _SessionGateState extends State<SessionGate> {
     _bootstrap();
   }
 
+  Future<void> _stopTrackingService() async {
+    if (kIsWeb) return;
+    try {
+      FlutterForegroundTask.sendDataToTask('STOP_TRACKING');
+      await Future.delayed(const Duration(milliseconds: 200));
+    } catch (_) {}
+    try {
+      await FlutterForegroundTask.stopService();
+    } catch (_) {}
+  }
+
+  Future<void> _clearSession() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await _stopTrackingService();
+
+    // limpia prefs de auth
+    await prefs.setBool('auth_logged_in', false);
+    await prefs.remove('ws_token');
+    await prefs.remove('auth_role');
+    await prefs.remove('auth_reportero_id');
+    await prefs.remove('auth_nombre');
+
+    // expiración local
+    await prefs.remove('auth_login_at_utc');
+    await prefs.remove('auth_session_exp_utc');
+
+    // también limpia token en memoria
+    ApiService.wsToken = '';
+
+    // y en el store del Foreground isolate
+    if (!kIsWeb) {
+      try {
+        await FlutterForegroundTask.saveData(key: 'ws_token_latest', value: '');
+      } catch (_) {}
+    }
+  }
+
+  bool _isSessionExpired(SharedPreferences prefs) {
+    final expMs = prefs.getInt('auth_session_exp_utc') ?? 0;
+    if (expMs <= 0) return true; // si no existe, forzamos login
+    final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+    return nowMs >= expMs;
+  }
+
+  Future<void> _syncTokenToForegroundStore(String token) async {
+    if (kIsWeb) return;
+    final t = token.trim();
+    if (t.isEmpty) return;
+    try {
+      await FlutterForegroundTask.saveData(key: 'ws_token_latest', value: t);
+    } catch (_) {}
+  }
+
   Future<void> _bootstrap() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -33,7 +88,7 @@ class _SessionGateState extends State<SessionGate> {
     final reporteroId = prefs.getInt('auth_reportero_id') ?? 0;
     final nombre = prefs.getString('auth_nombre') ?? '';
 
-    // Si no hay sesión válida -> login
+    // si no hay sesión base
     if (!loggedIn || token.isEmpty || role.isEmpty || reporteroId <= 0) {
       setState(() {
         _target = const LoginScreen();
@@ -42,8 +97,21 @@ class _SessionGateState extends State<SessionGate> {
       return;
     }
 
-    // ✅ restaura token a memoria para WS / API
+    // ✅ NUEVO: expiración local 24h
+    if (_isSessionExpired(prefs)) {
+      await _clearSession();
+      setState(() {
+        _target = const LoginScreen();
+        _loading = false;
+      });
+      return;
+    }
+
+    // restaura token a memoria
     ApiService.wsToken = token;
+
+    // y al storage del isolate (para evitar que conecte con uno viejo)
+    await _syncTokenToForegroundStore(token);
 
     setState(() {
       if (role == 'admin') {

@@ -8,12 +8,11 @@ import 'package:latlong2/latlong.dart' as latlng;
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:intl/intl.dart';
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
-import '../services/tracking_task_handler.dart';
+import '../services/tracking_service.dart';
 
 class TrayectoRutaPage extends StatefulWidget {
   final Noticia noticia;
@@ -114,12 +113,7 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     _deteniendoServicio = true;
 
     try {
-      FlutterForegroundTask.sendDataToTask('STOP_TRACKING');
-      await Future.delayed(const Duration(milliseconds: 350));
-    } catch (_) {}
-
-    try {
-      await FlutterForegroundTask.stopService();
+      await TrackingService.stop();
     } catch (_) {}
 
     _deteniendoServicio = false;
@@ -145,22 +139,11 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
   Future<void> _iniciarTrackingForeground() async {
     if (kIsWeb) return;
 
-    final payload = {
-      'ws_url': widget.wsBaseUrl,
-      'token': widget.wsToken,
-      'noticia_id': widget.noticia.id,
-      'save_history': false,
-    };
-
-    await FlutterForegroundTask.saveData(
-      key: 'tracking_payload',
-      value: jsonEncode(payload),
-    );
-
-    await FlutterForegroundTask.startService(
-      notificationTitle: 'Trayecto en curso',
-      notificationText: 'Enviando ubicación cada 7s',
-      callback: startCallback,
+    await TrackingService.start(
+      wsUrl: widget.wsBaseUrl,
+      token: widget.wsToken, // el token “actual” del flujo (debe pisar prefs viejas)
+      noticiaId: widget.noticia.id,
+      saveHistory: false,
     );
   }
 

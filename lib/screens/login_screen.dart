@@ -1,7 +1,10 @@
 // login_screen.dart
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../services/api_service.dart';
 import 'noticias_page.dart';
@@ -21,6 +24,59 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   String? _errorMessage;
 
+  String _pfx(String s) => s.length >= 8 ? '${s.substring(0, 8)}...' : s;
+
+  bool _parseBoolish(dynamic v) {
+    if (v is bool) return v;
+    final s = v?.toString().trim().toLowerCase() ?? '';
+    return s == '1' || s == 'true' || s == 'yes' || s == 'si';
+  }
+
+  Future<void> _stopAnyTrackingService() async {
+    if (kIsWeb) return;
+    try {
+      FlutterForegroundTask.sendDataToTask('STOP_TRACKING');
+      await Future.delayed(const Duration(milliseconds: 200));
+    } catch (_) {}
+    try {
+      await FlutterForegroundTask.stopService();
+    } catch (_) {}
+  }
+
+  Future<void> _persistWsToken(String wsToken) async {
+    final token = wsToken.trim();
+    if (token.isEmpty) return;
+
+    ApiService.wsToken = token;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('ws_token', token);
+
+    if (!kIsWeb) {
+      try {
+        await FlutterForegroundTask.saveData(key: 'ws_token_latest', value: token);
+      } catch (_) {}
+    }
+
+    if (kDebugMode) {
+      debugPrint('[Login] ws_token=${_pfx(token)} guardado mem/prefs/ws_token_latest');
+    }
+  }
+
+  Future<void> _setSessionExpiry24h() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final nowUtc = DateTime.now().toUtc();
+    final expUtc = nowUtc.add(const Duration(hours: 24));
+
+    await prefs.setInt('auth_login_at_utc', nowUtc.millisecondsSinceEpoch);
+    await prefs.setInt('auth_session_exp_utc', expUtc.millisecondsSinceEpoch);
+
+    if (kDebugMode) {
+      debugPrint('[Login] session exp UTC: $expUtc');
+    }
+  }
+
   Future<void> configurarTopicsFCM({
     required String role,
     required int reporteroId,
@@ -33,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final lastReporteroId = prefs.getInt('last_reportero_id');
     final lastRole = prefs.getString('last_role');
 
-    // 1) Limpia suscripciones previas si existían
+    // 1) Limpia suscripciones previas
     if (lastRole == 'reportero') {
       await fcm.unsubscribeFromTopic('rol_reportero');
       if (lastReporteroId != null) {
@@ -43,7 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await fcm.unsubscribeFromTopic('rol_admin');
     }
 
-    // 2) Aplica suscripción actual
+    // 2) Suscripción actual
     if (role == 'reportero') {
       await fcm.subscribeToTopic('rol_reportero');
       await fcm.subscribeToTopic('reportero_$reporteroId');
@@ -51,15 +107,9 @@ class _LoginScreenState extends State<LoginScreen> {
       await fcm.subscribeToTopic('rol_admin');
     }
 
-    // 3) Guarda estado actual
+    // 3) Guarda estado
     await prefs.setInt('last_reportero_id', reporteroId);
     await prefs.setString('last_role', role);
-  }
-
-  bool _parseBoolish(dynamic v) {
-    if (v is bool) return v;
-    final s = v?.toString().trim().toLowerCase() ?? '';
-    return s == '1' || s == 'true' || s == 'yes' || s == 'si';
   }
 
   Future<void> _doLogin() async {
@@ -82,12 +132,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
         final bool puedeCrearNoticias = _parseBoolish(data['puede_crear_noticias']);
 
-        // deja token en memoria
-        ApiService.wsToken = wsToken;
+        await _stopAnyTrackingService();
 
-        // guarda sesión para SessionGate
+        await _persistWsToken(wsToken);
+
+        await _setSessionExpiry24h();
+
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('ws_token', wsToken);
         await prefs.setInt('auth_reportero_id', reporteroId);
         await prefs.setString('auth_nombre', nombre);
         await prefs.setString('auth_role', role);
@@ -98,7 +149,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
         AuthController.puedeCrearNoticias.value = puedeCrearNoticias;
 
-        // topics FCM (y last_role/last_reportero_id)
+        // topics FCM
         await configurarTopicsFCM(role: role, reporteroId: reporteroId);
 
         if (!mounted) return;

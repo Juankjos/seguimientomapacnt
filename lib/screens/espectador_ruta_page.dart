@@ -12,8 +12,8 @@ class EspectadorRutaPage extends StatefulWidget {
   final double destinoLat;
   final double destinoLon;
 
-  final String wsUrl; // ej: ws://167.99.163.209:3001
-  final String wsToken; // token del login (admin)
+  final String wsUrl;   // ej: ws://167.99.163.209:3001
+  final String wsToken; // token (admin)
 
   const EspectadorRutaPage({
     super.key,
@@ -52,6 +52,24 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
 
   bool _seguirReportero = true;
   DateTime? _lastLocationAt;
+
+  int _noSessionStreak = 0;
+
+  int? _toInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
+
+  double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
 
   @override
   void initState() {
@@ -99,6 +117,8 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
 
       _dialogNoRutaMostrado = false;
       _lastLocationAt = null;
+
+      _noSessionStreak = 0;
     });
 
     try {
@@ -120,6 +140,7 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
 
       await ch.ready.timeout(const Duration(seconds: 8));
 
+      // poll cada 10s
       _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
         if (_ws != null) _sendSubscribeAll();
         _watchdog();
@@ -164,145 +185,175 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
   }
 
   void _onWsMessage(dynamic event) {
-    Map<String, dynamic>? msg;
     try {
-      msg = jsonDecode(event as String) as Map<String, dynamic>;
-    } catch (_) {
-      return;
-    }
+      final msg = jsonDecode(event as String) as Map<String, dynamic>;
+      final type = msg['type']?.toString();
 
-    final type = msg['type']?.toString();
+      if (type == 'authed') {
+        if (!mounted) return;
+        setState(() {
+          _conectado = true;
+          _error = null;
+        });
 
-    if (type == 'authed') {
-      if (!mounted) return;
-      setState(() {
-        _conectado = true;
-        _error = null;
-      });
+        // pide inmediatamente
+        _sendSubscribeAll();
+        return;
+      }
 
-      _sendSubscribeAll();
-      return;
-    }
+      if (type == 'active_sessions') {
+        final sessions = (msg['sessions'] as List?) ?? [];
 
-    if (type == 'active_sessions') {
-      final sessions = (msg['sessions'] as List?) ?? [];
+        Map<String, dynamic> match = <String, dynamic>{};
 
-      final match = sessions.cast<dynamic>().map((e) {
-        return (e as Map).map((k, v) => MapEntry(k.toString(), v));
-      }).firstWhere(
-        (s) => (s['noticia_id'] as num?)?.toInt() == widget.noticiaId,
-        orElse: () => <String, dynamic>{},
-      );
+        for (final e in sessions) {
+          if (e is! Map) continue;
+          final s = e.map((k, v) => MapEntry(k.toString(), v));
+          final noticia = _toInt(s['noticia_id']);
+          if (noticia == widget.noticiaId) {
+            match = s;
+            break;
+          }
+        }
 
-      if (match.isNotEmpty) {
-        final sid = (match['session_id'] as num?)?.toInt();
-        final lastLat = (match['last_lat'] as num?)?.toDouble();
-        final lastLon = (match['last_lon'] as num?)?.toDouble();
+        if (match.isNotEmpty) {
+          _noSessionStreak = 0;
+
+          final sid = _toInt(match['session_id']);
+          final lastLat = _toDouble(match['last_lat']);
+          final lastLon = _toDouble(match['last_lon']);
+
+          final sessionChanged = (sid != null && _sessionId != null && sid != _sessionId);
+          if (sessionChanged) {
+            _puntos.clear();
+            _ultimo = null;
+          }
+
+          if (!mounted) return;
+          setState(() {
+            _hayRutaEnCurso = true;
+            _sessionId = sid;
+            _dialogNoRutaMostrado = false;
+          });
+
+          // ✅ IMPORTANTE: actualiza SIEMPRE (aunque _puntos no esté vacío)
+          if (lastLat != null && lastLon != null) {
+            final p = latlng.LatLng(lastLat, lastLon);
+
+            final isNew = _ultimo == null ||
+                _ultimo!.latitude != p.latitude ||
+                _ultimo!.longitude != p.longitude;
+
+            if (isNew) {
+              _lastLocationAt = DateTime.now();
+
+              _puntos.add(p);
+              _ultimo = p;
+
+              if (_puntos.length > 800) {
+                _puntos.removeRange(0, _puntos.length - 800);
+              }
+
+              _moveIfFollowing(p);
+              if (mounted) setState(() {});
+            }
+          }
+        } else {
+          _noSessionStreak++;
+
+          if (!mounted) return;
+          setState(() {
+            _hayRutaEnCurso = false;
+            _sessionId = null;
+          });
+
+          // muestra diálogo solo si 3 polls seguidos sin sesión (~30s)
+          if (_noSessionStreak >= 3) _mostrarDialogNoRutaSiAplica();
+        }
+        return;
+      }
+
+      if (type == 'tracking_started') {
+        final noticiaId = _toInt(msg['noticia_id']);
+        if (noticiaId != widget.noticiaId) return;
+
+        final sid = _toInt(msg['session_id']);
 
         if (!mounted) return;
         setState(() {
           _hayRutaEnCurso = true;
           _sessionId = sid;
+          _puntos.clear();
+          _ultimo = null;
           _dialogNoRutaMostrado = false;
+          _lastLocationAt = null;
+          _noSessionStreak = 0;
         });
 
-        if (lastLat != null && lastLon != null) {
-          final p = latlng.LatLng(lastLat, lastLon);
-          if (_puntos.isEmpty) {
-            _puntos.add(p);
-            _ultimo = p;
-            _moveIfFollowing(p);
-            setState(() {});
-          }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reportero con trayecto en curso')),
+        );
+        return;
+      }
+
+      if (type == 'tracking_location') {
+        final sid = _toInt(msg['session_id']);
+        final noticiaId = _toInt(msg['noticia_id']);
+
+        if (_sessionId != null) {
+          if (sid != _sessionId) return;
+        } else {
+          if (noticiaId != widget.noticiaId) return;
         }
-      } else {
+
+        final lat = _toDouble(msg['lat']);
+        final lon = _toDouble(msg['lon']);
+        if (lat == null || lon == null) return;
+
+        final p = latlng.LatLng(lat, lon);
+
+        if (_puntos.isNotEmpty) {
+          final last = _puntos.last;
+          if (last.latitude == p.latitude && last.longitude == p.longitude) return;
+        }
+
+        _lastLocationAt = DateTime.now();
+
+        if (!_hayRutaEnCurso) setState(() => _hayRutaEnCurso = true);
+
+        _puntos.add(p);
+        _ultimo = p;
+
+        if (_puntos.length > 800) {
+          _puntos.removeRange(0, _puntos.length - 800);
+        }
+
+        _moveIfFollowing(p);
+        if (mounted) setState(() {});
+        return;
+      }
+
+      if (type == 'tracking_stopped') {
+        final sid = _toInt(msg['session_id']);
+        if (_sessionId != null && sid != _sessionId) return;
+
         if (!mounted) return;
         setState(() {
           _hayRutaEnCurso = false;
           _sessionId = null;
         });
+
         _mostrarDialogNoRutaSiAplica();
-      }
-      return;
-    }
-
-    if (type == 'tracking_started') {
-      final noticiaId = (msg['noticia_id'] as num?)?.toInt();
-      if (noticiaId != widget.noticiaId) return;
-
-      final sid = (msg['session_id'] as num?)?.toInt();
-
-      if (!mounted) return;
-      setState(() {
-        _hayRutaEnCurso = true;
-        _sessionId = sid;
-        _puntos.clear();
-        _ultimo = null;
-        _dialogNoRutaMostrado = false;
-        _lastLocationAt = null;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Reportero con trayecto en curso')),
-      );
-      return;
-    }
-
-    if (type == 'tracking_location') {
-      final sid = (msg['session_id'] as num?)?.toInt();
-      final noticiaId = (msg['noticia_id'] as num?)?.toInt();
-
-      if (_sessionId != null) {
-        if (sid != _sessionId) return;
-      } else {
-        if (noticiaId != widget.noticiaId) return;
+        return;
       }
 
-      final lat = (msg['lat'] as num?)?.toDouble();
-      final lon = (msg['lon'] as num?)?.toDouble();
-      if (lat == null || lon == null) return;
-
-      final p = latlng.LatLng(lat, lon);
-
-      if (_puntos.isNotEmpty) {
-        final last = _puntos.last;
-        if (last.latitude == p.latitude && last.longitude == p.longitude) return;
+      if (type == 'error') {
+        final m = msg['message']?.toString() ?? 'Error';
+        _scheduleReconnect(m);
+        return;
       }
-
-      _lastLocationAt = DateTime.now();
-
-      if (!_hayRutaEnCurso) setState(() => _hayRutaEnCurso = true);
-
-      _puntos.add(p);
-      _ultimo = p;
-
-      if (_puntos.length > 800) {
-        _puntos.removeRange(0, _puntos.length - 800);
-      }
-
-      _moveIfFollowing(p);
-      if (mounted) setState(() {});
-      return;
-    }
-
-    if (type == 'tracking_stopped') {
-      final sid = (msg['session_id'] as num?)?.toInt();
-      if (_sessionId != null && sid != _sessionId) return;
-
-      if (!mounted) return;
-      setState(() {
-        _hayRutaEnCurso = false;
-        _sessionId = null;
-      });
-
-      _mostrarDialogNoRutaSiAplica();
-      return;
-    }
-
-    if (type == 'error') {
-      final m = msg['message']?.toString() ?? 'Error';
-      _scheduleReconnect(m);
-      return;
+    } catch (e, st) {
+      debugPrint('WS message error: $e\n$st');
     }
   }
 
