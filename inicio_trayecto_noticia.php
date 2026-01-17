@@ -30,7 +30,6 @@ if ($noticiaId <= 0) {
 $debug = (isset($_GET['debug_fcm']) && $_GET['debug_fcm'] === '1');
 
 try {
-    // Trae noticia + reportero asignado (si existe)
     $q = $pdo->prepare("
         SELECT n.noticia, r.nombre AS reportero_nombre
         FROM noticias n

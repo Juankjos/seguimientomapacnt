@@ -199,7 +199,6 @@ Future<void> _openNoticiaFromData(Map<String, dynamic> data) async {
 
   final prefs = await SharedPreferences.getInstance();
 
-  // Restaura token en memoria
   final wsToken = prefs.getString('ws_token') ?? '';
   if (wsToken.isNotEmpty) {
     ApiService.wsToken = wsToken;

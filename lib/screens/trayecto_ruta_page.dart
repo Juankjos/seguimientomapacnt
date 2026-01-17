@@ -141,7 +141,7 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
 
     await TrackingService.start(
       wsUrl: widget.wsBaseUrl,
-      token: widget.wsToken, // el token “actual” del flujo (debe pisar prefs viejas)
+      token: widget.wsToken,
       noticiaId: widget.noticia.id,
       saveHistory: false,
     );

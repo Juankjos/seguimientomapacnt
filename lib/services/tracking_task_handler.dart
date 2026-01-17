@@ -41,7 +41,6 @@ class TrackingTaskHandler extends TaskHandler {
   bool _suppressReconnectOnce = false;
 
   void _log(String s) {
-    // ignore: avoid_print
     print('[TRACKING_TASK] $s');
     try {
       FlutterForegroundTask.updateService(notificationText: s);
@@ -84,7 +83,6 @@ class TrackingTaskHandler extends TaskHandler {
     _noticiaId = (payload['noticia_id'] as num?)?.toInt();
     _saveHistory = _parseBoolish(payload['save_history']);
 
-    // ✅ obliga token latest antes de validar/conectar
     await _refreshTokenFromStore();
 
     if ((_wsUrl ?? '').isEmpty || (_token ?? '').isEmpty || (_noticiaId ?? 0) <= 0) {
@@ -139,7 +137,6 @@ class TrackingTaskHandler extends TaskHandler {
     if (_wsUrl == null || _token == null) return;
     if (_stopping || _fatalAuth) return;
 
-    // ✅ refresca token latest antes de conectar (también en reconexiones)
     await _refreshTokenFromStore();
 
     await _disposeWs();

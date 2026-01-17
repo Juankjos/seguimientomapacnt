@@ -41,7 +41,6 @@ class _SessionGateState extends State<SessionGate> {
 
     await _stopTrackingService();
 
-    // limpia prefs de auth
     await prefs.setBool('auth_logged_in', false);
     await prefs.remove('ws_token');
     await prefs.remove('auth_role');
@@ -52,10 +51,8 @@ class _SessionGateState extends State<SessionGate> {
     await prefs.remove('auth_login_at_utc');
     await prefs.remove('auth_session_exp_utc');
 
-    // también limpia token en memoria
     ApiService.wsToken = '';
 
-    // y en el store del Foreground isolate
     if (!kIsWeb) {
       try {
         await FlutterForegroundTask.saveData(key: 'ws_token_latest', value: '');
@@ -65,7 +62,7 @@ class _SessionGateState extends State<SessionGate> {
 
   bool _isSessionExpired(SharedPreferences prefs) {
     final expMs = prefs.getInt('auth_session_exp_utc') ?? 0;
-    if (expMs <= 0) return true; // si no existe, forzamos login
+    if (expMs <= 0) return true;
     final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
     return nowMs >= expMs;
   }
@@ -88,7 +85,6 @@ class _SessionGateState extends State<SessionGate> {
     final reporteroId = prefs.getInt('auth_reportero_id') ?? 0;
     final nombre = prefs.getString('auth_nombre') ?? '';
 
-    // si no hay sesión base
     if (!loggedIn || token.isEmpty || role.isEmpty || reporteroId <= 0) {
       setState(() {
         _target = const LoginScreen();
@@ -97,7 +93,6 @@ class _SessionGateState extends State<SessionGate> {
       return;
     }
 
-    // ✅ NUEVO: expiración local 24h
     if (_isSessionExpired(prefs)) {
       await _clearSession();
       setState(() {
@@ -107,10 +102,8 @@ class _SessionGateState extends State<SessionGate> {
       return;
     }
 
-    // restaura token a memoria
     ApiService.wsToken = token;
 
-    // y al storage del isolate (para evitar que conecte con uno viejo)
     await _syncTokenToForegroundStore(token);
 
     setState(() {

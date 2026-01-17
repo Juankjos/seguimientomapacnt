@@ -9,7 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $idsRaw = $_POST['noticia_ids'] ?? '';
-$targetRaw = $_POST['nuevo_reportero_id'] ?? ''; // '' => NULL
+$targetRaw = $_POST['nuevo_reportero_id'] ?? '';
 
 $ids = json_decode($idsRaw, true);
 if (!is_array($ids) || count($ids) === 0) {

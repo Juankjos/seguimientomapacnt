@@ -13,10 +13,6 @@ class TrackingService {
 
   static String _pfx(String s) => s.length >= 8 ? '${s.substring(0, 8)}...' : s;
 
-  /// ✅ Regla (CORREGIDA):
-  /// 1) ApiService.wsToken (mem) si existe
-  /// 2) paramToken si existe (esto es CLAVE para pisar prefs viejas)
-  /// 3) prefs ws_token como último recurso
   static Future<String> _resolveLatestToken(String paramToken) async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -34,17 +30,14 @@ class TrackingService {
       effective = prefsToken;
     }
 
-    // ✅ sincroniza a prefs si cambió
     if (effective.isNotEmpty && effective != prefsToken) {
       await prefs.setString('ws_token', effective);
     }
 
-    // ✅ sincroniza a memoria
     if (effective.isNotEmpty) {
       ApiService.wsToken = effective;
     }
 
-    // ✅ fuente de verdad para el isolate (ForegroundTask)
     if (effective.isNotEmpty) {
       await FlutterForegroundTask.saveData(key: 'ws_token_latest', value: effective);
     }
@@ -73,7 +66,6 @@ class TrackingService {
       return;
     }
 
-    // ✅ si ya corre igual, no reiniciar
     if (_running && _runningNoticiaId == noticiaId && _runningToken == effectiveToken) {
       return;
     }
@@ -84,7 +76,7 @@ class TrackingService {
 
     final payload = jsonEncode({
       'ws_url': wsUrl,
-      'token': effectiveToken, // fallback (handler prefiere ws_token_latest)
+      'token': effectiveToken,
       'noticia_id': noticiaId,
       'save_history': saveHistory,
     });

@@ -236,7 +236,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
             _dialogNoRutaMostrado = false;
           });
 
-          // ✅ IMPORTANTE: actualiza SIEMPRE (aunque _puntos no esté vacío)
           if (lastLat != null && lastLon != null) {
             final p = latlng.LatLng(lastLat, lastLon);
 
@@ -267,7 +266,6 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
             _sessionId = null;
           });
 
-          // muestra diálogo solo si 3 polls seguidos sin sesión (~30s)
           if (_noSessionStreak >= 3) _mostrarDialogNoRutaSiAplica();
         }
         return;
