@@ -63,17 +63,17 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _setSessionExpiry24h() async {
+  Future<void> _setSessionExpiry8h() async {
     final prefs = await SharedPreferences.getInstance();
 
     final nowUtc = DateTime.now().toUtc();
-    final expUtc = nowUtc.add(const Duration(hours: 24));
+    final expUtc = nowUtc.add(const Duration(hours: 8));
 
     await prefs.setInt('auth_login_at_utc', nowUtc.millisecondsSinceEpoch);
     await prefs.setInt('auth_session_exp_utc', expUtc.millisecondsSinceEpoch);
 
     if (kDebugMode) {
-      debugPrint('[Login] session exp UTC: $expUtc');
+      debugPrint('[Login] session exp UTC (8h): $expUtc');
     }
   }
 
@@ -89,7 +89,6 @@ class _LoginScreenState extends State<LoginScreen> {
     final lastReporteroId = prefs.getInt('last_reportero_id');
     final lastRole = prefs.getString('last_role');
 
-    // 1) Limpia suscripciones previas
     if (lastRole == 'reportero') {
       await fcm.unsubscribeFromTopic('rol_reportero');
       if (lastReporteroId != null) {
@@ -99,7 +98,6 @@ class _LoginScreenState extends State<LoginScreen> {
       await fcm.unsubscribeFromTopic('rol_admin');
     }
 
-    // 2) Suscripción actual
     if (role == 'reportero') {
       await fcm.subscribeToTopic('rol_reportero');
       await fcm.subscribeToTopic('reportero_$reporteroId');
@@ -107,7 +105,6 @@ class _LoginScreenState extends State<LoginScreen> {
       await fcm.subscribeToTopic('rol_admin');
     }
 
-    // 3) Guarda estado
     await prefs.setInt('last_reportero_id', reporteroId);
     await prefs.setString('last_role', role);
   }
@@ -136,7 +133,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
         await _persistWsToken(wsToken);
 
-        await _setSessionExpiry24h();
+        await _setSessionExpiry8h();
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt('auth_reportero_id', reporteroId);

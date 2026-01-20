@@ -430,7 +430,7 @@ class _EspectadorRutaPageState extends State<EspectadorRutaPage> {
         : (_hayRutaEnCurso
             ? (_ultimo == null
                 ? 'Esperando ubicación del reportero…'
-                : 'En vivo • puntos: ${_puntos.length}')
+                : 'En vivo • Puntos de rastreo Totales: ${_puntos.length}')
             : 'En espera');
 
     return Scaffold(

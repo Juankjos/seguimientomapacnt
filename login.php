@@ -47,7 +47,7 @@ if ($password !== $user['password']) {
 */
 
 $token = bin2hex(random_bytes(32));
-$exp = date('Y-m-d H:i:s', time() + 86400); // 24h
+$exp = date('Y-m-d H:i:s', time() + (8 * 3600)); // ✅ 8h
 
 $stmtTok = $pdo->prepare("UPDATE reporteros SET ws_token = ?, ws_token_exp = ? WHERE id = ?");
 $stmtTok->execute([$token, $exp, (int)$user['id']]);
