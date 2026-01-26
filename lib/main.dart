@@ -55,6 +55,13 @@ Future<void> initFirebaseOnce() {
 }
 
 Future<void> _initFirebaseAndNotifications() async {
+
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
+
   if (kIsWeb) return;
 
   if (Firebase.apps.isEmpty) {

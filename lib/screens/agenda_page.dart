@@ -1,4 +1,5 @@
 // lib/screens/agenda_page.dart
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -142,6 +143,27 @@ class _AgendaPageState extends State<AgendaPage> {
 
   late int _selectedMonthInYear;
   late String _nombreActual;
+
+  // ---- Ajustes SOLO de dimensiones para Chrome/Web ----
+  static const double _kWebMaxContentWidth = 1200;
+  static const double _kWebWideBreakpoint = 980;
+
+  bool _isWebWide(BuildContext context) =>
+      kIsWeb && MediaQuery.of(context).size.width >= _kWebWideBreakpoint;
+
+  Widget _wrapWebWidth(Widget child) {
+    if (!kIsWeb) return child;
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: _kWebMaxContentWidth),
+        child: child,
+      ),
+    );
+  }
+
+  double _hPad(BuildContext context) => _isWebWide(context) ? 20 : 12;
+  double _selectorHPad(BuildContext context) => _isWebWide(context) ? 20 : 16;
 
   @override
   void initState() {
@@ -422,7 +444,7 @@ class _AgendaPageState extends State<AgendaPage> {
             ],
           ),
           drawer: widget.esAdmin ? _buildDrawerAdmin() : null,
-          body: _buildBody(showFabCrear: showFabCrear),
+          body: _wrapWebWidth(_buildBody(showFabCrear: showFabCrear)),
           floatingActionButton: showFabCrear
               ? FloatingActionButton.extended(
                   icon: const Icon(Icons.add),
@@ -471,7 +493,7 @@ class _AgendaPageState extends State<AgendaPage> {
 
   Widget _buildSelectorVista() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: EdgeInsets.symmetric(horizontal: _selectorHPad(context)),
       child: SegmentedButton<AgendaView>(
         segments: const [
           ButtonSegment(
@@ -530,7 +552,7 @@ class _AgendaPageState extends State<AgendaPage> {
     return Column(
       children: [
         Container(
-          margin: const EdgeInsets.symmetric(horizontal: 12),
+          margin: EdgeInsets.symmetric(horizontal: _hPad(context)),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: theme.colorScheme.primaryContainer,
@@ -565,112 +587,137 @@ class _AgendaPageState extends State<AgendaPage> {
           ),
         ),
         const SizedBox(height: 8),
-
         Expanded(
           child: Builder(
             builder: (context) {
               final bottomSafe = MediaQuery.of(context).padding.bottom;
               final fabClearance = showFabCrear ? 110.0 : 0.0;
 
-              return GridView.builder(
-                padding: EdgeInsets.fromLTRB(12, 8, 12, 8 + fabClearance + bottomSafe),
-                physics: const AlwaysScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  childAspectRatio: 0.95,
-                ),
-                itemCount: 12,
-                itemBuilder: (context, index) {
-                  final month = index + 1;
-                  final count = eventosPorMes[month] ?? 0;
-                  final nombreMes = _nombreMes(month);
-                  final bool tieneEventos = count > 0;
-                  final bool esSeleccionado = month == _selectedMonthInYear;
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final w = constraints.maxWidth;
+                  int crossAxisCount = 3;
+                  double aspect = 0.95;
 
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: () {
-                      setState(() {
-                        _focusedDay = DateTime(year, month, 1);
-                        _vista = AgendaView.month;
-                        _selectedMonthInYear = month;
-                      });
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
-                        color: esSeleccionado
-                            ? theme.colorScheme.primaryContainer
-                            : tieneEventos
-                                ? theme.colorScheme.primaryContainer.withOpacity(0.8)
-                                : theme.colorScheme.surface,
-                        border: Border.all(
-                          color: esSeleccionado
-                              ? theme.colorScheme.primary
-                              : (tieneEventos ? theme.colorScheme.primary : theme.dividerColor),
-                          width: esSeleccionado ? 2.0 : (tieneEventos ? 1.4 : 0.8),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            blurRadius: esSeleccionado ? 6 : 4,
-                            offset: const Offset(0, 2),
-                            color: Colors.black.withOpacity(esSeleccionado ? 0.15 : 0.08),
-                          )
-                        ],
-                      ),
-                      padding: const EdgeInsets.all(8),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Builder(
-                            builder: (context) {
-                              final efem = efemerideMes(month, theme);
-                              return Tooltip(
-                                message: efem.tooltip,
-                                child: CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: efem.color,
-                                  child: Icon(efem.icon, size: 18, color: Colors.white),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 8),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              nombreMes,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              tieneEventos ? '$count noticias' : 'Sin noticias',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: tieneEventos
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.onSurface.withOpacity(0.70),
-                                fontWeight: tieneEventos || esSeleccionado
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ],
-                      ),
+                  if (kIsWeb) {
+                    if (w >= 1200) {
+                      crossAxisCount = 6;
+                      aspect = 1.15;
+                    } else if (w >= 980) {
+                      crossAxisCount = 5;
+                      aspect = 1.10;
+                    } else if (w >= 720) {
+                      crossAxisCount = 4;
+                      aspect = 1.02;
+                    }
+                  }
+
+                  return GridView.builder(
+                    padding: EdgeInsets.fromLTRB(
+                      _hPad(context),
+                      8,
+                      _hPad(context),
+                      8 + fabClearance + bottomSafe,
                     ),
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: crossAxisCount,
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childAspectRatio: aspect,
+                    ),
+                    itemCount: 12,
+                    itemBuilder: (context, index) {
+                      final month = index + 1;
+                      final count = eventosPorMes[month] ?? 0;
+                      final nombreMes = _nombreMes(month);
+                      final bool tieneEventos = count > 0;
+                      final bool esSeleccionado = month == _selectedMonthInYear;
+
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () {
+                          setState(() {
+                            _focusedDay = DateTime(year, month, 1);
+                            _vista = AgendaView.month;
+                            _selectedMonthInYear = month;
+                          });
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            color: esSeleccionado
+                                ? theme.colorScheme.primaryContainer
+                                : tieneEventos
+                                    ? theme.colorScheme.primaryContainer.withOpacity(0.8)
+                                    : theme.colorScheme.surface,
+                            border: Border.all(
+                              color: esSeleccionado
+                                  ? theme.colorScheme.primary
+                                  : (tieneEventos ? theme.colorScheme.primary : theme.dividerColor),
+                              width: esSeleccionado ? 2.0 : (tieneEventos ? 1.4 : 0.8),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                blurRadius: esSeleccionado ? 6 : 4,
+                                offset: const Offset(0, 2),
+                                color: Colors.black.withOpacity(esSeleccionado ? 0.15 : 0.08),
+                              )
+                            ],
+                          ),
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Builder(
+                                builder: (context) {
+                                  final efem = efemerideMes(month, theme);
+                                  return Tooltip(
+                                    message: efem.tooltip,
+                                    child: CircleAvatar(
+                                      radius: 16,
+                                      backgroundColor: efem.color,
+                                      child: Icon(efem.icon, size: 18, color: Colors.white),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 8),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  nombreMes,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  tieneEventos ? '$count noticias' : 'Sin noticias',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: tieneEventos
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurface.withOpacity(0.70),
+                                    fontWeight: tieneEventos || esSeleccionado
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   );
                 },
               );
@@ -701,7 +748,8 @@ class _AgendaPageState extends State<AgendaPage> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        const double calendarFactor = 0.55;
+        final bool wide = _isWebWide(context);
+        final double calendarFactor = wide ? 0.50 : 0.55;
 
         final double totalH = constraints.maxHeight;
         final double calendarH = totalH * calendarFactor;
@@ -715,7 +763,7 @@ class _AgendaPageState extends State<AgendaPage> {
             SizedBox(
               height: calendarH,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: EdgeInsets.symmetric(horizontal: _hPad(context)),
                 child: Card(
                   elevation: 2,
                   shape: RoundedRectangleBorder(
@@ -731,7 +779,8 @@ class _AgendaPageState extends State<AgendaPage> {
                         final double computedRowHeight =
                             (calConstraints.maxHeight - headerAndWeekdaysApprox) / rows;
 
-                        final double rowHeight = computedRowHeight.clamp(32.0, 46.0);
+                        final double rowHeight =
+                            computedRowHeight.clamp(32.0, wide ? 54.0 : 46.0);
 
                         return TableCalendar<Noticia>(
                           locale: 'es_MX',
@@ -832,13 +881,11 @@ class _AgendaPageState extends State<AgendaPage> {
                 ),
               ),
             ),
-
             const SizedBox(height: 8),
-
             SizedBox(
               height: listH < 0 ? 0 : listH,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: EdgeInsets.symmetric(horizontal: _hPad(context)),
                 child: Card(
                   elevation: 1,
                   shape: RoundedRectangleBorder(
@@ -954,7 +1001,7 @@ class _AgendaPageState extends State<AgendaPage> {
         Container(
           color: isDark ? theme.colorScheme.surfaceVariant : Colors.grey.shade200,
           width: double.infinity,
-          padding: const EdgeInsets.all(12),
+          padding: EdgeInsets.all(_isWebWide(context) ? 14 : 12),
           child: Text(
             '${_nombreMes(dia.month)} ${dia.day}, ${dia.year}',
             style: TextStyle(
@@ -988,7 +1035,10 @@ class _AgendaPageState extends State<AgendaPage> {
 
                     return Card(
                       color: bg,
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      margin: EdgeInsets.symmetric(
+                        horizontal: _hPad(context),
+                        vertical: 6,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),

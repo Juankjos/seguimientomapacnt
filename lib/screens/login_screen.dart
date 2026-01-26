@@ -81,6 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
     required String role,
     required int reporteroId,
   }) async {
+    if (kIsWeb) return;
     final fcm = FirebaseMessaging.instance;
 
     await fcm.requestPermission(alert: true, badge: true, sound: true);
