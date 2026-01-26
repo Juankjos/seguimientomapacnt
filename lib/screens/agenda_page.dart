@@ -165,6 +165,40 @@ class _AgendaPageState extends State<AgendaPage> {
   double _hPad(BuildContext context) => _isWebWide(context) ? 20 : 12;
   double _selectorHPad(BuildContext context) => _isWebWide(context) ? 20 : 16;
 
+  // ---- helpers visuales (sin cambiar lógica) ----
+  ShapeBorder _softShape(ThemeData theme) => RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: theme.dividerColor.withOpacity(0.65),
+          width: 0.9,
+        ),
+      );
+
+  Widget _cardShell({
+    required Widget child,
+    EdgeInsetsGeometry padding = const EdgeInsets.all(10),
+    double radius = 16,
+    double? elevation,
+    Color? color,
+  }) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: elevation ?? (kIsWeb ? 0.5 : 1),
+      color: color ?? theme.colorScheme.surface,
+      shape: _softShape(theme),
+      child: Padding(padding: padding, child: child),
+    );
+  }
+
+  Widget _maybeScrollbar({required Widget child}) {
+    if (!kIsWeb) return child;
+    return Scrollbar(
+      thumbVisibility: true,
+      interactive: true,
+      child: child,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -467,6 +501,8 @@ class _AgendaPageState extends State<AgendaPage> {
   }
 
   Widget _buildBody({required bool showFabCrear}) {
+    final theme = Theme.of(context);
+
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -476,49 +512,89 @@ class _AgendaPageState extends State<AgendaPage> {
     }
 
     if (_eventosPorDia.isEmpty) {
-      return const Center(
-        child: Text('No hay citas registradas en la agenda.'),
-      );
+      return const Center(child: Text('No hay citas registradas en la agenda.'));
     }
 
-    return Column(
-      children: [
-        const SizedBox(height: 8),
-        _buildSelectorVista(),
-        const SizedBox(height: 8),
-        Expanded(child: _buildVistaActual(showFabCrear: showFabCrear)),
-      ],
+    return Container(
+      color: kIsWeb ? theme.colorScheme.surface : null,
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          _buildSelectorVista(),
+          const SizedBox(height: 10),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              child: KeyedSubtree(
+                key: ValueKey(_vista),
+                child: _buildVistaActual(showFabCrear: showFabCrear),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildSelectorVista() {
+    final theme = Theme.of(context);
+    final wide = _isWebWide(context);
+
+    final segmented = SegmentedButton<AgendaView>(
+      segments: const [
+        ButtonSegment(
+          value: AgendaView.year,
+          label: Text('Año'),
+          icon: Icon(Icons.calendar_view_month),
+        ),
+        ButtonSegment(
+          value: AgendaView.month,
+          label: Text('Mes'),
+          icon: Icon(Icons.calendar_month),
+        ),
+        ButtonSegment(
+          value: AgendaView.day,
+          label: Text('Día'),
+          icon: Icon(Icons.view_day),
+        ),
+      ],
+      selected: <AgendaView>{_vista},
+      style: ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        padding: MaterialStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: wide ? 18 : 12, vertical: wide ? 12 : 10),
+        ),
+      ),
+      onSelectionChanged: (set) {
+        setState(() => _vista = set.first);
+      },
+    );
+
+    final shell = _cardShell(
+      elevation: 0,
+      color: theme.colorScheme.surface,
+      padding: EdgeInsets.symmetric(horizontal: wide ? 10 : 8, vertical: wide ? 8 : 6),
+      child: Row(
+        children: [
+          Icon(Icons.tune, size: wide ? 18 : 16, color: theme.colorScheme.primary),
+          const SizedBox(width: 10),
+          Expanded(child: segmented),
+        ],
+      ),
+    );
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: _selectorHPad(context)),
-      child: SegmentedButton<AgendaView>(
-        segments: const [
-          ButtonSegment(
-            value: AgendaView.year,
-            label: Text('Año'),
-            icon: Icon(Icons.calendar_view_month),
-          ),
-          ButtonSegment(
-            value: AgendaView.month,
-            label: Text('Mes'),
-            icon: Icon(Icons.calendar_month),
-          ),
-          ButtonSegment(
-            value: AgendaView.day,
-            label: Text('Día'),
-            icon: Icon(Icons.view_day),
-          ),
-        ],
-        selected: <AgendaView>{_vista},
-        onSelectionChanged: (set) {
-          setState(() {
-            _vista = set.first;
-          });
-        },
-      ),
+      child: wide
+          ? Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 860),
+                child: shell,
+              ),
+            )
+          : shell,
     );
   }
 
@@ -551,42 +627,41 @@ class _AgendaPageState extends State<AgendaPage> {
 
     return Column(
       children: [
-        Container(
-          margin: EdgeInsets.symmetric(horizontal: _hPad(context)),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () {
-                  setState(() {
-                    _focusedDay = DateTime(year - 1, _selectedMonthInYear, 1);
-                  });
-                },
-              ),
-              Text(
-                '$year',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: _hPad(context)),
+          child: _cardShell(
+            elevation: 0.5,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  tooltip: 'Año anterior',
+                  onPressed: () {
+                    setState(() {
+                      _focusedDay = DateTime(year - 1, _selectedMonthInYear, 1);
+                    });
+                  },
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed: () {
-                  setState(() {
-                    _focusedDay = DateTime(year + 1, _selectedMonthInYear, 1);
-                  });
-                },
-              ),
-            ],
+                Text(
+                  '$year',
+                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  tooltip: 'Año siguiente',
+                  onPressed: () {
+                    setState(() {
+                      _focusedDay = DateTime(year + 1, _selectedMonthInYear, 1);
+                    });
+                  },
+                ),
+              ],
+            ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Expanded(
           child: Builder(
             builder: (context) {
@@ -612,10 +687,10 @@ class _AgendaPageState extends State<AgendaPage> {
                     }
                   }
 
-                  return GridView.builder(
+                  final grid = GridView.builder(
                     padding: EdgeInsets.fromLTRB(
                       _hPad(context),
-                      8,
+                      2,
                       _hPad(context),
                       8 + fabClearance + bottomSafe,
                     ),
@@ -644,29 +719,29 @@ class _AgendaPageState extends State<AgendaPage> {
                           });
                         },
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
+                          duration: const Duration(milliseconds: 180),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(14),
                             color: esSeleccionado
                                 ? theme.colorScheme.primaryContainer
                                 : tieneEventos
-                                    ? theme.colorScheme.primaryContainer.withOpacity(0.8)
+                                    ? theme.colorScheme.primaryContainer.withOpacity(0.75)
                                     : theme.colorScheme.surface,
                             border: Border.all(
                               color: esSeleccionado
                                   ? theme.colorScheme.primary
                                   : (tieneEventos ? theme.colorScheme.primary : theme.dividerColor),
-                              width: esSeleccionado ? 2.0 : (tieneEventos ? 1.4 : 0.8),
+                              width: esSeleccionado ? 2.0 : (tieneEventos ? 1.2 : 0.8),
                             ),
                             boxShadow: [
                               BoxShadow(
-                                blurRadius: esSeleccionado ? 6 : 4,
+                                blurRadius: esSeleccionado ? 7 : 4,
                                 offset: const Offset(0, 2),
-                                color: Colors.black.withOpacity(esSeleccionado ? 0.15 : 0.08),
+                                color: Colors.black.withOpacity(esSeleccionado ? 0.14 : 0.07),
                               )
                             ],
                           ),
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(10),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -683,20 +758,24 @@ class _AgendaPageState extends State<AgendaPage> {
                                   );
                                 },
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 10),
                               FittedBox(
                                 fit: BoxFit.scaleDown,
                                 child: Text(
                                   nombreMes,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                                   textAlign: TextAlign.center,
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surfaceVariant.withOpacity(0.55),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
                                 child: Text(
                                   tieneEventos ? '$count noticias' : 'Sin noticias',
                                   maxLines: 1,
@@ -706,11 +785,8 @@ class _AgendaPageState extends State<AgendaPage> {
                                     color: tieneEventos
                                         ? theme.colorScheme.primary
                                         : theme.colorScheme.onSurface.withOpacity(0.70),
-                                    fontWeight: tieneEventos || esSeleccionado
-                                        ? FontWeight.w600
-                                        : FontWeight.normal,
+                                    fontWeight: FontWeight.w700,
                                   ),
-                                  textAlign: TextAlign.center,
                                 ),
                               ),
                             ],
@@ -719,6 +795,8 @@ class _AgendaPageState extends State<AgendaPage> {
                       );
                     },
                   );
+
+                  return _maybeScrollbar(child: grid);
                 },
               );
             },
@@ -732,11 +810,11 @@ class _AgendaPageState extends State<AgendaPage> {
   Widget _buildVistaMonth({required bool showFabCrear}) {
     final theme = Theme.of(context);
     final eventosMes = _eventosDelMes(_focusedDay);
+    final wide = _isWebWide(context);
 
     int cmpFecha(Noticia a, Noticia b) {
       final da = a.fechaCita ?? DateTime(9999);
       final db = b.fechaCita ?? DateTime(9999);
-
       final c = da.compareTo(db);
       if (c != 0) return c;
       return a.id.compareTo(b.id);
@@ -746,17 +824,243 @@ class _AgendaPageState extends State<AgendaPage> {
     final cerradas = eventosMes.where((n) => n.pendiente == false).toList()..sort(cmpFecha);
     final eventosMesOrdenados = [...pendientes, ...cerradas];
 
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
+    final fabClearance = showFabCrear ? 110.0 : 0.0;
+
+    Widget buildCalendarCard() {
+      return _cardShell(
+        padding: const EdgeInsets.all(10),
+        child: LayoutBuilder(
+          builder: (context, calConstraints) {
+            final double headerAndWeekdaysApprox = wide ? 100.0 : 92.0;
+            const int rows = 6;
+
+            final double computedRowHeight =
+                (calConstraints.maxHeight - headerAndWeekdaysApprox) / rows;
+
+            final double rowHeight = computedRowHeight.clamp(32.0, wide ? 54.0 : 46.0);
+
+            return TableCalendar<Noticia>(
+              locale: 'es_MX',
+              firstDay: DateTime.utc(2000, 1, 1),
+              lastDay: DateTime.utc(2100, 12, 31),
+              focusedDay: _focusedDay,
+              startingDayOfWeek: StartingDayOfWeek.monday,
+              calendarFormat: CalendarFormat.month,
+              rowHeight: rowHeight,
+              daysOfWeekHeight: wide ? 20 : 18,
+              selectedDayPredicate: (day) =>
+                  _selectedDay != null && _soloFecha(day) == _soloFecha(_selectedDay!),
+              eventLoader: _eventosDeDia,
+              onDaySelected: (selectedDay, focusedDay) {
+                setState(() {
+                  _selectedDay = _soloFecha(selectedDay);
+                  _focusedDay = focusedDay;
+                  _selectedMonthInYear = focusedDay.month;
+                  _vista = AgendaView.day;
+                });
+              },
+              onPageChanged: (focusedDay) {
+                setState(() {
+                  _focusedDay = focusedDay;
+                  _selectedMonthInYear = focusedDay.month;
+                });
+              },
+              calendarStyle: CalendarStyle(
+                todayDecoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.75),
+                  shape: BoxShape.circle,
+                ),
+                todayTextStyle: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+                selectedDecoration: BoxDecoration(
+                  color: theme.colorScheme.secondary,
+                  shape: BoxShape.circle,
+                ),
+                selectedTextStyle: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+                weekendTextStyle: TextStyle(color: theme.colorScheme.error),
+                outsideDaysVisible: false,
+                markersAlignment: Alignment.bottomRight,
+                markersMaxCount: 1,
+              ),
+              headerStyle: HeaderStyle(
+                formatButtonVisible: false,
+                titleCentered: true,
+                titleTextStyle: TextStyle(
+                  fontSize: wide ? 17 : 16,
+                  fontWeight: FontWeight.bold,
+                ),
+                titleTextFormatter: (date, locale) {
+                  final mes = _nombreMes(date.month);
+                  return '$mes ${date.year}';
+                },
+                leftChevronIcon: const Icon(Icons.chevron_left),
+                rightChevronIcon: const Icon(Icons.chevron_right),
+                headerPadding: const EdgeInsets.symmetric(vertical: 6),
+              ),
+              daysOfWeekStyle: DaysOfWeekStyle(
+                weekdayStyle: TextStyle(
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  fontWeight: FontWeight.w600,
+                ),
+                weekendStyle: TextStyle(
+                  color: theme.colorScheme.error.withOpacity(0.9),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              calendarBuilders: CalendarBuilders(
+                markerBuilder: (context, day, events) {
+                  if (events.isEmpty) return const SizedBox.shrink();
+                  final count = events.length;
+
+                  return Positioned(
+                    bottom: 2,
+                    right: 2,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '$count',
+                        style: const TextStyle(color: Colors.white, fontSize: 10),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    Widget buildListCard() {
+      final list = eventosMes.isEmpty
+          ? const Center(child: Text('No hay noticias registradas en este mes.'))
+          : ListView.separated(
+              padding: EdgeInsets.fromLTRB(0, 6, 0, 10 + fabClearance + bottomSafe),
+              itemCount: eventosMesOrdenados.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final n = eventosMesOrdenados[index];
+                final fecha = n.fechaCita != null ? _formatearFechaCorta(n.fechaCita!) : 'Sin fecha';
+                final bool cerrada = (n.pendiente == false);
+
+                return ListTile(
+                  dense: true,
+                  visualDensity: kIsWeb ? VisualDensity.compact : null,
+                  leading: Icon(
+                    cerrada ? Icons.check_circle : Icons.schedule,
+                    color: cerrada ? theme.colorScheme.secondary : theme.colorScheme.primary,
+                  ),
+                  title: Text(
+                    n.noticia,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(
+                    'Fecha: $fecha',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => NoticiaDetallePage(
+                          noticia: n,
+                          soloLectura: (n.pendiente == false),
+                          role: widget.esAdmin ? 'admin' : 'reportero',
+                        ),
+                      ),
+                    );
+                    await _cargarNoticias();
+                  },
+                );
+              },
+            );
+
+      return _cardShell(
+        padding: EdgeInsets.zero,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${_nombreMes(_focusedDay.month)} ${_focusedDay.year}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: wide ? 15 : 14,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '${eventosMesOrdenados.length} noticias',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: theme.colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(child: _maybeScrollbar(child: list)),
+          ],
+        ),
+      );
+    }
+
+    // En escritorio (wide): calendario izquierda + lista derecha
+    if (wide) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(_hPad(context), 0, _hPad(context), 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              flex: 6,
+              child: buildCalendarCard(),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 5,
+              child: buildListCard(),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // En móvil: se mantiene el stack vertical (solo mejor “shell”)
     return LayoutBuilder(
       builder: (context, constraints) {
-        final bool wide = _isWebWide(context);
-        final double calendarFactor = wide ? 0.50 : 0.55;
+        const double calendarFactor = 0.55;
 
         final double totalH = constraints.maxHeight;
         final double calendarH = totalH * calendarFactor;
-        final double listH = totalH - calendarH - 8;
-
-        final bottomSafe = MediaQuery.of(context).padding.bottom;
-        final fabClearance = showFabCrear ? 110.0 : 0.0;
+        final double listH = totalH - calendarH - 10;
 
         return Column(
           children: [
@@ -764,219 +1068,15 @@ class _AgendaPageState extends State<AgendaPage> {
               height: calendarH,
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: _hPad(context)),
-                child: Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: LayoutBuilder(
-                      builder: (context, calConstraints) {
-                        const double headerAndWeekdaysApprox = 92.0;
-                        const int rows = 6;
-
-                        final double computedRowHeight =
-                            (calConstraints.maxHeight - headerAndWeekdaysApprox) / rows;
-
-                        final double rowHeight =
-                            computedRowHeight.clamp(32.0, wide ? 54.0 : 46.0);
-
-                        return TableCalendar<Noticia>(
-                          locale: 'es_MX',
-                          firstDay: DateTime.utc(2000, 1, 1),
-                          lastDay: DateTime.utc(2100, 12, 31),
-                          focusedDay: _focusedDay,
-                          startingDayOfWeek: StartingDayOfWeek.monday,
-                          calendarFormat: CalendarFormat.month,
-                          rowHeight: rowHeight,
-                          daysOfWeekHeight: 18,
-                          selectedDayPredicate: (day) =>
-                              _selectedDay != null && _soloFecha(day) == _soloFecha(_selectedDay!),
-                          eventLoader: _eventosDeDia,
-                          onDaySelected: (selectedDay, focusedDay) {
-                            setState(() {
-                              _selectedDay = _soloFecha(selectedDay);
-                              _focusedDay = focusedDay;
-                              _selectedMonthInYear = focusedDay.month;
-                              _vista = AgendaView.day;
-                            });
-                          },
-                          onPageChanged: (focusedDay) {
-                            setState(() {
-                              _focusedDay = focusedDay;
-                              _selectedMonthInYear = focusedDay.month;
-                            });
-                          },
-                          calendarStyle: CalendarStyle(
-                            todayDecoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withOpacity(0.7),
-                              shape: BoxShape.circle,
-                            ),
-                            todayTextStyle: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            selectedDecoration: BoxDecoration(
-                              color: theme.colorScheme.secondary,
-                              shape: BoxShape.circle,
-                            ),
-                            selectedTextStyle: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            weekendTextStyle: TextStyle(color: theme.colorScheme.error),
-                            outsideDaysVisible: false,
-                            markersAlignment: Alignment.bottomRight,
-                            markersMaxCount: 1,
-                          ),
-                          headerStyle: HeaderStyle(
-                            formatButtonVisible: false,
-                            titleCentered: true,
-                            titleTextStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                            titleTextFormatter: (date, locale) {
-                              final mes = _nombreMes(date.month);
-                              return '$mes ${date.year}';
-                            },
-                            leftChevronIcon: const Icon(Icons.chevron_left),
-                            rightChevronIcon: const Icon(Icons.chevron_right),
-                            headerPadding: const EdgeInsets.symmetric(vertical: 6),
-                          ),
-                          daysOfWeekStyle: DaysOfWeekStyle(
-                            weekdayStyle: TextStyle(
-                              color: theme.colorScheme.onSurface.withOpacity(0.7),
-                              fontWeight: FontWeight.w600,
-                            ),
-                            weekendStyle: TextStyle(
-                              color: theme.colorScheme.error.withOpacity(0.9),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          calendarBuilders: CalendarBuilders(
-                            markerBuilder: (context, day, events) {
-                              if (events.isEmpty) return const SizedBox.shrink();
-                              final count = events.length;
-
-                              return Positioned(
-                                bottom: 2,
-                                right: 2,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.primary,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Text(
-                                    '$count',
-                                    style: const TextStyle(color: Colors.white, fontSize: 10),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
+                child: buildCalendarCard(),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             SizedBox(
               height: listH < 0 ? 0 : listH,
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: _hPad(context)),
-                child: Card(
-                  elevation: 1,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '${_nombreMes(_focusedDay.month)} ${_focusedDay.year}',
-                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primaryContainer,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                '${eventosMesOrdenados.length} noticias',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  color: theme.colorScheme.onPrimaryContainer,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      Expanded(
-                        child: eventosMes.isEmpty
-                            ? const Center(child: Text('No hay noticias registradas en este mes.'))
-                            : ListView.separated(
-                                padding: EdgeInsets.fromLTRB(0, 6, 0, 6 + fabClearance + bottomSafe),
-                                itemCount: eventosMesOrdenados.length,
-                                separatorBuilder: (_, __) => const Divider(height: 1),
-                                itemBuilder: (context, index) {
-                                  final n = eventosMesOrdenados[index];
-                                  final fecha = n.fechaCita != null
-                                      ? _formatearFechaCorta(n.fechaCita!)
-                                      : 'Sin fecha';
-                                  final bool cerrada = (n.pendiente == false);
-
-                                  return ListTile(
-                                    dense: true,
-                                    leading: Icon(
-                                      cerrada ? Icons.check_circle : Icons.schedule,
-                                      color: cerrada
-                                          ? theme.colorScheme.secondary
-                                          : theme.colorScheme.primary,
-                                    ),
-                                    title: Text(
-                                      n.noticia,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontWeight: FontWeight.w600),
-                                    ),
-                                    subtitle: Text(
-                                      'Fecha: $fecha',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    trailing: const Icon(Icons.chevron_right),
-                                    onTap: () async {
-                                      await Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => NoticiaDetallePage(
-                                            noticia: n,
-                                            soloLectura: (n.pendiente == false),
-                                            role: widget.esAdmin ? 'admin' : 'reportero',
-                                          ),
-                                        ),
-                                      );
-                                      await _cargarNoticias();
-                                    },
-                                  );
-                                },
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
+                child: buildListCard(),
               ),
             ),
           ],
@@ -994,126 +1094,127 @@ class _AgendaPageState extends State<AgendaPage> {
 
     final bottomSafe = MediaQuery.of(context).padding.bottom;
     final fabClearance = showFabCrear ? 110.0 : 0.0;
+    final wide = _isWebWide(context);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          color: isDark ? theme.colorScheme.surfaceVariant : Colors.grey.shade200,
-          width: double.infinity,
-          padding: EdgeInsets.all(_isWebWide(context) ? 14 : 12),
-          child: Text(
-            '${_nombreMes(dia.month)} ${dia.day}, ${dia.year}',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: theme.colorScheme.onSurface,
-            ),
-            textAlign: TextAlign.center,
+    final header = _cardShell(
+      elevation: 0,
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: wide ? 14 : 12),
+      color: isDark ? theme.colorScheme.surface : theme.colorScheme.surfaceVariant.withOpacity(0.35),
+      child: Center(
+        child: Text(
+          '${_nombreMes(dia.month)} ${dia.day}, ${dia.year}',
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            fontSize: wide ? 17 : 16,
+            color: theme.colorScheme.onSurface,
           ),
         ),
-        Expanded(
-          child: eventos.isEmpty
-              ? const Center(child: Text('No hay noticias para este día.'))
-              : ListView.builder(
-                  padding: EdgeInsets.only(bottom: 16 + fabClearance + bottomSafe),
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  itemCount: eventos.length,
-                  itemBuilder: (context, index) {
-                    final n = eventos[index];
-                    final bool cerrada = (n.pendiente == false);
+      ),
+    );
 
-                    final Color? bg = cerrada
-                        ? (isDark
-                            ? theme.colorScheme.secondary.withOpacity(0.18)
-                            : theme.colorScheme.secondary.withOpacity(0.12))
-                        : null;
+    final list = eventos.isEmpty
+        ? const Center(child: Text('No hay noticias para este día.'))
+        : ListView.builder(
+            padding: EdgeInsets.only(bottom: 16 + fabClearance + bottomSafe),
+            physics: const AlwaysScrollableScrollPhysics(),
+            itemCount: eventos.length,
+            itemBuilder: (context, index) {
+              final n = eventos[index];
+              final bool cerrada = (n.pendiente == false);
 
-                    final fecha = n.fechaCita != null
-                        ? _formatearFechaCorta(n.fechaCita!)
-                        : 'Sin fecha';
+              final Color? bg = cerrada
+                  ? (isDark
+                      ? theme.colorScheme.secondary.withOpacity(0.18)
+                      : theme.colorScheme.secondary.withOpacity(0.10))
+                  : null;
 
-                    return Card(
-                      color: bg,
-                      margin: EdgeInsets.symmetric(
-                        horizontal: _hPad(context),
-                        vertical: 6,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    n.noticia,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                ),
-                                if (cerrada) ...[
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.08),
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: const Text(
-                                      'Cerrada',
-                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                                    ),
-                                  ),
-                                ],
-                              ],
+              final fecha = n.fechaCita != null ? _formatearFechaCorta(n.fechaCita!) : 'Sin fecha';
+
+              return Card(
+                color: bg,
+                margin: EdgeInsets.symmetric(horizontal: _hPad(context), vertical: 6),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: kIsWeb ? 0.5 : 1,
+                child: Padding(
+                  padding: EdgeInsets.all(wide ? 14 : 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              n.noticia,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: wide ? 16 : 15,
+                              ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Domicilio: ${n.domicilio ?? 'Sin domicilio'}',
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Fecha: $fecha',
-                              style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface),
-                            ),
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: OutlinedButton.icon(
-                                icon: const Icon(Icons.open_in_new, size: 16),
-                                label: const Text('Ir a detalles'),
-                                onPressed: () async {
-                                  await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => NoticiaDetallePage(
-                                        noticia: n,
-                                        soloLectura: (n.pendiente == false),
-                                        role: widget.esAdmin ? 'admin' : 'reportero',
-                                      ),
-                                    ),
-                                  );
-                                  await _cargarNoticias();
-                                },
+                          ),
+                          if (cerrada) ...[
+                            const SizedBox(width: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceVariant.withOpacity(0.7),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: const Text(
+                                'Cerrada',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
                               ),
                             ),
                           ],
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Domicilio: ${n.domicilio ?? 'Sin domicilio'}',
+                        style: TextStyle(fontSize: wide ? 13.5 : 13),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Fecha: $fecha',
+                        style: TextStyle(fontSize: wide ? 13.5 : 13, color: theme.colorScheme.onSurface),
+                      ),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.open_in_new, size: 16),
+                          label: const Text('Ir a detalles'),
+                          onPressed: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => NoticiaDetallePage(
+                                  noticia: n,
+                                  soloLectura: (n.pendiente == false),
+                                  role: widget.esAdmin ? 'admin' : 'reportero',
+                                ),
+                              ),
+                            );
+                            await _cargarNoticias();
+                          },
                         ),
                       ),
-                    );
-                  },
+                    ],
+                  ),
                 ),
-        ),
-      ],
+              );
+            },
+          );
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(_hPad(context), 0, _hPad(context), 10),
+      child: Column(
+        children: [
+          header,
+          const SizedBox(height: 10),
+          Expanded(child: _maybeScrollbar(child: list)),
+        ],
+      ),
     );
   }
 }
