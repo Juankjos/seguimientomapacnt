@@ -21,6 +21,10 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _nombreController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+
+  final FocusNode _nombreFocus = FocusNode();
+  final FocusNode _passFocus = FocusNode();
+
   bool _loading = false;
   String? _errorMessage;
 
@@ -111,6 +115,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _doLogin() async {
+    if (_loading) return;
+
     setState(() {
       _loading = true;
       _errorMessage = null;
@@ -131,9 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
         final bool puedeCrearNoticias = _parseBoolish(data['puede_crear_noticias']);
 
         await _stopAnyTrackingService();
-
         await _persistWsToken(wsToken);
-
         await _setSessionExpiry8h();
 
         final prefs = await SharedPreferences.getInstance();
@@ -152,7 +156,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (!mounted) return;
 
-        final bool irAgenda = (role == 'admin') || puedeCrearNoticias;
+        final bool irAgenda = (role == 'admin');
 
         if (irAgenda) {
           Navigator.pushReplacement(
@@ -190,9 +194,7 @@ class _LoginScreenState extends State<LoginScreen> {
       });
     } finally {
       if (mounted) {
-        setState(() {
-          _loading = false;
-        });
+        setState(() => _loading = false);
       }
     }
   }
@@ -201,56 +203,171 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _nombreController.dispose();
     _passwordController.dispose();
+    _nombreFocus.dispose();
+    _passFocus.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final w = MediaQuery.of(context).size.width;
+    final h = MediaQuery.of(context).size.height;
+
+    final bool isDesktopLike = kIsWeb ? (w >= 700) : (w >= 900);
+    final double maxWidth = isDesktopLike ? 520 : double.infinity;
+
+    final content = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Card(
+        elevation: isDesktopLike ? 2 : 0,
+        color: theme.colorScheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: theme.dividerColor.withOpacity(0.8), width: 0.8),
+        ),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: isDesktopLike ? 22 : 16,
+            vertical: isDesktopLike ? 22 : 16,
+          ),
+          child: AutofillGroup(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.newspaper, color: theme.colorScheme.primary),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Noticias CNT',
+                      style: TextStyle(
+                        fontSize: isDesktopLike ? 18 : 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                TextField(
+                  controller: _nombreController,
+                  focusNode: _nombreFocus,
+                  enabled: !_loading,
+                  decoration: const InputDecoration(
+                    labelText: 'Usuario',
+                    prefixIcon: Icon(Icons.person_outline),
+                    border: OutlineInputBorder(),
+                  ),
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.username],
+                  onSubmitted: (_) => _passFocus.requestFocus(),
+                ),
+                const SizedBox(height: 14),
+
+                TextField(
+                  controller: _passwordController,
+                  focusNode: _passFocus,
+                  enabled: !_loading,
+                  decoration: const InputDecoration(
+                    labelText: 'Contraseña',
+                    prefixIcon: Icon(Icons.lock_outline),
+                    border: OutlineInputBorder(),
+                  ),
+                  obscureText: true,
+                  textInputAction: TextInputAction.done,
+                  autofillHints: const [AutofillHints.password],
+                  onSubmitted: (_) => _loading ? null : _doLogin(),
+                ),
+
+                const SizedBox(height: 16),
+
+                if (_errorMessage != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.errorContainer.withOpacity(0.55),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: theme.colorScheme.error.withOpacity(0.35),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error_outline, color: theme.colorScheme.error),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _errorMessage!,
+                            style: TextStyle(
+                              color: theme.colorScheme.error,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+
+                SizedBox(
+                  width: double.infinity,
+                  height: isDesktopLike ? 46 : 44,
+                  child: FilledButton.icon(
+                    onPressed: _loading ? null : _doLogin,
+                    icon: _loading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.login),
+                    label: Text(_loading ? 'Entrando…' : 'Entrar'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Noticias CNT'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            TextField(
-              controller: _nombreController,
-              decoration: const InputDecoration(
-                labelText: 'Usuario',
-              ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final topPad = MediaQuery.of(context).padding.top;
+          final bottomPad = MediaQuery.of(context).padding.bottom;
+
+          return SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              isDesktopLike ? 24 : 16,
+              16,
+              16 + bottomPad,
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _passwordController,
-              decoration: const InputDecoration(
-                labelText: 'Contraseña',
-              ),
-              obscureText: true,
-            ),
-            const SizedBox(height: 24),
-            if (_errorMessage != null) ...[
-              Text(
-                _errorMessage!,
-                style: const TextStyle(color: Colors.red),
-              ),
-              const SizedBox(height: 16),
-            ],
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _doLogin,
-                child: _loading
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight - topPad - bottomPad),
+              child: Center(
+                child: isDesktopLike
+                    ? Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(height: (h * 0.06).clamp(12.0, 36.0)),
+                          content,
+                          SizedBox(height: (h * 0.06).clamp(12.0, 36.0)),
+                        ],
                       )
-                    : const Text('Entrar'),
+                    : content,
               ),
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

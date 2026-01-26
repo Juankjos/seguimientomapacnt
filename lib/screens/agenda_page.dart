@@ -177,7 +177,6 @@ class _AgendaPageState extends State<AgendaPage> {
   Widget _cardShell({
     required Widget child,
     EdgeInsetsGeometry padding = const EdgeInsets.all(10),
-    double radius = 16,
     double? elevation,
     Color? color,
   }) {
@@ -199,6 +198,212 @@ class _AgendaPageState extends State<AgendaPage> {
     );
   }
 
+  Color _gridLineColor(ThemeData theme) {
+    final base = theme.colorScheme.onSurface;
+    final opacity = theme.brightness == Brightness.dark ? 0.10 : 0.08;
+    return base.withOpacity(opacity);
+  }
+
+  Widget _calDayCell({
+    required ThemeData theme,
+    required DateTime day,
+    required bool wide,
+    bool isSelected = false,
+    bool isToday = false,
+    bool isOutside = false,
+  }) {
+    final bool isWeekend = day.weekday == DateTime.saturday || day.weekday == DateTime.sunday;
+
+    final Color border = isSelected
+        ? theme.colorScheme.secondary.withOpacity(0.25)
+        : _gridLineColor(theme);
+
+    final Color bg = isSelected
+        ? theme.colorScheme.secondary.withOpacity(theme.brightness == Brightness.dark ? 0.35 : 0.22)
+        : isToday
+            ? theme.colorScheme.primary.withOpacity(theme.brightness == Brightness.dark ? 0.22 : 0.12)
+            : Colors.transparent;
+
+    Color textColor;
+    if (isSelected) {
+      textColor = theme.colorScheme.onSecondary;
+    } else if (isToday) {
+      textColor = theme.colorScheme.primary;
+    } else if (isOutside) {
+      textColor = theme.colorScheme.onSurface.withOpacity(0.35);
+    } else if (isWeekend) {
+      textColor = theme.colorScheme.error.withOpacity(0.95);
+    } else {
+      textColor = theme.colorScheme.onSurface;
+    }
+
+    final double fontSize = wide ? 13 : 12;
+
+    return Container(
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: border, width: 0.55),
+      ),
+      child: Text(
+        '${day.day}',
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: (isSelected || isToday) ? FontWeight.w800 : FontWeight.w600,
+          color: textColor,
+        ),
+      ),
+    );
+  }
+
+  // ---- Panel lateral (Vista Día, escritorio) ----
+  Widget _pill({
+    required ThemeData theme,
+    required IconData icon,
+    required String label,
+    required Color bg,
+    required Color fg,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: theme.dividerColor.withOpacity(0.35), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: fg),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(fontWeight: FontWeight.w800, color: fg, fontSize: 12.5),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _daySidePanel({
+    required ThemeData theme,
+    required DateTime dia,
+    required List<Noticia> eventos,
+  }) {
+    final total = eventos.length;
+    final pendientes = eventos.where((e) => e.pendiente == true).length;
+    final cerradas = total - pendientes;
+
+    final preview = eventos.take(6).toList();
+
+    return _cardShell(
+      padding: const EdgeInsets.all(12),
+      elevation: 0.5,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.insights, size: 18, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Resumen del día',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${_nombreMes(dia.month)} ${dia.day}, ${dia.year}',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: theme.colorScheme.onSurface.withOpacity(0.75),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _pill(
+                theme: theme,
+                icon: Icons.list_alt,
+                label: '$total Total',
+                bg: theme.colorScheme.primaryContainer,
+                fg: theme.colorScheme.onPrimaryContainer,
+              ),
+              _pill(
+                theme: theme,
+                icon: Icons.schedule,
+                label: '$pendientes Pendientes',
+                bg: theme.colorScheme.surfaceVariant.withOpacity(0.55),
+                fg: theme.colorScheme.onSurface.withOpacity(0.88),
+              ),
+              _pill(
+                theme: theme,
+                icon: Icons.check_circle,
+                label: '$cerradas Cerradas',
+                bg: theme.colorScheme.secondaryContainer,
+                fg: theme.colorScheme.onSecondaryContainer,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Divider(height: 1, color: theme.dividerColor.withOpacity(0.5)),
+          const SizedBox(height: 10),
+          Text(
+            'Vista rápida',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              color: theme.colorScheme.onSurface.withOpacity(0.88),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (total == 0)
+            Text(
+              'No hay noticias para este día.',
+              style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.65)),
+            )
+          else
+            ...preview.map((n) {
+              final cerrada = n.pendiente == false;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      cerrada ? Icons.check_circle : Icons.schedule,
+                      size: 16,
+                      color: cerrada ? theme.colorScheme.secondary : theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        n.noticia,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          if (total > preview.length) ...[
+            const SizedBox(height: 6),
+            Text(
+              '…y ${total - preview.length} más',
+              style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.60), fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -211,13 +416,11 @@ class _AgendaPageState extends State<AgendaPage> {
   }
 
   Future<void> _initPermisoCrearNoticias() async {
-    // 1) Si viene por constructor, úsalo
     if (widget.puedeCrearNoticias != null) {
       AuthController.puedeCrearNoticias.value = widget.puedeCrearNoticias!;
       return;
     }
 
-    // 2) Si no, lee de prefs
     try {
       final prefs = await SharedPreferences.getInstance();
       final v = prefs.getBool('auth_puede_crear_noticias') ??
@@ -867,24 +1070,9 @@ class _AgendaPageState extends State<AgendaPage> {
                 });
               },
               calendarStyle: CalendarStyle(
-                todayDecoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.75),
-                  shape: BoxShape.circle,
-                ),
-                todayTextStyle: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-                selectedDecoration: BoxDecoration(
-                  color: theme.colorScheme.secondary,
-                  shape: BoxShape.circle,
-                ),
-                selectedTextStyle: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-                weekendTextStyle: TextStyle(color: theme.colorScheme.error),
                 outsideDaysVisible: false,
+                cellMargin: EdgeInsets.zero,
+                cellPadding: EdgeInsets.zero,
                 markersAlignment: Alignment.bottomRight,
                 markersMaxCount: 1,
               ),
@@ -914,6 +1102,29 @@ class _AgendaPageState extends State<AgendaPage> {
                 ),
               ),
               calendarBuilders: CalendarBuilders(
+                defaultBuilder: (context, day, focusedDay) => _calDayCell(
+                  theme: theme,
+                  day: day,
+                  wide: wide,
+                ),
+                todayBuilder: (context, day, focusedDay) => _calDayCell(
+                  theme: theme,
+                  day: day,
+                  wide: wide,
+                  isToday: true,
+                ),
+                selectedBuilder: (context, day, focusedDay) => _calDayCell(
+                  theme: theme,
+                  day: day,
+                  wide: wide,
+                  isSelected: true,
+                ),
+                outsideBuilder: (context, day, focusedDay) => _calDayCell(
+                  theme: theme,
+                  day: day,
+                  wide: wide,
+                  isOutside: true,
+                ),
                 markerBuilder: (context, day, events) {
                   if (events.isEmpty) return const SizedBox.shrink();
                   final count = events.length;
@@ -926,10 +1137,17 @@ class _AgendaPageState extends State<AgendaPage> {
                       decoration: BoxDecoration(
                         color: theme.colorScheme.primary,
                         borderRadius: BorderRadius.circular(999),
+                        boxShadow: [
+                          BoxShadow(
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                            color: Colors.black.withOpacity(0.10),
+                          ),
+                        ],
                       ),
                       child: Text(
                         '$count',
-                        style: const TextStyle(color: Colors.white, fontSize: 10),
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800),
                       ),
                     ),
                   );
@@ -1032,28 +1250,24 @@ class _AgendaPageState extends State<AgendaPage> {
       );
     }
 
-    // En escritorio (wide): calendario izquierda + lista derecha
     if (wide) {
       return Padding(
         padding: EdgeInsets.fromLTRB(_hPad(context), 0, _hPad(context), 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              flex: 6,
-              child: buildCalendarCard(),
+            Expanded(flex: 6, child: buildCalendarCard()),
+            VerticalDivider(
+              width: 14,
+              thickness: 1,
+              color: theme.dividerColor.withOpacity(0.20),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 5,
-              child: buildListCard(),
-            ),
+            Expanded(flex: 5, child: buildListCard()),
           ],
         ),
       );
     }
 
-    // En móvil: se mantiene el stack vertical (solo mejor “shell”)
     return LayoutBuilder(
       builder: (context, constraints) {
         const double calendarFactor = 0.55;
@@ -1176,7 +1390,10 @@ class _AgendaPageState extends State<AgendaPage> {
                       const SizedBox(height: 3),
                       Text(
                         'Fecha: $fecha',
-                        style: TextStyle(fontSize: wide ? 13.5 : 13, color: theme.colorScheme.onSurface),
+                        style: TextStyle(
+                          fontSize: wide ? 13.5 : 13,
+                          color: theme.colorScheme.onSurface,
+                        ),
                       ),
                       const SizedBox(height: 10),
                       Align(
@@ -1205,6 +1422,45 @@ class _AgendaPageState extends State<AgendaPage> {
               );
             },
           );
+
+    if (wide) {
+      final side = _daySidePanel(theme: theme, dia: dia, eventos: eventos);
+
+      return Padding(
+        padding: EdgeInsets.fromLTRB(_hPad(context), 0, _hPad(context), 10),
+        child: Column(
+          children: [
+            header,
+            const SizedBox(height: 10),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    flex: 7,
+                    child: _maybeScrollbar(child: list),
+                  ),
+                  VerticalDivider(
+                    width: 14,
+                    thickness: 1,
+                    color: theme.dividerColor.withOpacity(0.20),
+                  ),
+                  Expanded(
+                    flex: 4,
+                    child: _maybeScrollbar(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: side,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Padding(
       padding: EdgeInsets.fromLTRB(_hPad(context), 0, _hPad(context), 10),
