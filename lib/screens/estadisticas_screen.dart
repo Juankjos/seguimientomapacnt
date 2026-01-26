@@ -1,4 +1,5 @@
 // lib/screens/estadisticas_screen.dart
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
@@ -53,13 +54,67 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
 
   int _animSeed = 0;
   late final TooltipBehavior _tooltip;
+  late final ZoomPanBehavior _zoom;
+
+  // ---- Desktop/Web layout helpers ----
+  static const double _kWebMaxContentWidth = 1200;
+  static const double _kWebWideBreakpoint = 980;
+
+  bool _isWebWide(BuildContext context) =>
+      kIsWeb && MediaQuery.of(context).size.width >= _kWebWideBreakpoint;
+
+  Widget _wrapWebWidth(Widget child) {
+    if (!kIsWeb) return child;
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: _kWebMaxContentWidth),
+        child: child,
+      ),
+    );
+  }
+
+  double _hPad(BuildContext context) => _isWebWide(context) ? 20 : 12;
+
+  ShapeBorder _softShape(ThemeData theme) => RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: theme.dividerColor.withOpacity(0.70),
+          width: 0.9,
+        ),
+      );
+
+  Widget _cardShell({
+    required Widget child,
+    EdgeInsetsGeometry padding = const EdgeInsets.all(12),
+    double? elevation,
+    Color? color,
+  }) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: elevation ?? (kIsWeb ? 0.7 : 1),
+      color: color ?? theme.colorScheme.surface,
+      shape: _softShape(theme),
+      child: Padding(padding: padding, child: child),
+    );
+  }
+
+  Widget _maybeScrollbar({required Widget child}) {
+    if (!kIsWeb) return child;
+    return Scrollbar(thumbVisibility: true, interactive: true, child: child);
+  }
 
   @override
   void initState() {
     super.initState();
     _tooltip = TooltipBehavior(enable: true);
-    _tab = TabController(length: 4, vsync: this);
+    _zoom = ZoomPanBehavior(
+      enablePanning: kIsWeb,
+      enablePinching: kIsWeb,
+      zoomMode: ZoomMode.x,
+    );
 
+    _tab = TabController(length: 4, vsync: this);
     _tab.addListener(() {
       if (!_tab.indexIsChanging) {
         setState(() => _animSeed++);
@@ -359,6 +414,19 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final body = _loading
+        ? const Center(child: CircularProgressIndicator())
+        : _error != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(_error!, textAlign: TextAlign.center),
+                ),
+              )
+            : _buildContent();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Estadísticas'),
@@ -371,6 +439,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
         ],
         bottom: TabBar(
           controller: _tab,
+          isScrollable: kIsWeb,
           tabs: const [
             Tab(text: 'Día'),
             Tab(text: 'Semana'),
@@ -379,43 +448,42 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
           ],
         ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(_error!, textAlign: TextAlign.center),
-                  ),
-                )
-              : _buildContent(),
+      body: Container(
+        color: kIsWeb ? theme.colorScheme.surface : null,
+        child: _wrapWebWidth(body),
+      ),
     );
   }
 
   Widget _buildContent() {
+    final pad = EdgeInsets.fromLTRB(_hPad(context), 12, _hPad(context), 12);
+
     if (_range == StatsRange.month) {
-      return EstadisticasMes(
-        reporteros: _reporteros,
-        noticias: _noticias,
+      return Padding(
+        padding: pad,
+        child: EstadisticasMes(reporteros: _reporteros, noticias: _noticias),
       );
     }
 
     if (_range == StatsRange.week) {
       final now = DateTime.now();
-      return EstadisticasSemanas(
-        embedded: true,
-        year: now.year,
-        month: now.month,
-        monthName: _nombreMes(now.month),
-        reporteros: _reporteros,
-        noticias: _noticias,
+      return Padding(
+        padding: pad,
+        child: EstadisticasSemanas(
+          embedded: true,
+          year: now.year,
+          month: now.month,
+          monthName: _nombreMes(now.month),
+          reporteros: _reporteros,
+          noticias: _noticias,
+        ),
       );
     }
 
     if (_range == StatsRange.year) {
-      return EstadisticasYear(
-        reporteros: _reporteros,
-        noticias: _noticias,
+      return Padding(
+        padding: pad,
+        child: EstadisticasYear(reporteros: _reporteros, noticias: _noticias),
       );
     }
 
@@ -430,12 +498,36 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
+
     final totalTareas = totalEnCurso + totalCompletadas + totalAtrasadas;
 
-    return Padding(
+    final wide = _isWebWide(context);
+
+    // ---- Panel resumen ----
+    final summary = _cardShell(
+      elevation: 0.8,
       padding: const EdgeInsets.all(12),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              Icon(Icons.insights, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _tituloRange(_range),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
           if (_range == StatsRange.day) ...[
             Align(
               alignment: Alignment.centerRight,
@@ -445,72 +537,98 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
                 onPressed: _openDiasMesActual,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
           ],
 
-          Expanded(
-            child: Card(
-              elevation: 1,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _tituloRange(_range),
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, c) {
+              final bool narrow = c.maxWidth < 380;
+              final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
 
-                    LayoutBuilder(
-                      builder: (context, c) {
-                        final bool narrow = c.maxWidth < 380;
-                        final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
+              final pills = <Widget>[
+                _pill('Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
+                _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
+                _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
+                _pill('Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
+                if (_range == StatsRange.day)
+                  _pill('Agendadas: $totalAgendadas', maxWidth: maxPillW),
+              ];
 
-                        final pills = <Widget>[
-                          _pill('Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
-                          _pill('En curso: $totalEnCurso', maxWidth: maxPillW),
-                          _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
-                          _pill('Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
-                        ];
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: pills,
+              );
+            },
+          ),
 
-                        return Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: pills,
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 10),
+          const SizedBox(height: 10),
 
-                    Expanded(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
-                        switchInCurve: Curves.easeOut,
-                        switchOutCurve: Curves.easeIn,
-                        child: _buildChartDia(
-                          stats,
-                          key: ValueKey('day_${_animSeed}'),
-                        ),
-                      ),
-                    ),
-                  ],
+          Text(
+            'Tip: pasa el mouse por las barras para ver el detalle.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.65),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // ---- Panel gráfica ----
+    final chart = _cardShell(
+      elevation: 0.8,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Por reportero',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
                 ),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              child: _buildChartDiaResponsive(
+                stats,
+                key: ValueKey('day_${_animSeed}'),
               ),
             ),
           ),
+        ],
+      ),
+    );
+
+    if (wide) {
+      return Padding(
+        padding: pad,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: 420,
+              child: summary,
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: chart),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: pad,
+      child: Column(
+        children: [
+          summary,
+          const SizedBox(height: 12),
+          Expanded(child: chart),
         ],
       ),
     );
@@ -519,19 +637,26 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
   Widget _pill(String text, {double? maxWidth, bool isTotal = false}) {
     final theme = Theme.of(context);
 
+    final bg = isTotal ? theme.colorScheme.primary : theme.colorScheme.primaryContainer;
+    final fg = isTotal ? theme.colorScheme.onPrimary : theme.colorScheme.onPrimaryContainer;
+
     final core = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: isTotal ? Colors.black : theme.colorScheme.primaryContainer,
+        color: bg,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: theme.dividerColor.withOpacity(0.55),
+          width: 0.8,
+        ),
       ),
       child: Text(
         text,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontWeight: FontWeight.w700,
-          color: isTotal ? Colors.white : theme.colorScheme.onPrimaryContainer,
+          fontWeight: FontWeight.w800,
+          color: fg,
         ),
       ),
     );
@@ -544,6 +669,18 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     );
   }
 
+  Widget _buildChartDiaResponsive(List<ReporterStats> stats, {required Key key}) {
+    final hasMany = stats.length > 8;
+
+    final chart = _buildChartDia(stats, key: key);
+
+    if (!kIsWeb || !hasMany) {
+      return chart;
+    }
+
+    return _maybeScrollbar(child: chart);
+  }
+
   Widget _buildChartDia(List<ReporterStats> stats, {required Key key}) {
     final theme = Theme.of(context);
     final hasMany = stats.length > 8;
@@ -551,7 +688,12 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
     return SfCartesianChart(
       key: key,
       tooltipBehavior: _tooltip,
-      legend: const Legend(isVisible: true, position: LegendPosition.bottom),
+      zoomPanBehavior: _zoom,
+      legend: const Legend(
+        isVisible: true,
+        position: LegendPosition.bottom,
+        overflowMode: LegendItemOverflowMode.wrap,
+      ),
       plotAreaBorderWidth: 0,
       primaryXAxis: CategoryAxis(
         labelRotation: hasMany ? 45 : 0,
@@ -564,7 +706,7 @@ class _EstadisticasScreenState extends State<EstadisticasScreen>
         numberFormat: NumberFormat('#0'),
         majorGridLines: MajorGridLines(
           width: 1,
-          color: theme.dividerColor.withOpacity(0.35),
+          color: theme.dividerColor.withOpacity(0.30),
         ),
       ),
       series: [

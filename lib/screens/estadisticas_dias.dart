@@ -1,4 +1,5 @@
 // lib/screens/estadisticas_dias.dart
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -6,6 +7,58 @@ import 'package:intl/intl.dart';
 
 import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
+
+// ===================== Helpers desktop/web (reutilizables en este archivo) =====================
+
+const double _kWebMaxContentWidth = 1200;
+const double _kWebWideBreakpoint = 980;
+
+bool _isWebWide(BuildContext context) =>
+    kIsWeb && MediaQuery.of(context).size.width >= _kWebWideBreakpoint;
+
+double _hPad(BuildContext context) => _isWebWide(context) ? 20 : 12;
+
+Widget _wrapWebWidth(Widget child) {
+  if (!kIsWeb) return child;
+  return Align(
+    alignment: Alignment.topCenter,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: _kWebMaxContentWidth),
+      child: child,
+    ),
+  );
+}
+
+ShapeBorder _softShape(ThemeData theme) => RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+      side: BorderSide(
+        color: theme.dividerColor.withOpacity(0.70),
+        width: 0.9,
+      ),
+    );
+
+Widget _cardShell(
+  BuildContext context, {
+  required Widget child,
+  EdgeInsetsGeometry padding = const EdgeInsets.all(12),
+  double? elevation,
+  Color? color,
+}) {
+  final theme = Theme.of(context);
+  return Card(
+    elevation: elevation ?? (kIsWeb ? 0.7 : 1),
+    color: color ?? theme.colorScheme.surface,
+    shape: _softShape(theme),
+    child: Padding(padding: padding, child: child),
+  );
+}
+
+Widget _maybeScrollbar({required Widget child}) {
+  if (!kIsWeb) return child;
+  return Scrollbar(thumbVisibility: true, interactive: true, child: child);
+}
+
+// ================================================================================================
 
 class EstadisticasDias extends StatefulWidget {
   final int year;
@@ -108,6 +161,24 @@ class _EstadisticasDiasState extends State<EstadisticasDias> {
 
   int _countNoticiasEnDia(DateTime day) => _noticiasRelevantesDelDia(day).length;
 
+  // Solo para un “hint” en escritorio (sin cambiar lógica)
+  ({int completadas, int agendadas}) _resumenBasicoDia(DateTime day) {
+    final b = _dayBounds(day);
+    int completadas = 0;
+    int agendadas = 0;
+
+    for (final n in widget.noticias) {
+      final bool esCompletada = _inRange(n.horaLlegada, b.start, b.endExclusive);
+      final bool esAgendada =
+          (n.pendiente == true) && _inRange(n.fechaCita, b.start, b.endExclusive);
+
+      if (esCompletada) completadas++;
+      if (esAgendada) agendadas++;
+    }
+
+    return (completadas: completadas, agendadas: agendadas);
+  }
+
   Future<void> _openDayChart(DateTime selected) async {
     await Navigator.push(
       context,
@@ -123,112 +194,330 @@ class _EstadisticasDiasState extends State<EstadisticasDias> {
     );
   }
 
+  // ------------------- UI: calendario con divisiones sutiles -------------------
+
+  Widget _dayCellShell({
+    required ThemeData theme,
+    required DateTime day,
+    required Widget child,
+  }) {
+    // “Divisiones casi imperceptibles”
+    return Container(
+      margin: EdgeInsets.all(_isWebWide(context) ? 2.0 : 1.6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: theme.dividerColor.withOpacity(0.16),
+          width: 0.7,
+        ),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _defaultDayBuilder(BuildContext context, DateTime day, DateTime focusedDay) {
+    final theme = Theme.of(context);
+    final isWeekend = day.weekday == DateTime.saturday || day.weekday == DateTime.sunday;
+
+    final textStyle = TextStyle(
+      fontWeight: FontWeight.w700,
+      color: isWeekend
+          ? theme.colorScheme.error.withOpacity(0.90)
+          : theme.colorScheme.onSurface.withOpacity(0.88),
+    );
+
+    return _dayCellShell(
+      theme: theme,
+      day: day,
+      child: Center(child: Text('${day.day}', style: textStyle)),
+    );
+  }
+
+  Widget _todayBuilder(BuildContext context, DateTime day, DateTime focusedDay) {
+    final theme = Theme.of(context);
+
+    return _dayCellShell(
+      theme: theme,
+      day: day,
+      child: Center(
+        child: Container(
+          width: _isWebWide(context) ? 34 : 30,
+          height: _isWebWide(context) ? 34 : 30,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withOpacity(0.78),
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: const Text(
+            '',
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _selectedBuilder(BuildContext context, DateTime day, DateTime focusedDay) {
+    final theme = Theme.of(context);
+
+    return _dayCellShell(
+      theme: theme,
+      day: day,
+      child: Center(
+        child: Container(
+          width: _isWebWide(context) ? 34 : 30,
+          height: _isWebWide(context) ? 34 : 30,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.secondary,
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            '${day.day}',
+            style: TextStyle(
+              color: theme.colorScheme.onSecondary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _todayTextInsideFix(BuildContext context, DateTime day) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Text(
+        '${day.day}',
+        style: TextStyle(
+          color: theme.colorScheme.onPrimary,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+
   // ------------------- UI -------------------
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final wide = _isWebWide(context);
+
+    final selected = _selectedDay ?? _focusedDay;
+    final resumen = _resumenBasicoDia(selected);
+
+    final calendarCard = _cardShell(
+      context,
+      elevation: 0.8,
+      padding: const EdgeInsets.all(10),
+      child: LayoutBuilder(
+        builder: (context, c) {
+          // Ajuste suave de altura de filas para escritorio
+          // header+weekdays aprox:
+          final headerAndWeekdays = wide ? 96.0 : 88.0;
+          const rows = 6;
+          final computedRow = (c.maxHeight - headerAndWeekdays) / rows;
+          final rowHeight = computedRow.clamp(34.0, wide ? 56.0 : 48.0);
+
+          return TableCalendar<Noticia>(
+            locale: 'es_MX',
+            firstDay: _monthStart,
+            lastDay: _monthEndExclusive.subtract(const Duration(days: 1)),
+            focusedDay: _focusedDay,
+            startingDayOfWeek: StartingDayOfWeek.monday,
+            calendarFormat: CalendarFormat.month,
+            availableCalendarFormats: const {CalendarFormat.month: 'Mes'},
+            rowHeight: rowHeight,
+            daysOfWeekHeight: wide ? 20 : 18,
+            headerStyle: HeaderStyle(
+              formatButtonVisible: false,
+              titleCentered: true,
+              leftChevronVisible: false,
+              rightChevronVisible: false,
+              headerPadding: const EdgeInsets.symmetric(vertical: 6),
+              titleTextStyle: TextStyle(
+                fontSize: wide ? 17 : 16,
+                fontWeight: FontWeight.w900,
+              ),
+              titleTextFormatter: (_, __) => '${widget.monthName} ${widget.year}',
+            ),
+            selectedDayPredicate: (day) =>
+                _selectedDay != null && isSameDay(day, _selectedDay),
+            onDaySelected: (selectedDay, focusedDay) async {
+              final sel = _dayOnly(selectedDay);
+              setState(() {
+                _selectedDay = sel;
+                _focusedDay = _dayOnly(focusedDay);
+              });
+              await _openDayChart(sel);
+            },
+            eventLoader: _noticiasRelevantesDelDia,
+            calendarStyle: CalendarStyle(
+              outsideDaysVisible: false,
+              // dejamos estas, pero en builders controlamos el look (círculos dentro del borde)
+              todayDecoration: const BoxDecoration(shape: BoxShape.circle),
+              selectedDecoration: const BoxDecoration(shape: BoxShape.circle),
+              todayTextStyle: const TextStyle(color: Colors.transparent),
+              selectedTextStyle: const TextStyle(color: Colors.transparent),
+              weekendTextStyle: TextStyle(color: theme.colorScheme.error),
+              markersAlignment: Alignment.bottomRight,
+              markersMaxCount: 1,
+            ),
+            calendarBuilders: CalendarBuilders(
+              defaultBuilder: _defaultDayBuilder,
+              selectedBuilder: _selectedBuilder,
+              todayBuilder: (context, day, focusedDay) {
+                // todayBuilder personalizado con borde + círculo, pero conservando número del día
+                final base = _todayBuilder(context, day, focusedDay);
+                return Stack(
+                  children: [
+                    base,
+                    Positioned.fill(child: _todayTextInsideFix(context, day)),
+                  ],
+                );
+              },
+              markerBuilder: (context, day, events) {
+                final count = _countNoticiasEnDia(day);
+                if (count <= 0) return const SizedBox.shrink();
+
+                return Positioned(
+                  bottom: 3,
+                  right: 3,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: TextStyle(
+                        color: theme.colorScheme.onPrimary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+
+    final hintCard = _cardShell(
+      context,
+      elevation: 0.6,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.info_outline, color: theme.colorScheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Toca un día para ver la gráfica.',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceVariant.withOpacity(0.45),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: theme.dividerColor.withOpacity(0.55),
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Seleccionado: ${selected.day}/${selected.month}/${selected.year}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: theme.colorScheme.onSurface.withOpacity(0.86),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+
+                // Completadas
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${resumen.completadas}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: theme.colorScheme.onSurface.withOpacity(0.80),
+                  ),
+                ),
+
+                const SizedBox(width: 10),
+
+                // Agendadas
+                Icon(
+                  Icons.event_available_rounded,
+                  size: 18,
+                  color: theme.colorScheme.secondary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${resumen.agendadas}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: theme.colorScheme.onSurface.withOpacity(0.80),
+                  ),
+                ),
+              ],
+
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+      ),
+    );
+
+    final content = Padding(
+      padding: EdgeInsets.fromLTRB(_hPad(context), 12, _hPad(context), 12),
+      child: wide
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(flex: 7, child: calendarCard),
+                const SizedBox(width: 12),
+                SizedBox(width: 380, child: hintCard),
+              ],
+            )
+          : Column(
+              children: [
+                SizedBox(height: 420, child: calendarCard),
+                const SizedBox(height: 12),
+                hintCard,
+              ],
+            ),
+    );
 
     return Scaffold(
       appBar: AppBar(
         title: Text('Días • ${widget.monthName} ${widget.year}'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-        child: Column(
-          children: [
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: TableCalendar<Noticia>(
-                  locale: 'es_MX',
-                  firstDay: _monthStart,
-                  lastDay: _monthEndExclusive.subtract(const Duration(days: 1)),
-                  focusedDay: _focusedDay,
-                  startingDayOfWeek: StartingDayOfWeek.monday,
-                  calendarFormat: CalendarFormat.month,
-                  availableCalendarFormats: const {CalendarFormat.month: 'Mes'},
-                  headerStyle: HeaderStyle(
-                    formatButtonVisible: false,
-                    titleCentered: true,
-                    leftChevronVisible: false,
-                    rightChevronVisible: false,
-                    titleTextStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    titleTextFormatter: (_, __) => '${widget.monthName} ${widget.year}',
-                  ),
-                  selectedDayPredicate: (day) =>
-                      _selectedDay != null && isSameDay(day, _selectedDay),
-                  onDaySelected: (selectedDay, focusedDay) async {
-                    final sel = _dayOnly(selectedDay);
-                    setState(() {
-                      _selectedDay = sel;
-                      _focusedDay = _dayOnly(focusedDay);
-                    });
-                    await _openDayChart(sel);
-                  },
-                  eventLoader: _noticiasRelevantesDelDia,
-                  calendarStyle: CalendarStyle(
-                    outsideDaysVisible: false,
-                    todayDecoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withOpacity(0.7),
-                      shape: BoxShape.circle,
-                    ),
-                    todayTextStyle: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    selectedDecoration: BoxDecoration(
-                      color: theme.colorScheme.secondary,
-                      shape: BoxShape.circle,
-                    ),
-                    selectedTextStyle: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    markersAlignment: Alignment.bottomRight,
-                    markersMaxCount: 1,
-                  ),
-                  calendarBuilders: CalendarBuilders(
-                    markerBuilder: (context, day, events) {
-                      final count = _countNoticiasEnDia(day);
-                      if (count <= 0) return const SizedBox.shrink();
-
-                      return Positioned(
-                        bottom: 2,
-                        right: 2,
-                        child: Container(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            '$count',
-                            style: const TextStyle(color: Colors.white, fontSize: 10),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Toca un día para ver la gráfica.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.onSurface.withOpacity(0.75),
-              ),
-            ),
-          ],
-        ),
+      body: Container(
+        color: kIsWeb ? theme.colorScheme.surface : null,
+        child: _wrapWebWidth(content),
       ),
     );
   }
@@ -257,12 +546,18 @@ class _DiaChartPage extends StatefulWidget {
 
 class _DiaChartPageState extends State<_DiaChartPage> {
   late final TooltipBehavior _tooltip;
+  late final ZoomPanBehavior _zoom;
   int _animSeed = 0;
 
   @override
   void initState() {
     super.initState();
     _tooltip = TooltipBehavior(enable: true);
+    _zoom = ZoomPanBehavior(
+      enablePanning: kIsWeb,
+      enablePinching: kIsWeb,
+      zoomMode: ZoomMode.x,
+    );
     _animSeed++;
   }
 
@@ -391,20 +686,24 @@ class _DiaChartPageState extends State<_DiaChartPage> {
     double? maxWidth,
     bool isTotal = false,
   }) {
+    final bg = isTotal ? theme.colorScheme.primary : theme.colorScheme.primaryContainer;
+    final fg = isTotal ? theme.colorScheme.onPrimary : theme.colorScheme.onPrimaryContainer;
+
     final core = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: isTotal ? Colors.black : theme.colorScheme.primaryContainer,
+        color: bg,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: theme.dividerColor.withOpacity(0.55),
+          width: 0.8,
+        ),
       ),
       child: Text(
         text,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontWeight: FontWeight.w800,
-          color: isTotal ? Colors.white : theme.colorScheme.onPrimaryContainer,
-        ),
+        style: TextStyle(fontWeight: FontWeight.w800, color: fg),
       ),
     );
 
@@ -419,6 +718,7 @@ class _DiaChartPageState extends State<_DiaChartPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final wide = _isWebWide(context);
 
     final bool showEnCurso = _isToday(widget.day);
     final stats = _buildStatsForDay(widget.day);
@@ -427,9 +727,159 @@ class _DiaChartPageState extends State<_DiaChartPage> {
     final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
-    final totalTareas = totalCompletadas + totalAtrasadas + (showEnCurso ? totalEnCurso : totalAgendadas);
+
+    final totalTareas =
+        totalCompletadas + totalAtrasadas + (showEnCurso ? totalEnCurso : totalAgendadas);
 
     final hasMany = stats.length > 8;
+
+    final resumen = _cardShell(
+      context,
+      elevation: 0.8,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.bar_chart, color: theme.colorScheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Resumen',
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, c) {
+              final narrow = c.maxWidth < 380;
+              final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
+
+              final pills = <Widget>[
+                _pill(theme, 'Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
+                if (!showEnCurso)
+                  _pill(theme, 'Agendadas: $totalAgendadas', maxWidth: maxPillW),
+                _pill(theme, 'Completadas: $totalCompletadas', maxWidth: maxPillW),
+                _pill(theme, 'Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
+                if (showEnCurso) _pill(theme, 'En curso: $totalEnCurso', maxWidth: maxPillW),
+              ];
+
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: pills,
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+        ],
+      ),
+    );
+
+    final chart = _cardShell(
+      context,
+      elevation: 0.8,
+      padding: const EdgeInsets.all(12),
+      child: stats.isEmpty
+          ? Center(
+              child: Text(
+                'No hay datos para mostrar.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ),
+            )
+          : SfCartesianChart(
+              key: ValueKey('day_chart_${widget.day.toIso8601String()}_$_animSeed'),
+              tooltipBehavior: _tooltip,
+              zoomPanBehavior: _zoom,
+              legend: const Legend(
+                isVisible: true,
+                position: LegendPosition.bottom,
+                overflowMode: LegendItemOverflowMode.wrap,
+              ),
+              plotAreaBorderWidth: 0,
+              primaryXAxis: CategoryAxis(
+                labelRotation: hasMany ? 45 : 0,
+                labelIntersectAction: AxisLabelIntersectAction.rotate45,
+                majorGridLines: const MajorGridLines(width: 0),
+              ),
+              primaryYAxis: NumericAxis(
+                minimum: 0,
+                interval: 1,
+                numberFormat: NumberFormat('#0'),
+                majorGridLines: MajorGridLines(
+                  width: 1,
+                  color: theme.dividerColor.withOpacity(0.30),
+                ),
+              ),
+              series: [
+                ColumnSeries<_ReporterStats, String>(
+                  name: 'Completadas',
+                  dataSource: stats,
+                  xValueMapper: (d, _) => d.nombre,
+                  yValueMapper: (d, _) => d.completadas,
+                  dataLabelMapper: (d, _) => d.completadas == 0 ? null : '${d.completadas}',
+                  dataLabelSettings: const DataLabelSettings(isVisible: true),
+                  animationDuration: 650,
+                ),
+                ColumnSeries<_ReporterStats, String>(
+                  name: 'Atrasadas',
+                  dataSource: stats,
+                  xValueMapper: (d, _) => d.nombre,
+                  yValueMapper: (d, _) => d.atrasadas,
+                  dataLabelMapper: (d, _) => d.atrasadas == 0 ? null : '${d.atrasadas}',
+                  dataLabelSettings: const DataLabelSettings(isVisible: true),
+                  animationDuration: 650,
+                  color: Colors.red.shade900,
+                ),
+                if (showEnCurso)
+                  ColumnSeries<_ReporterStats, String>(
+                    name: 'En curso',
+                    dataSource: stats,
+                    xValueMapper: (d, _) => d.nombre,
+                    yValueMapper: (d, _) => d.enCurso,
+                    dataLabelMapper: (d, _) => d.enCurso == 0 ? null : '${d.enCurso}',
+                    dataLabelSettings: const DataLabelSettings(isVisible: true),
+                    animationDuration: 650,
+                  ),
+                if (!showEnCurso)
+                  ColumnSeries<_ReporterStats, String>(
+                    name: 'Agendadas',
+                    dataSource: stats,
+                    xValueMapper: (d, _) => d.nombre,
+                    yValueMapper: (d, _) => d.agendadas,
+                    dataLabelMapper: (d, _) => d.agendadas == 0 ? null : '${d.agendadas}',
+                    dataLabelSettings: const DataLabelSettings(isVisible: true),
+                    animationDuration: 650,
+                  ),
+              ],
+            ),
+    );
+
+    final body = Padding(
+      padding: EdgeInsets.fromLTRB(_hPad(context), 12, _hPad(context), 12),
+      child: wide
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(width: 420, child: resumen),
+                const SizedBox(width: 12),
+                Expanded(child: _maybeScrollbar(child: chart)),
+              ],
+            )
+          : Column(
+              children: [
+                resumen,
+                const SizedBox(height: 12),
+                Expanded(child: _maybeScrollbar(child: chart)),
+              ],
+            ),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -442,164 +892,9 @@ class _DiaChartPageState extends State<_DiaChartPage> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Expanded(
-              child: Card(
-                elevation: 1,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    children: [
-                      LayoutBuilder(
-                        builder: (context, c) {
-                          final bool narrow = c.maxWidth < 380;
-                          final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
-
-                          final pills = <Widget>[
-                            _pill(theme, 'Total: $totalTareas',
-                                maxWidth: maxPillW, isTotal: true),
-                            if (!showEnCurso)
-                              _pill(theme, 'Agendadas: $totalAgendadas',
-                                  maxWidth: maxPillW),
-                            _pill(theme, 'Completadas: $totalCompletadas',
-                                maxWidth: maxPillW),
-                            _pill(theme, 'Atrasadas: $totalAtrasadas',
-                                maxWidth: maxPillW),
-                            if (showEnCurso)
-                              _pill(theme, 'En curso: $totalEnCurso',
-                                  maxWidth: maxPillW),
-                          ];
-
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Total',
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: pills,
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      Expanded(
-                        child: stats.isEmpty
-                            ? Center(
-                                child: Text(
-                                  'No hay datos para mostrar.',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: theme.colorScheme.onSurface
-                                        .withOpacity(0.7),
-                                  ),
-                                ),
-                              )
-                            : SfCartesianChart(
-                                key: ValueKey(
-                                  'day_chart_${widget.day.toIso8601String()}_$_animSeed',
-                                ),
-                                tooltipBehavior: _tooltip,
-                                legend: const Legend(
-                                  isVisible: true,
-                                  position: LegendPosition.bottom,
-                                ),
-                                plotAreaBorderWidth: 0,
-                                primaryXAxis: CategoryAxis(
-                                  labelRotation: hasMany ? 45 : 0,
-                                  labelIntersectAction:
-                                      AxisLabelIntersectAction.rotate45,
-                                  majorGridLines:
-                                      const MajorGridLines(width: 0),
-                                ),
-                                primaryYAxis: NumericAxis(
-                                  minimum: 0,
-                                  interval: 1,
-                                  numberFormat: NumberFormat('#0'),
-                                  majorGridLines: MajorGridLines(
-                                    width: 1,
-                                    color: theme.dividerColor.withOpacity(0.35),
-                                  ),
-                                ),
-                                series: [
-                                  ColumnSeries<_ReporterStats, String>(
-                                    name: 'Completadas',
-                                    dataSource: stats,
-                                    xValueMapper: (d, _) => d.nombre,
-                                    yValueMapper: (d, _) => d.completadas,
-                                    dataLabelMapper: (d, _) =>
-                                        d.completadas == 0
-                                            ? null
-                                            : '${d.completadas}',
-                                    dataLabelSettings:
-                                        const DataLabelSettings(isVisible: true),
-                                    animationDuration: 650,
-                                  ),
-                                  ColumnSeries<_ReporterStats, String>(
-                                    name: 'Atrasadas',
-                                    dataSource: stats,
-                                    xValueMapper: (d, _) => d.nombre,
-                                    yValueMapper: (d, _) => d.atrasadas,
-                                    dataLabelMapper: (d, _) =>
-                                        d.atrasadas == 0
-                                            ? null
-                                            : '${d.atrasadas}',
-                                    dataLabelSettings:
-                                        const DataLabelSettings(isVisible: true),
-                                    animationDuration: 650,
-                                    color: Colors.red.shade900,
-                                  ),
-                                  if (showEnCurso)
-                                    ColumnSeries<_ReporterStats, String>(
-                                      name: 'En curso',
-                                      dataSource: stats,
-                                      xValueMapper: (d, _) => d.nombre,
-                                      yValueMapper: (d, _) => d.enCurso,
-                                      dataLabelMapper: (d, _) =>
-                                          d.enCurso == 0 ? null : '${d.enCurso}',
-                                      dataLabelSettings:
-                                          const DataLabelSettings(isVisible: true),
-                                      animationDuration: 650,
-                                    ),
-                                  if (!showEnCurso)
-                                    ColumnSeries<_ReporterStats, String>(
-                                      name: 'Agendadas',
-                                      dataSource: stats,
-                                      xValueMapper: (d, _) => d.nombre,
-                                      yValueMapper: (d, _) => d.agendadas,
-                                      dataLabelMapper: (d, _) =>
-                                          d.agendadas == 0
-                                              ? null
-                                              : '${d.agendadas}',
-                                      dataLabelSettings:
-                                          const DataLabelSettings(isVisible: true),
-                                      animationDuration: 650,
-                                    ),
-                                ],
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+      body: Container(
+        color: kIsWeb ? theme.colorScheme.surface : null,
+        child: _wrapWebWidth(body),
       ),
     );
   }

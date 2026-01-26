@@ -1,4 +1,5 @@
 // lib/screens/estadisticas_mes.dart
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:intl/intl.dart';
@@ -7,6 +8,56 @@ import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
 import 'estadisticas_semanas.dart';
 import 'estadisticas_dias.dart';
+
+const double _kWebMaxContentWidth = 1200;
+const double _kWebWideBreakpoint = 980;
+
+bool _isWebWide(BuildContext context) =>
+    kIsWeb && MediaQuery.of(context).size.width >= _kWebWideBreakpoint;
+
+double _hPad(BuildContext context) => _isWebWide(context) ? 20 : 12;
+
+Widget _wrapWebWidth(Widget child) {
+  if (!kIsWeb) return child;
+  return Align(
+    alignment: Alignment.topCenter,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: _kWebMaxContentWidth),
+      child: child,
+    ),
+  );
+}
+
+ShapeBorder _softShape(ThemeData theme) => RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+      side: BorderSide(
+        color: theme.dividerColor.withOpacity(0.70),
+        width: 0.9,
+      ),
+    );
+
+Widget _cardShell(
+  BuildContext context, {
+  required Widget child,
+  EdgeInsetsGeometry padding = const EdgeInsets.all(12),
+  double? elevation,
+  Color? color,
+}) {
+  final theme = Theme.of(context);
+  return Card(
+    elevation: elevation ?? (kIsWeb ? 0.7 : 1),
+    color: color ?? theme.colorScheme.surface,
+    shape: _softShape(theme),
+    child: Padding(padding: padding, child: child),
+  );
+}
+
+Widget _maybeScrollbar({required Widget child}) {
+  if (!kIsWeb) return child;
+  return Scrollbar(thumbVisibility: true, interactive: true, child: child);
+}
+
+// ================================================================================================
 
 class EstadisticasMes extends StatefulWidget {
   final List<ReporteroAdmin> reporteros;
@@ -29,11 +80,17 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
   int _animSeed = 0;
 
   late final TooltipBehavior _tooltip;
+  late final ZoomPanBehavior _zoom;
 
   @override
   void initState() {
     super.initState();
     _tooltip = TooltipBehavior(enable: true);
+    _zoom = ZoomPanBehavior(
+      enablePanning: kIsWeb,
+      enablePinching: kIsWeb,
+      zoomMode: ZoomMode.x,
+    );
   }
 
   // ------------------- Roles (ocultar admins en la gráfica) -------------------
@@ -175,25 +232,48 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 220),
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
-      child: _selectedMonth == null
-          ? _buildGridMeses(key: const ValueKey('grid'))
-          : _buildChartMes(
-              month: _selectedMonth!,
-              key: ValueKey('chart_${_selectedMonth!}_$_animSeed'),
-            ),
+    final theme = Theme.of(context);
+    final wide = _isWebWide(context);
+
+    final body = Container(
+      color: kIsWeb ? theme.colorScheme.surface : null,
+      child: _wrapWebWidth(
+        wide ? _buildWideLayout() : _buildNarrowLayout(),
+      ),
+    );
+
+    return body;
+  }
+
+  Widget _buildWideLayout() {
+    final pad = _hPad(context);
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(pad, 12, pad, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 5,
+            child: _buildMonthsPanelWide(),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 7,
+            child: _buildDetailsPanelWide(),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildGridMeses({required Key key}) {
+  Widget _buildMonthsPanelWide() {
     final theme = Theme.of(context);
 
-    return Padding(
-      key: key,
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+    return _cardShell(
+      context,
+      elevation: 0.8,
+      padding: const EdgeInsets.all(12),
       child: Column(
         children: [
           Container(
@@ -202,104 +282,53 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
             decoration: BoxDecoration(
               color: theme.colorScheme.primaryContainer,
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: theme.dividerColor.withOpacity(0.55),
+                width: 0.8,
+              ),
             ),
             child: Text(
               '$_year',
               textAlign: TextAlign.center,
               style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w900,
               ),
             ),
           ),
           const SizedBox(height: 10),
-
           Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.only(bottom: 6),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 0.95,
-              ),
-              itemCount: 12,
-              itemBuilder: (context, index) {
-                final month = index + 1;
-                final nombreMes = _nombreMes(month);
-                final efem = _efemerideMes(month, theme);
-                final count = _countNoticiasEnMes(_year, month);
-                final tiene = count > 0;
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final w = c.maxWidth;
 
-                return InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () {
-                    setState(() {
-                      _selectedMonth = month;
-                      _animSeed++;
-                    });
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      color: tiene
-                          ? theme.colorScheme.primaryContainer.withOpacity(0.85)
-                          : theme.colorScheme.surface,
-                      border: Border.all(
-                        color: tiene ? theme.colorScheme.primary : theme.dividerColor,
-                        width: tiene ? 1.4 : 0.8,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                          color: Colors.black.withOpacity(0.08),
-                        ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.all(8),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Tooltip(
-                          message: efem.tooltip,
-                          child: CircleAvatar(
-                            radius: 16,
-                            backgroundColor: efem.color,
-                            child: Icon(efem.icon, size: 18, color: Colors.white),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            nombreMes,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            tiene ? '$count noticias' : 'Sin noticias',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: tiene ? FontWeight.w700 : FontWeight.w500,
-                              color: tiene
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.onSurface.withOpacity(0.7),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                int crossAxisCount = 3;
+                double aspect = 0.95;
+
+                if (w >= 560) {
+                  crossAxisCount = 4;
+                  aspect = 1.10;
+                }
+                if (w >= 720) {
+                  crossAxisCount = 5;
+                  aspect = 1.18;
+                }
+
+                final grid = GridView.builder(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: aspect,
                   ),
+                  itemCount: 12,
+                  itemBuilder: (context, index) {
+                    final month = index + 1;
+                    return _buildMonthTile(month);
+                  },
                 );
+
+                return _maybeScrollbar(child: grid);
               },
             ),
           ),
@@ -308,7 +337,214 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
     );
   }
 
-  Widget _buildChartMes({required int month, required Key key}) {
+  Widget _buildDetailsPanelWide() {
+    final theme = Theme.of(context);
+
+    if (_selectedMonth == null) {
+      return _cardShell(
+        context,
+        elevation: 0.8,
+        padding: const EdgeInsets.all(16),
+        child: Center(
+          child: Text(
+            'Selecciona un mes para ver la gráfica.',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: theme.colorScheme.onSurface.withOpacity(0.75),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return _buildChartMes(month: _selectedMonth!, wide: true);
+  }
+
+  Widget _buildNarrowLayout() {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: _selectedMonth == null
+          ? _buildGridMesesNarrow(key: const ValueKey('grid'))
+          : _buildChartMes(
+              month: _selectedMonth!,
+              wide: false,
+              key: ValueKey('chart_${_selectedMonth!}_$_animSeed'),
+            ),
+    );
+  }
+
+  Widget _buildGridMesesNarrow({required Key key}) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      key: key,
+      padding: EdgeInsets.fromLTRB(_hPad(context), 12, _hPad(context), 12),
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: theme.dividerColor.withOpacity(0.55),
+                width: 0.8,
+              ),
+            ),
+            child: Text(
+              '$_year',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final w = c.maxWidth;
+
+                int crossAxisCount = 3;
+                double aspect = 0.95;
+
+                if (kIsWeb) {
+                  if (w >= 1200) {
+                    crossAxisCount = 6;
+                    aspect = 1.15;
+                  } else if (w >= 980) {
+                    crossAxisCount = 5;
+                    aspect = 1.10;
+                  } else if (w >= 720) {
+                    crossAxisCount = 4;
+                    aspect = 1.02;
+                  }
+                }
+
+                final grid = GridView.builder(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: aspect,
+                  ),
+                  itemCount: 12,
+                  itemBuilder: (context, index) {
+                    final month = index + 1;
+                    return _buildMonthTile(month);
+                  },
+                );
+
+                return _maybeScrollbar(child: grid);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMonthTile(int month) {
+    final theme = Theme.of(context);
+
+    final nombreMes = _nombreMes(month);
+    final efem = _efemerideMes(month, theme);
+    final count = _countNoticiasEnMes(_year, month);
+    final tiene = count > 0;
+
+    final bool selected = _selectedMonth == month;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () {
+        setState(() {
+          _selectedMonth = month;
+          _animSeed++;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          color: selected
+              ? theme.colorScheme.primaryContainer
+              : (tiene
+                  ? theme.colorScheme.primaryContainer.withOpacity(0.80)
+                  : theme.colorScheme.surface),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary
+                : (tiene ? theme.colorScheme.primary : theme.dividerColor),
+            width: selected ? 2.0 : (tiene ? 1.2 : 0.8),
+          ),
+          boxShadow: [
+            BoxShadow(
+              blurRadius: selected ? 7 : 4,
+              offset: const Offset(0, 2),
+              color: Colors.black.withOpacity(selected ? 0.14 : 0.07),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Tooltip(
+              message: efem.tooltip,
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: efem.color,
+                child: Icon(efem.icon, size: 18, color: Colors.white),
+              ),
+            ),
+            const SizedBox(height: 8),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                nombreMes,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceVariant.withOpacity(0.55),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                tiene ? '$count noticias' : 'Sin noticias',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: tiene
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withOpacity(0.70),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChartMes({
+    required int month,
+    bool wide = false,
+    Key? key,
+  }) {
     final theme = Theme.of(context);
 
     final isCurrent = _isCurrentMonth(month);
@@ -323,208 +559,228 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
     final totalAtrasadas = stats.fold<int>(0, (a, b) => a + b.atrasadas);
     final totalAgendadas = stats.fold<int>(0, (a, b) => a + b.agendadas);
     final totalEnCurso = stats.fold<int>(0, (a, b) => a + b.enCurso);
-    final totalTareas = totalCompletadas + totalAtrasadas + (isCurrent ? totalEnCurso : totalAgendadas);
+    final totalTareas =
+        totalCompletadas + totalAtrasadas + (isCurrent ? totalEnCurso : totalAgendadas);
 
     final hasMany = stats.length > 8;
 
+    // Acciones
+    final actions = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        OutlinedButton.icon(
+          icon: const Icon(Icons.arrow_back),
+          label: const Text('Año'),
+          onPressed: () {
+            setState(() {
+              _selectedMonth = null;
+            });
+          },
+        ),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.view_week),
+          label: const Text('Semanas'),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => EstadisticasSemanas(
+                  year: _year,
+                  month: month,
+                  monthName: _nombreMes(month),
+                  reporteros: widget.reporteros,
+                  noticias: widget.noticias,
+                ),
+              ),
+            );
+          },
+        ),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.calendar_month),
+          label: const Text('Días'),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => EstadisticasDias(
+                  year: _year,
+                  month: month,
+                  monthName: _nombreMes(month),
+                  reporteros: widget.reporteros,
+                  noticias: widget.noticias,
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+
+    final pills = LayoutBuilder(
+      builder: (context, c) {
+        final bool narrow = c.maxWidth < 380;
+        final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
+
+        final list = <Widget>[
+          _pill('Total: $totalTareas', maxWidth: maxPillW, isTotal: true),
+          _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
+          _pill('Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
+          if (isCurrent)
+            _pill('En curso: $totalEnCurso', maxWidth: maxPillW)
+          else
+            _pill('Agendadas: $totalAgendadas', maxWidth: maxPillW),
+        ];
+
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: list,
+        );
+      },
+    );
+
+    final chart = stats.isEmpty
+        ? Center(
+            child: Text(
+              'No hay datos para mostrar.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          )
+        : SfCartesianChart(
+            key: key ?? ValueKey('month_${month}_$_animSeed'),
+            tooltipBehavior: _tooltip,
+            zoomPanBehavior: _zoom,
+            legend: const Legend(
+              isVisible: true,
+              position: LegendPosition.bottom,
+              overflowMode: LegendItemOverflowMode.wrap,
+            ),
+            plotAreaBorderWidth: 0,
+            primaryXAxis: CategoryAxis(
+              labelRotation: hasMany ? 45 : 0,
+              labelIntersectAction: AxisLabelIntersectAction.rotate45,
+              majorGridLines: const MajorGridLines(width: 0),
+            ),
+            primaryYAxis: NumericAxis(
+              minimum: 0,
+              interval: 1,
+              numberFormat: NumberFormat('#0'),
+              majorGridLines: MajorGridLines(
+                width: 1,
+                color: theme.dividerColor.withOpacity(0.30),
+              ),
+            ),
+            series: [
+              ColumnSeries<_ReporterStats, String>(
+                name: 'Completadas',
+                dataSource: stats,
+                xValueMapper: (d, _) => d.nombre,
+                yValueMapper: (d, _) => d.completadas,
+                dataLabelMapper: (d, _) =>
+                    d.completadas == 0 ? null : '${d.completadas}',
+                dataLabelSettings: const DataLabelSettings(isVisible: true),
+                animationDuration: 650,
+              ),
+              ColumnSeries<_ReporterStats, String>(
+                name: 'Atrasadas',
+                dataSource: stats,
+                xValueMapper: (d, _) => d.nombre,
+                yValueMapper: (d, _) => d.atrasadas,
+                dataLabelMapper: (d, _) =>
+                    d.atrasadas == 0 ? null : '${d.atrasadas}',
+                dataLabelSettings: const DataLabelSettings(isVisible: true),
+                animationDuration: 650,
+                color: Colors.red.shade900,
+              ),
+              if (isCurrent)
+                ColumnSeries<_ReporterStats, String>(
+                  name: 'En curso',
+                  dataSource: stats,
+                  xValueMapper: (d, _) => d.nombre,
+                  yValueMapper: (d, _) => d.enCurso,
+                  dataLabelMapper: (d, _) =>
+                      d.enCurso == 0 ? null : '${d.enCurso}',
+                  dataLabelSettings: const DataLabelSettings(isVisible: true),
+                  animationDuration: 650,
+                )
+              else
+                ColumnSeries<_ReporterStats, String>(
+                  name: 'Agendadas',
+                  dataSource: stats,
+                  xValueMapper: (d, _) => d.nombre,
+                  yValueMapper: (d, _) => d.agendadas,
+                  dataLabelMapper: (d, _) =>
+                      d.agendadas == 0 ? null : '${d.agendadas}',
+                  dataLabelSettings: const DataLabelSettings(isVisible: true),
+                  animationDuration: 650,
+                ),
+            ],
+          );
+
+    if (wide) {
+      return _cardShell(
+        context,
+        elevation: 0.8,
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            actions,
+            const SizedBox(height: 10),
+            Text(
+              '${_nombreMes(month)} $_year',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 10),
+            pills,
+            const SizedBox(height: 10),
+            Expanded(child: chart),
+          ],
+        ),
+      );
+    }
+
     return Padding(
       key: key,
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.fromLTRB(_hPad(context), 12, _hPad(context), 12),
       child: Column(
         children: [
-          Row(
-            children: [
-              OutlinedButton.icon(
-                icon: const Icon(Icons.arrow_back),
-                label: const Text('Año'),
-                onPressed: () {
-                  setState(() {
-                    _selectedMonth = null;
-                  });
-                },
-              ),
-              const SizedBox(width: 8),
-
-              OutlinedButton.icon(
-                icon: const Icon(Icons.view_week),
-                label: const Text('Semanas'),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => EstadisticasSemanas(
-                        year: _year,
-                        month: month,
-                        monthName: _nombreMes(month),
-                        reporteros: widget.reporteros,
-                        noticias: widget.noticias,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(width: 8),
-
-              OutlinedButton.icon(
-                icon: const Icon(Icons.calendar_month),
-                label: const Text('Días'),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => EstadisticasDias(
-                        year: _year,
-                        month: month,
-                        monthName: _nombreMes(month),
-                        reporteros: widget.reporteros,
-                        noticias: widget.noticias,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
+          actions,
           const SizedBox(height: 10),
-
           Expanded(
-            child: Card(
-              elevation: 1,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${_nombreMes(month)} $_year',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+            child: _cardShell(
+              context,
+              elevation: 0.8,
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${_nombreMes(month)} $_year',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
                           ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-
-                    LayoutBuilder(
-                      builder: (context, c) {
-                        final bool narrow = c.maxWidth < 380;
-                        final double? maxPillW = narrow ? (c.maxWidth - 8) / 2 : null;
-
-                        final pills = <Widget>[
-                          _pill('Total: $totalTareas',
-                              maxWidth: maxPillW, isTotal: true),
-                          _pill('Completadas: $totalCompletadas', maxWidth: maxPillW),
-                          _pill('Atrasadas: $totalAtrasadas', maxWidth: maxPillW),
-                          if (isCurrent)
-                            _pill('En curso: $totalEnCurso', maxWidth: maxPillW)
-                          else
-                            _pill('Agendadas: $totalAgendadas', maxWidth: maxPillW),
-                        ];
-
-                        return Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: pills,
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 10),
-
-                    Expanded(
-                      child: stats.isEmpty
-                          ? Center(
-                              child: Text(
-                                'No hay datos para mostrar.',
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color:
-                                      theme.colorScheme.onSurface.withOpacity(0.7),
-                                ),
-                              ),
-                            )
-                          : SfCartesianChart(
-                              tooltipBehavior: _tooltip,
-                              legend: const Legend(
-                                isVisible: true,
-                                position: LegendPosition.bottom,
-                              ),
-                              plotAreaBorderWidth: 0,
-                              primaryXAxis: CategoryAxis(
-                                labelRotation: hasMany ? 45 : 0,
-                                labelIntersectAction:
-                                    AxisLabelIntersectAction.rotate45,
-                                majorGridLines: const MajorGridLines(width: 0),
-                              ),
-                              primaryYAxis: NumericAxis(
-                                minimum: 0,
-                                interval: 1,
-                                numberFormat: NumberFormat('#0'),
-                                majorGridLines: MajorGridLines(
-                                  width: 1,
-                                  color: theme.dividerColor.withOpacity(0.35),
-                                ),
-                              ),
-                              series: [
-                                ColumnSeries<_ReporterStats, String>(
-                                  name: 'Completadas',
-                                  dataSource: stats,
-                                  xValueMapper: (d, _) => d.nombre,
-                                  yValueMapper: (d, _) => d.completadas,
-                                  dataLabelMapper: (d, _) =>
-                                      d.completadas == 0 ? null : '${d.completadas}',
-                                  dataLabelSettings:
-                                      const DataLabelSettings(isVisible: true),
-                                  animationDuration: 650,
-                                ),
-                                ColumnSeries<_ReporterStats, String>(
-                                  name: 'Atrasadas',
-                                  dataSource: stats,
-                                  xValueMapper: (d, _) => d.nombre,
-                                  yValueMapper: (d, _) => d.atrasadas,
-                                  dataLabelMapper: (d, _) =>
-                                      d.atrasadas == 0 ? null : '${d.atrasadas}',
-                                  dataLabelSettings:
-                                      const DataLabelSettings(isVisible: true),
-                                  animationDuration: 650,
-                                  color: Colors.red.shade900,
-                                ),
-                                if (isCurrent)
-                                  ColumnSeries<_ReporterStats, String>(
-                                    name: 'En curso',
-                                    dataSource: stats,
-                                    xValueMapper: (d, _) => d.nombre,
-                                    yValueMapper: (d, _) => d.enCurso,
-                                    dataLabelMapper: (d, _) =>
-                                        d.enCurso == 0 ? null : '${d.enCurso}',
-                                    dataLabelSettings:
-                                        const DataLabelSettings(isVisible: true),
-                                    animationDuration: 650,
-                                  )
-                                else
-                                  ColumnSeries<_ReporterStats, String>(
-                                    name: 'Agendadas',
-                                    dataSource: stats,
-                                    xValueMapper: (d, _) => d.nombre,
-                                    yValueMapper: (d, _) => d.agendadas,
-                                    dataLabelMapper: (d, _) =>
-                                        d.agendadas == 0 ? null : '${d.agendadas}',
-                                    dataLabelSettings:
-                                        const DataLabelSettings(isVisible: true),
-                                    animationDuration: 650,
-                                  ),
-                              ],
-                            ),
-                    ),
-                  ],
-                ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  pills,
+                  const SizedBox(height: 10),
+                  Expanded(child: chart),
+                ],
               ),
             ),
           ),
@@ -536,20 +792,24 @@ class _EstadisticasMesState extends State<EstadisticasMes> {
   Widget _pill(String text, {double? maxWidth, bool isTotal = false}) {
     final theme = Theme.of(context);
 
+    final bg = isTotal ? theme.colorScheme.primary : theme.colorScheme.primaryContainer;
+    final fg = isTotal ? theme.colorScheme.onPrimary : theme.colorScheme.onPrimaryContainer;
+
     final core = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: isTotal ? Colors.black : theme.colorScheme.primaryContainer,
+        color: bg,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: theme.dividerColor.withOpacity(0.55),
+          width: 0.8,
+        ),
       ),
       child: Text(
         text,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontWeight: FontWeight.w800,
-          color: isTotal ? Colors.white : theme.colorScheme.onPrimaryContainer,
-        ),
+        style: TextStyle(fontWeight: FontWeight.w800, color: fg),
       ),
     );
 
