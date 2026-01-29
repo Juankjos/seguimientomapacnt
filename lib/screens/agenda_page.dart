@@ -781,7 +781,6 @@ class _AgendaPageState extends State<AgendaPage> {
       padding: EdgeInsets.symmetric(horizontal: wide ? 10 : 8, vertical: wide ? 8 : 6),
       child: Row(
         children: [
-          Icon(Icons.tune, size: wide ? 18 : 16, color: theme.colorScheme.primary),
           const SizedBox(width: 10),
           Expanded(child: segmented),
         ],

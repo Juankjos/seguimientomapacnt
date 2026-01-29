@@ -1,8 +1,8 @@
-//lib/screens/tomar_noticias_page.dart
+// lib/screens/tomar_noticias_page.dart
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, setEquals;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
@@ -12,6 +12,39 @@ import '../services/api_service.dart';
 
 const _kPrefsKeyNoticiasNuevas = 'noticias_nuevas_timestamps';
 const _kNuevaDuracionMs = 1 * 60 * 1000;
+
+// ===== Web layout helpers =====
+const double _kWebMaxContentWidth = 1200;
+const double _kWebWideBreakpoint = 980;
+
+bool _isWebWide(BuildContext context) =>
+    kIsWeb && MediaQuery.of(context).size.width >= _kWebWideBreakpoint;
+
+double _hPad(BuildContext context) => _isWebWide(context) ? 20 : 12;
+
+Widget _wrapWebWidth(Widget child) {
+  if (!kIsWeb) return child;
+  return Align(
+    alignment: Alignment.topCenter,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: _kWebMaxContentWidth),
+      child: child,
+    ),
+  );
+}
+
+Widget _maybeScrollbar({required Widget child}) {
+  if (!kIsWeb) return child;
+  return Scrollbar(thumbVisibility: true, interactive: true, child: child);
+}
+
+ShapeBorder _softShape(ThemeData theme) => RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+      side: BorderSide(
+        color: theme.dividerColor.withOpacity(0.70),
+        width: 0.9,
+      ),
+    );
 
 class TomarNoticiasPage extends StatefulWidget {
   final int reporteroId;
@@ -70,11 +103,8 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
     await prefs.setString(_kPrefsKeyNoticiasNuevas, jsonEncode(map));
   }
 
-  // ------------ Timer para actualizar el estado "nuevo" en tiempo real ------------
-
   void _iniciarTimer() {
     _timer?.cancel();
-    // Revisamos cada 5 segundos, se puede ajustar
     _timer = Timer.periodic(const Duration(seconds: 5), (_) {
       _actualizarEstadoNuevasPorTiempo();
     });
@@ -103,17 +133,13 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
     }
 
     if (!setEquals(_nuevasNoticias, nuevas)) {
-      setState(() {
-        _nuevasNoticias = nuevas;
-      });
+      setState(() => _nuevasNoticias = nuevas);
     }
 
     if (huboCambiosTimestamps) {
       await _guardarTimestamps(_timestamps);
     }
   }
-
-  // ------------ Carga de noticias desde back ------------
 
   Future<void> _cargarNoticias() async {
     setState(() {
@@ -125,7 +151,6 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
       final nowMs = DateTime.now().millisecondsSinceEpoch;
 
       var timestamps = await _cargarTimestampsGuardados();
-
       timestamps.removeWhere((key, ts) => nowMs - ts > _kNuevaDuracionMs);
 
       final list = await ApiService.getNoticiasDisponibles();
@@ -156,34 +181,27 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
 
       _actualizarEstadoNuevasPorTiempo();
     } catch (e) {
-      setState(() {
-        _error = 'Error al cargar noticias: $e';
-      });
+      setState(() => _error = 'Error al cargar noticias: $e');
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   String _fmtFechaHoraCita(DateTime? dt) {
     if (dt == null) return 'Sin fecha';
 
-    // Fecha: DD/Mes_textual/YYYY (Mes con inicial mayúscula)
-    final fechaRaw = DateFormat('dd/MMMM/yyyy', 'es_MX').format(dt); // 24/diciembre/2025
+    final fechaRaw = DateFormat('dd/MMMM/yyyy', 'es_MX').format(dt);
     final parts = fechaRaw.split('/');
     final mes = parts.length >= 2 && parts[1].isNotEmpty
         ? '${parts[1][0].toUpperCase()}${parts[1].substring(1)}'
         : '';
     final fecha = parts.length == 3 ? '${parts[0]}/$mes/${parts[2]}' : fechaRaw;
 
-    // Hora: HH:MM a.m./p.m.
-    var hora = DateFormat('hh:mm a', 'en_US').format(dt).toLowerCase(); // 03:30 pm
+    var hora = DateFormat('hh:mm a', 'en_US').format(dt).toLowerCase();
     hora = hora.replaceAll('am', 'a.m.').replaceAll('pm', 'p.m.');
 
     return '$fecha $hora';
   }
-
 
   // ------------ Lógica para tomar noticias ------------
 
@@ -230,16 +248,12 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Has tomado la noticia "${noticia.noticia}".'),
-        ),
+        SnackBar(content: Text('Has tomado la noticia "${noticia.noticia}".')),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('No se pudo tomar la noticia: $e'),
-        ),
+        SnackBar(content: Text('No se pudo tomar la noticia: $e')),
       );
     }
   }
@@ -248,6 +262,118 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final wide = _isWebWide(context);
+
+    final list = RefreshIndicator(
+      onRefresh: _cargarNoticias,
+      child: _maybeScrollbar(
+        child: _buildBodyList(
+          padding: EdgeInsets.all(_hPad(context)),
+        ),
+      ),
+    );
+
+    if (wide) {
+      final rightPanel = Padding(
+        padding: EdgeInsets.fromLTRB(12, 12, _hPad(context), 12),
+        child: SizedBox(
+          width: 360,
+          child: Card(
+            elevation: 0.6,
+            shape: _softShape(theme),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.inbox_outlined),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Disponibles',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Actualizar',
+                        onPressed: _loading ? null : _cargarNoticias,
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Reportero: ${widget.reporteroNombre}',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceVariant.withOpacity(0.35),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: theme.dividerColor.withOpacity(0.6),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Total: ${_noticias.length}',
+                            style: const TextStyle(fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 6),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.refresh),
+                      label: Text(_loading ? 'Actualizando…' : 'Actualizar lista'),
+                      onPressed: _loading ? null : _cargarNoticias,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Tomar noticias'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Actualizar',
+              onPressed: _loading ? null : _cargarNoticias,
+            ),
+          ],
+        ),
+        body: _wrapWebWidth(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 8, child: list),
+              Expanded(flex: 0, child: rightPanel),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ---- Mobile / narrow ----
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tomar noticias'),
@@ -259,20 +385,26 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _cargarNoticias,
-        child: _buildBody(),
-      ),
+      body: list,
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBodyList({required EdgeInsets padding}) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: padding,
+        children: const [
+          SizedBox(height: 160),
+          Center(child: CircularProgressIndicator()),
+        ],
+      );
     }
 
     if (_error != null) {
       return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: padding,
         children: [
           const SizedBox(height: 40),
           Center(child: Text(_error!)),
@@ -282,6 +414,8 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
 
     if (_noticias.isEmpty) {
       return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: padding,
         children: const [
           SizedBox(height: 40),
           Center(child: Text('No hay noticias por ahora')),
@@ -289,46 +423,70 @@ class _TomarNoticiasPageState extends State<TomarNoticiasPage> {
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(8),
+    final theme = Theme.of(context);
+
+    return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: padding,
       itemCount: _noticias.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
         final n = _noticias[index];
         final esNueva = _nuevasNoticias.contains(n.id);
 
+        final colorNueva = const Color(0xFFE3F2FD);
+
         return Card(
-          margin: const EdgeInsets.symmetric(vertical: 6),
-          color: esNueva ? const Color(0xFFE3F2FD) : null, // azul claro
+          elevation: kIsWeb ? 0.6 : 2,
+          shape: _softShape(theme),
+          color: esNueva ? colorNueva : null,
           child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (esNueva)
-                  const Text(
-                    '¡Nueva noticia!',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Color.fromARGB(255, 124, 30, 28),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color.fromARGB(255, 124, 30, 28).withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: const Color.fromARGB(255, 124, 30, 28).withOpacity(0.35),
+                      ),
+                    ),
+                    child: const Text(
+                      '¡Nueva noticia!',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: Color.fromARGB(255, 124, 30, 28),
+                        fontSize: 12,
+                      ),
                     ),
                   ),
+                if (esNueva) const SizedBox(height: 8),
                 Text(
                   n.noticia,
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ],
             ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (n.descripcion != null && n.descripcion!.trim().isNotEmpty) ...[
-                  Text(n.descripcion!),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (n.descripcion != null && n.descripcion!.trim().isNotEmpty) ...[
+                    Text(n.descripcion!),
+                    const SizedBox(height: 4),
+                  ],
                   Text('Cita: ${_fmtFechaHoraCita(n.fechaCita)}'),
-                ] else ...[
-                  Text('Cita: ${_fmtFechaHoraCita(n.fechaCita)}'),
+                  if (n.cliente != null && n.cliente!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text('Cliente: ${n.cliente}'),
+                  ],
                 ],
-                if (n.cliente != null && n.cliente!.trim().isNotEmpty)
-                  Text('Cliente: ${n.cliente}'),
-              ],
+              ),
             ),
             trailing: const Icon(Icons.add_circle_outline),
             onTap: () => _confirmarTomar(n),

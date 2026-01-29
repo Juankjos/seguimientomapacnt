@@ -64,3 +64,6 @@ firebase.json
 
 # Se genera archivo debug
 /android/build/reports
+
+# SFTP
+/.vscode/sftp.json

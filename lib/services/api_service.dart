@@ -23,8 +23,8 @@ class ReporteroBusqueda {
 
 class ApiService {
 
-  static const String baseUrl = 'http://167.99.163.209:8080/seguimientomapacnt';
-  static const String wsBaseUrl = 'ws://167.99.163.209:3001';
+  static const String baseUrl = 'http://192.168.2.68/seguimientomapacnt';
+  static const String wsBaseUrl = 'ws://192.168.2.68:3001';
   static String wsToken = '';
   static String _mysqlDateTime(DateTime dt) => DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
   static bool _toBool(dynamic x) {
