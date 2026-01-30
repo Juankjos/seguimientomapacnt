@@ -14,6 +14,7 @@ import 'update_perfil_page.dart';
 import 'gestion_reporteros_page.dart';
 import 'gestion_noticias_page.dart';
 import 'estadisticas_screen.dart';
+import 'empleado_destacado.dart';
 
 enum AgendaView { year, month, day }
 
@@ -551,6 +552,17 @@ class _AgendaPageState extends State<AgendaPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const EstadisticasScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.star_rounded),
+            title: const Text('Empleado del Mes'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => EmpleadoDestacadoPage(role: 'admin'),),
               );
             },
           ),

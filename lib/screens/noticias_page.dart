@@ -10,6 +10,7 @@ import 'login_screen.dart';
 import 'noticia_detalle_page.dart';
 import 'tomar_noticias_page.dart';
 import 'update_perfil_page.dart';
+import 'empleado_destacado.dart';
 
 const double _kWebMaxContentWidth = 1200;
 const double _kWebWideBreakpoint = 980;
@@ -178,6 +179,20 @@ class _NoticiasPageState extends State<NoticiasPage> {
     );
   }
 
+  Future<void> _irEmpleadoDestacado({bool closeDrawer = false}) async {
+    if (closeDrawer) Navigator.pop(context);
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EmpleadoDestacadoPage(
+          role: widget.role,
+          myReporteroId: widget.reporteroId,
+        ),
+      ),
+    );
+  }
+
   void _confirmarSalir({bool closeDrawer = false}) {
     if (closeDrawer) Navigator.pop(context);
 
@@ -237,6 +252,11 @@ class _NoticiasPageState extends State<NoticiasPage> {
                 leading: const Icon(Icons.calendar_today),
                 title: const Text('Agenda'),
                 onTap: () => _irAgenda(closeDrawer: true),
+              ),
+              ListTile(
+                leading: const Icon(Icons.star_rounded),
+                title: const Text('Empleado del Mes'),
+                onTap: () => _irEmpleadoDestacado(closeDrawer: true),
               ),
               ListTile(
                 leading: Icon(modoActual == ThemeMode.light ? Icons.light_mode : Icons.dark_mode),
@@ -403,6 +423,16 @@ class _NoticiasPageState extends State<NoticiasPage> {
                     icon: const Icon(Icons.calendar_today),
                     label: const Text('Agenda'),
                     onPressed: () => _irAgenda(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.star_rounded),
+                    label: const Text('Empleado del Mes'),
+                    onPressed: () => _irEmpleadoDestacado(),
                   ),
                 ),
                 const SizedBox(height: 8),

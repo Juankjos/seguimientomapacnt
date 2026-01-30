@@ -568,4 +568,58 @@ class ApiService {
       throw Exception('Error en el servidor (${response.statusCode})');
     }
   }
+
+  // 🔹 Traer empleados destacados con noticias extras
+  static Future<Map<String, dynamic>> getEmpleadoDestacado({
+    required int anio,
+    required int mes,
+  }) async {
+    final url = Uri.parse('$baseUrl/get_empleado_destacado.php?anio=$anio&mes=$mes');
+
+    final resp = await http.get(url);
+
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
+
+    final Map<String, dynamic> data = json.decode(resp.body);
+    if (data['success'] != true) {
+      throw Exception(data['message'] ?? 'Error al obtener empleado destacado');
+    }
+
+    return data;
+  }
+
+  // 🔹 Mínimo de noticias para cada mes
+  static Future<void> setMinimoEmpleadoDestacado({
+    required int anio,
+    required int mes,
+    required int minimo,
+    required String role,
+    int? updatedBy,
+  }) async {
+    final url = Uri.parse('$baseUrl/set_minimo_empleado_destacado.php');
+
+    final body = <String, String>{
+      'anio': anio.toString(),
+      'mes': mes.toString(),
+      'minimo': minimo.toString(),
+      'role': role,
+    };
+
+    if (updatedBy != null) {
+      body['updated_by'] = updatedBy.toString();
+    }
+
+    final resp = await http.post(url, body: body);
+
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
+
+    final Map<String, dynamic> data = json.decode(resp.body);
+    if (data['success'] != true) {
+      throw Exception(data['message'] ?? 'No se pudo actualizar el mínimo');
+    }
+  }
 }
