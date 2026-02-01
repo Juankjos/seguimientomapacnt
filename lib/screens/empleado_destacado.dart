@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
+import '../models/noticia.dart';
+import '../models/reportero_admin.dart';
+import 'estadisticas_semanas_realizadas.dart';
 
 const double _kWebMaxContentWidth = 1200;
 const double _kWebWideBreakpoint = 980;
@@ -116,6 +119,50 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
     _cargar();
   }
 
+  Future<void> _abrirSemanasRealizadas() async {
+  // loader modal
+  if (mounted) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+  }
+
+  try {
+    final results = await Future.wait([
+      ApiService.getReporterosAdmin(),
+      ApiService.getNoticiasAdmin(),
+    ]);
+
+    final reporteros = results[0] as List<ReporteroAdmin>;
+    final noticias = results[1] as List<Noticia>;
+
+    if (!mounted) return;
+    Navigator.pop(context);
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EstadisticasSemanasRealizadas(
+          year: _anio,
+          month: _mes,
+          monthName: _meses[_mes] ?? 'Mes',
+          reporteros: reporteros,
+          noticias: noticias,
+        ),
+      ),
+    );
+  } catch (e) {
+    if (mounted) Navigator.pop(context); 
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error al abrir semanas: $e')),
+    );
+  }
+}
+
+
   Future<void> _cargar() async {
     setState(() {
       _loading = true;
@@ -220,6 +267,12 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
           onPressed: _cargar,
           icon: const Icon(Icons.refresh),
           label: const Text('Refrescar'),
+        ),
+        const SizedBox(width: 8),
+        TextButton.icon(
+          onPressed: _abrirSemanasRealizadas,
+          icon: const Icon(Icons.view_week),
+          label: const Text('Semanas'),
         ),
       ],
     );
