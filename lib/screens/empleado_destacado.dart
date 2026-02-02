@@ -1,5 +1,12 @@
 // lib/screens/empleado_destacado.dart
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
@@ -95,6 +102,330 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
 
   bool get _esAdmin => widget.role == 'admin';
 
+  bool _isRoleReportero(ReporteroAdmin r) {
+    final role = (r.role ?? '').toString().trim().toLowerCase();
+    return role == 'reportero';
+  }
+
+  bool _noticiaPerteneceAMes(Noticia n, int anio, int mes) {
+    final bool pendiente = (n.pendiente == true);
+
+    DateTime? dt;
+    if (!pendiente && n.horaLlegada != null) {
+      dt = n.horaLlegada;
+    } else if (pendiente && n.fechaCita != null) {
+      dt = n.fechaCita;
+    } else {
+      dt = n.fechaPago ?? n.fechaCita ?? n.horaLlegada;
+    }
+
+    if (dt == null) return false;
+    return dt.year == anio && dt.month == mes;
+  }
+
+  Future<void> _abrirDesglose() async {
+    // Loader
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    List<ReporteroAdmin> reporteros = [];
+
+    try {
+      final all = await ApiService.getReporterosAdmin();
+      reporteros = all.where(_isRoleReportero).toList()
+        ..sort((a, b) => a.nombre.toLowerCase().compareTo(b.nombre.toLowerCase()));
+
+      if (!mounted) return;
+      Navigator.pop(context); // cierra loader
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al cargar reporteros: $e')),
+      );
+      return;
+    }
+
+    int? selectedId;
+    String selectedNombre = '';
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (dialogCtx, setModalState) {
+            return AlertDialog(
+              title: Text('Desglose • ${_meses[_mes]} $_anio'),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<int>(
+                      value: selectedId,
+                      decoration: const InputDecoration(
+                        labelText: 'Selecciona reportero',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: reporteros
+                          .map((r) => DropdownMenuItem<int>(
+                                value: r.id,
+                                child: Text(r.nombre, overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        final rid = v;
+                        final rep = reporteros.where((x) => x.id == rid).toList();
+                        setModalState(() {
+                          selectedId = rid;
+                          selectedNombre = rep.isNotEmpty ? rep.first.nombre : '';
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Se descargará un PDF con noticias del mes seleccionado.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: const Text('Cerrar'),
+                ),
+                FilledButton.icon(
+                  onPressed: (selectedId == null)
+                      ? null
+                      : () async {
+                          Navigator.pop(dialogCtx);
+                          await _descargarPdfDesglose(
+                            reporteroId: selectedId!,
+                            reporteroNombre: selectedNombre,
+                          );
+                        },
+                  icon: const Icon(Icons.download),
+                  label: const Text('Descargar PDF'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _descargarPdfDesglose({
+    required int reporteroId,
+    required String reporteroNombre,
+  }) async {
+    // Loader
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    try {
+      final all = await ApiService.getNoticiasPorReportero(
+        reporteroId: reporteroId,
+        incluyeCerradas: true,
+      );
+
+      final monthList = all.where((n) => _noticiaPerteneceAMes(n, _anio, _mes)).toList();
+
+      if (!mounted) return;
+      Navigator.pop(context); 
+
+      if (monthList.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No hay noticias para este reportero en el mes seleccionado.')),
+        );
+        return;
+      }
+
+      final bytes = await _buildPdfDesgloseBytes(
+        reporteroNombre: reporteroNombre.isEmpty ? 'Reportero #$reporteroId' : reporteroNombre,
+        anio: _anio,
+        mes: _mes,
+        mesNombre: _meses[_mes] ?? 'Mes',
+        noticias: monthList,
+      );
+
+      final safeName = (reporteroNombre.isEmpty ? 'reportero_$reporteroId' : reporteroNombre)
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+          .replaceAll(RegExp(r'_+'), '_')
+          .replaceAll(RegExp(r'^_|_$'), '');
+
+      final fileName = 'desglose_${safeName}_${_anio}_${_mes.toString().padLeft(2, '0')}.pdf';
+
+      await Printing.sharePdf(bytes: bytes, filename: fileName);
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al generar PDF: $e')),
+      );
+    }
+  }
+
+  Future<Uint8List> _buildPdfDesgloseBytes({
+    required String reporteroNombre,
+    required int anio,
+    required int mes,
+    required String mesNombre,
+    required List<Noticia> noticias,
+  }) async {
+    final doc = pw.Document();
+
+    final df = DateFormat('dd/MM/yyyy HH:mm');
+    final dfDate = DateFormat('dd/MM/yyyy');
+
+    int realizadas = 0;
+    int pendientes = 0;
+    for (final n in noticias) {
+      if (n.pendiente == true) {
+        pendientes++;
+      } else {
+        realizadas++;
+      }
+    }
+
+    noticias.sort((a, b) {
+      final ap = (a.pendiente == true);
+      final bp = (b.pendiente == true);
+      if (ap != bp) return ap ? -1 : 1;
+
+      DateTime? ad = ap ? a.fechaCita : a.horaLlegada;
+      DateTime? bd = bp ? b.fechaCita : b.horaLlegada;
+
+      ad ??= a.fechaPago ?? a.fechaCita ?? a.horaLlegada;
+      bd ??= b.fechaPago ?? b.fechaCita ?? b.horaLlegada;
+
+      if (ad == null && bd == null) return 0;
+      if (ad == null) return 1;
+      if (bd == null) return -1;
+      return ad.compareTo(bd);
+    });
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 28),
+        build: (context) {
+          return [
+            pw.Text(
+              'Desglose de noticias',
+              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 6),
+            pw.Text('Reportero: $reporteroNombre'),
+            pw.Text('Periodo: $mesNombre $anio'),
+            pw.SizedBox(height: 10),
+
+            pw.Container(
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(width: 0.8),
+                borderRadius: pw.BorderRadius.circular(6),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Total: ${noticias.length}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  pw.Text('Realizadas: $realizadas'),
+                  pw.Text('Pendientes: $pendientes'),
+                ],
+              ),
+            ),
+
+            pw.SizedBox(height: 14),
+
+            ...noticias.map((n) {
+              final bool pendiente = (n.pendiente == true);
+              final estado = pendiente ? 'Pendiente' : 'Realizada';
+
+              final titulo = (n.noticia ?? '').toString();
+              final desc = (n.descripcion ?? '').toString();
+              final cliente = (n.cliente ?? '').toString();
+              final domicilio = (n.domicilio ?? '').toString();
+
+              final cita = n.fechaCita;
+              final llegada = n.horaLlegada;
+              final pago = n.fechaPago;
+
+              String fechaLinea = '';
+              if (pendiente) {
+                fechaLinea = cita != null ? df.format(cita) : '—';
+              } else {
+                fechaLinea = llegada != null ? df.format(llegada) : (pago != null ? dfDate.format(pago) : '—');
+              }
+
+              return pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 10),
+                padding: const pw.EdgeInsets.all(10),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(width: 0.7),
+                  borderRadius: pw.BorderRadius.circular(8),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Row(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Expanded(
+                          child: pw.Text(
+                            titulo.isEmpty ? '(Sin título)' : titulo,
+                            style: pw.TextStyle(fontSize: 12.5, fontWeight: pw.FontWeight.bold),
+                          ),
+                        ),
+                        pw.SizedBox(width: 10),
+                        pw.Text(
+                          estado,
+                          style: pw.TextStyle(
+                            fontSize: 11,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    pw.SizedBox(height: 4),
+                    if (cliente.isNotEmpty) pw.Text('Cliente: $cliente', style: const pw.TextStyle(fontSize: 10.5)),
+                    pw.Text(
+                      pendiente ? 'Fecha cita: $fechaLinea' : 'Hora llegada / Pago: $fechaLinea',
+                      style: const pw.TextStyle(fontSize: 10.5),
+                    ),
+                    if (domicilio.isNotEmpty) pw.Text('Domicilio: $domicilio', style: const pw.TextStyle(fontSize: 10.5)),
+                    if (desc.isNotEmpty) ...[
+                      pw.SizedBox(height: 4),
+                      pw.Text('Descripción:', style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
+                      pw.Text(desc, style: const pw.TextStyle(fontSize: 10.5)),
+                    ],
+                  ],
+                ),
+              );
+            }),
+          ];
+        },
+      ),
+    );
+
+    return doc.save();
+  }
+
   static const _meses = <int, String>{
     1: 'Enero',
     2: 'Febrero',
@@ -120,7 +451,6 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
   }
 
   Future<void> _abrirSemanasRealizadas() async {
-  // loader modal
   if (mounted) {
     showDialog(
       context: context,
@@ -273,6 +603,12 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
           onPressed: _abrirSemanasRealizadas,
           icon: const Icon(Icons.view_week),
           label: const Text('Semanas'),
+        ),
+        const SizedBox(width: 8),
+        TextButton.icon(
+          onPressed: _abrirDesglose,
+          icon: const Icon(Icons.picture_as_pdf),
+          label: const Text('Desglose'),
         ),
       ],
     );
@@ -655,7 +991,7 @@ class _ColumnChartPainter extends CustomPainter {
   void _drawText(Canvas canvas, String text, Offset offset, TextStyle style) {
     final tp = TextPainter(
       text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
+      textDirection: ui.TextDirection.ltr,
       maxLines: 1,
       ellipsis: '…',
     )..layout(maxWidth: 140);

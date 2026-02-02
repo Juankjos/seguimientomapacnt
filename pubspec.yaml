@@ -45,6 +45,8 @@ dependencies:
   web_socket_channel: ^3.0.3
   flutter_foreground_task: ^9.1.0
   syncfusion_flutter_charts: ^32.1.21
+  pdf: ^3.10.8
+  printing: ^5.14.2
 
   flutter_localizations:
     sdk: flutter
