@@ -9,6 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import '../services/api_service.dart';
 import '../models/noticia.dart';
@@ -103,7 +104,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
   bool get _esAdmin => widget.role == 'admin';
 
   bool _isRoleReportero(ReporteroAdmin r) {
-    final role = (r.role ?? '').toString().trim().toLowerCase();
+    final role = (r.role).toString().trim().toLowerCase();
     return role == 'reportero';
   }
 
@@ -260,6 +261,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
         anio: _anio,
         mes: _mes,
         mesNombre: _meses[_mes] ?? 'Mes',
+        minimoMeta: _minimo,
         noticias: monthList,
       );
 
@@ -286,12 +288,93 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
     required int anio,
     required int mes,
     required String mesNombre,
+    required int minimoMeta,
     required List<Noticia> noticias,
   }) async {
     final doc = pw.Document();
 
-    final df = DateFormat('dd/MM/yyyy HH:mm');
-    final dfDate = DateFormat('dd/MM/yyyy');
+    final df = DateFormat('dd/MM/yyyy hh:mm a', 'es_MX');  
+    final dfWeek = DateFormat('EEEE dd/MM/yyyy h:mm a', 'es_MX');
+    final dfWeekDate = DateFormat('EEEE dd/MM/yyyy', 'es_MX');
+
+    // ---------------- Helpers semana (Lun–Dom recortadas al mes) ----------------
+
+    DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+    DateTime _startOfWeekMonday(DateTime d) {
+      final day = _dayOnly(d);
+      final diff = day.weekday - DateTime.monday;
+      return day.subtract(Duration(days: diff));
+    }
+
+    DateTime _monthStart(int year, int month) => DateTime(year, month, 1);
+
+    DateTime _monthEndExclusive(int year, int month) {
+      if (month == 12) return DateTime(year + 1, 1, 1);
+      return DateTime(year, month + 1, 1);
+    }
+
+    List<({DateTime start, DateTime endExclusive})> _buildWeeksForMonth(int year, int month) {
+      final mStart = _monthStart(year, month);
+      final mEndEx = _monthEndExclusive(year, month);
+
+      var cursorWeekStart = _startOfWeekMonday(mStart);
+      final out = <({DateTime start, DateTime endExclusive})>[];
+
+      while (cursorWeekStart.isBefore(mEndEx)) {
+        final cursorWeekEndEx = cursorWeekStart.add(const Duration(days: 7));
+
+        final start = cursorWeekStart.isBefore(mStart) ? mStart : cursorWeekStart;
+        final endEx = cursorWeekEndEx.isAfter(mEndEx) ? mEndEx : cursorWeekEndEx;
+
+        out.add((start: start, endExclusive: endEx));
+        cursorWeekStart = cursorWeekStart.add(const Duration(days: 7));
+      }
+
+      return out;
+    }
+
+    bool _inRange(DateTime? dt, DateTime start, DateTime endExclusive) {
+      if (dt == null) return false;
+      final d = _dayOnly(dt);
+      return !d.isBefore(start) && d.isBefore(endExclusive);
+    }
+
+    DateTime? _fechaParaSemana(Noticia n) {
+      final pendiente = (n.pendiente == true);
+
+      if (!pendiente && n.horaLlegada != null) return n.horaLlegada;
+      if (pendiente && n.fechaCita != null) return n.fechaCita;
+
+      return n.fechaPago ?? n.fechaCita ?? n.horaLlegada;
+    }
+
+    String _weekTitle(DateTime start, DateTime endInclusive) {
+      return 'Semana del ${start.day} al ${endInclusive.day} $mesNombre $anio';
+    }
+
+    pw.Widget _bulletLine(String text) {
+      return pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Container(
+            width: 4,
+            height: 4,
+            margin: const pw.EdgeInsets.only(top: 4),
+            decoration: const pw.BoxDecoration(
+              color: PdfColors.black,
+              shape: pw.BoxShape.circle,
+            ),
+          ),
+          pw.SizedBox(width: 6),
+          pw.Expanded(
+            child: pw.Text(text, style: const pw.TextStyle(fontSize: 10.5)),
+          ),
+        ],
+      );
+    }
+
+    // ---------------- Conteos globales ----------------
 
     int realizadas = 0;
     int pendientes = 0;
@@ -303,7 +386,38 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
       }
     }
 
-    noticias.sort((a, b) {
+    // ---------------- Detección extras del mes ----------------
+    final realizadasValidas = noticias
+        .where((n) => (n.pendiente == false) && (n.horaLlegada != null))
+        .toList()
+      ..sort((a, b) => a.horaLlegada!.compareTo(b.horaLlegada!));
+
+    final extrasIds = <int>{};
+    if (realizadasValidas.length > minimoMeta) {
+      for (int i = minimoMeta; i < realizadasValidas.length; i++) {
+        final id = realizadasValidas[i].id;
+        if (id != null) extrasIds.add(id);
+      }
+    }
+
+    final weeks = _buildWeeksForMonth(anio, mes);
+
+    final Map<int, List<Noticia>> byWeek = {for (int i = 0; i < weeks.length; i++) i: <Noticia>[]};
+
+    for (final n in noticias) {
+      final dt = _fechaParaSemana(n);
+      if (dt == null) continue;
+
+      for (int i = 0; i < weeks.length; i++) {
+        final w = weeks[i];
+        if (_inRange(dt, w.start, w.endExclusive)) {
+          byWeek[i]!.add(n);
+          break;
+        }
+      }
+    }
+
+    int _cmpNoticia(Noticia a, Noticia b) {
       final ap = (a.pendiente == true);
       final bp = (b.pendiente == true);
       if (ap != bp) return ap ? -1 : 1;
@@ -318,14 +432,152 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
       if (ad == null) return 1;
       if (bd == null) return -1;
       return ad.compareTo(bd);
-    });
+    }
+
+    for (final e in byWeek.entries) {
+      e.value.sort(_cmpNoticia);
+    }
+
+    // ---------------- PDF UI helpers ----------------
+
+    pw.Widget _weekHeader({
+      required String title,
+      required int total,
+      required int wRealizadas,
+      required int wPendientes,
+      required int wExtras,
+    }) {
+      return pw.Container(
+        margin: const pw.EdgeInsets.only(top: 10, bottom: 8),
+        padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(width: 0.8),
+          borderRadius: pw.BorderRadius.circular(8),
+          color: PdfColors.grey100,
+        ),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          children: [
+            pw.Expanded(
+              child: pw.Text(
+                '$title: Total $total',
+                style: pw.TextStyle(fontSize: 12.5, fontWeight: pw.FontWeight.bold),
+              ),
+            ),
+            pw.SizedBox(width: 8),
+            pw.Text('Realizadas: $wRealizadas', style: const pw.TextStyle(fontSize: 10.5)),
+            pw.SizedBox(width: 6),
+            pw.Text('Pendientes: $wPendientes', style: const pw.TextStyle(fontSize: 10.5)),
+            if (wExtras > 0) ...[
+              pw.SizedBox(width: 6),
+              pw.Text('Extras: $wExtras', style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
+            ],
+          ],
+        ),
+      );
+    }
+
+    pw.Widget _noticiaCard(Noticia n) {
+      final bool pendiente = (n.pendiente == true);
+      final estado = pendiente ? 'Pendiente' : 'Realizada';
+
+      final titulo = (n.noticia).toString();
+      final desc = (n.descripcion ?? '').toString();
+      final cliente = (n.cliente ?? '').toString();
+      final domicilio = (n.domicilio ?? '').toString();
+
+      final cita = n.fechaCita;
+      final llegada = n.horaLlegada;
+      final pago = n.fechaPago;
+
+      String _cap(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
+      String _ampmEs(String s) =>
+          s.replaceAll('AM', 'A.M.').replaceAll('PM', 'P.M.');
+
+      String fechaLinea = '';
+
+      if (pendiente) {
+        fechaLinea = cita != null ? _ampmEs(_cap(dfWeek.format(cita))) : '—';
+      } else {
+        if (llegada != null) {
+          final l = llegada.toLocal();
+          fechaLinea = _ampmEs(_cap(dfWeek.format(l)));
+        } else if (pago != null) {
+          fechaLinea = _cap(dfWeekDate.format(pago));
+        } else {
+          fechaLinea = '—';
+        }
+      }
+
+      final id = n.id;
+      final bool isExtra = (!pendiente) && (id != null) && extrasIds.contains(id);
+
+      return pw.Container(
+        margin: const pw.EdgeInsets.only(bottom: 10),
+        padding: const pw.EdgeInsets.all(10),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(width: 0.7),
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                if (isExtra) ...[
+                  pw.Text(' ', style: pw.TextStyle(fontSize: 12.5, fontWeight: pw.FontWeight.bold, color: PdfColors.amber800)),
+                ],
+                pw.Expanded(
+                  child: pw.Text(
+                    titulo.isEmpty ? '(Sin título)' : titulo,
+                    style: pw.TextStyle(fontSize: 12.5, fontWeight: pw.FontWeight.bold),
+                  ),
+                ),
+                pw.SizedBox(width: 10),
+                pw.Text(
+                  estado,
+                  style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
+                ),
+              ],
+            ),
+            if (isExtra)
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(top: 2),
+                child: pw.Text(
+                  'Extra del mes',
+                  style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.amber800),
+                ),
+              ),
+            pw.SizedBox(height: 4),
+            if (cliente.isNotEmpty) pw.Text('Cliente: $cliente', style: const pw.TextStyle(fontSize: 10.5)),
+            pw.Text(
+              pendiente ? 'Fecha de cita (Pendiente): $fechaLinea' : 'Fecha y Hora de llegada: $fechaLinea',
+              style: const pw.TextStyle(fontSize: 10.5),
+            ),
+            if (domicilio.isNotEmpty) pw.Text('Domicilio: $domicilio', style: const pw.TextStyle(fontSize: 10.5)),
+            if (desc.isNotEmpty) ...[
+              pw.SizedBox(height: 4),
+              pw.Text('Descripción:', style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
+              pw.Text(desc, style: const pw.TextStyle(fontSize: 10.5)),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // ---------------- Construcción del PDF ----------------
+    final base = pw.Font.ttf(await rootBundle.load('assets/fonts/SourceSans3-Regular.ttf'));
+    final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/SourceSans3-SemiBold.ttf'));
 
     doc.addPage(
       pw.MultiPage(
+        theme: pw.ThemeData.withFont(base: base, bold: bold),
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 28),
         build: (context) {
-          return [
+          final widgets = <pw.Widget>[
             pw.Text(
               'Desglose de noticias',
               style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
@@ -334,91 +586,90 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
             pw.Text('Reportero: $reporteroNombre'),
             pw.Text('Periodo: $mesNombre $anio'),
             pw.SizedBox(height: 10),
-
             pw.Container(
               padding: const pw.EdgeInsets.all(10),
               decoration: pw.BoxDecoration(
                 border: pw.Border.all(width: 0.8),
                 borderRadius: pw.BorderRadius.circular(6),
               ),
-              child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text('Total: ${noticias.length}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                  pw.Text('Realizadas: $realizadas'),
-                  pw.Text('Pendientes: $pendientes'),
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text('Total: ${noticias.length}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      pw.Text('Realizadas: $realizadas'),
+                      pw.Text('Pendientes: $pendientes'),
+                    ],
+                  ),
+                  pw.SizedBox(height: 6),
+                  pw.Text(
+                    'Mínimo del mes: $minimoMeta     Extras: ${extrasIds.length}',
+                    style: const pw.TextStyle(fontSize: 10.5),
+                  ),
                 ],
               ),
             ),
-
-            pw.SizedBox(height: 14),
-
-            ...noticias.map((n) {
-              final bool pendiente = (n.pendiente == true);
-              final estado = pendiente ? 'Pendiente' : 'Realizada';
-
-              final titulo = (n.noticia ?? '').toString();
-              final desc = (n.descripcion ?? '').toString();
-              final cliente = (n.cliente ?? '').toString();
-              final domicilio = (n.domicilio ?? '').toString();
-
-              final cita = n.fechaCita;
-              final llegada = n.horaLlegada;
-              final pago = n.fechaPago;
-
-              String fechaLinea = '';
-              if (pendiente) {
-                fechaLinea = cita != null ? df.format(cita) : '—';
-              } else {
-                fechaLinea = llegada != null ? df.format(llegada) : (pago != null ? dfDate.format(pago) : '—');
-              }
-
-              return pw.Container(
-                margin: const pw.EdgeInsets.only(bottom: 10),
-                padding: const pw.EdgeInsets.all(10),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(width: 0.7),
-                  borderRadius: pw.BorderRadius.circular(8),
-                ),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Row(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Expanded(
-                          child: pw.Text(
-                            titulo.isEmpty ? '(Sin título)' : titulo,
-                            style: pw.TextStyle(fontSize: 12.5, fontWeight: pw.FontWeight.bold),
-                          ),
-                        ),
-                        pw.SizedBox(width: 10),
-                        pw.Text(
-                          estado,
-                          style: pw.TextStyle(
-                            fontSize: 11,
-                            fontWeight: pw.FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    pw.SizedBox(height: 4),
-                    if (cliente.isNotEmpty) pw.Text('Cliente: $cliente', style: const pw.TextStyle(fontSize: 10.5)),
-                    pw.Text(
-                      pendiente ? 'Fecha cita: $fechaLinea' : 'Hora llegada / Pago: $fechaLinea',
-                      style: const pw.TextStyle(fontSize: 10.5),
-                    ),
-                    if (domicilio.isNotEmpty) pw.Text('Domicilio: $domicilio', style: const pw.TextStyle(fontSize: 10.5)),
-                    if (desc.isNotEmpty) ...[
-                      pw.SizedBox(height: 4),
-                      pw.Text('Descripción:', style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
-                      pw.Text(desc, style: const pw.TextStyle(fontSize: 10.5)),
-                    ],
-                  ],
-                ),
-              );
-            }),
+            pw.SizedBox(height: 10),
+            pw.Text('Secciones por semana', style: pw.TextStyle(fontSize: 12.5, fontWeight: pw.FontWeight.bold)),
           ];
+
+          for (int i = 0; i < weeks.length; i++) {
+            final list = byWeek[i] ?? const <Noticia>[];
+            if (list.isEmpty) continue;
+
+            final w = weeks[i];
+            final endIncl = w.endExclusive.subtract(const Duration(days: 1));
+            final title = _weekTitle(w.start, endIncl);
+
+            final wPend = list.where((n) => n.pendiente == true).length;
+            final wReal = list.length - wPend;
+            final wExtras = list.where((n) {
+              final id = n.id;
+              return (n.pendiente == false) && id != null && extrasIds.contains(id);
+            }).length;
+
+            widgets.add(
+              _bulletLine(
+                '$title: ${list.length} (Realizadas:$wReal | Pendientes:$wPend${wExtras > 0 ? ' | Extras:$wExtras' : ''})',
+              ),
+            );
+          }
+
+          widgets.add(pw.SizedBox(height: 8));
+
+          for (int i = 0; i < weeks.length; i++) {
+            final list = byWeek[i] ?? const <Noticia>[];
+            if (list.isEmpty) continue;
+
+            final w = weeks[i];
+            final endIncl = w.endExclusive.subtract(const Duration(days: 1));
+            final title = _weekTitle(w.start, endIncl);
+
+            final wPend = list.where((n) => n.pendiente == true).length;
+            final wReal = list.length - wPend;
+            final wExtras = list.where((n) {
+              final id = n.id;
+              return (n.pendiente == false) && id != null && extrasIds.contains(id);
+            }).length;
+
+            widgets.add(
+              _weekHeader(
+                title: title,
+                total: list.length,
+                wRealizadas: wReal,
+                wPendientes: wPend,
+                wExtras: wExtras,
+              ),
+            );
+
+            for (final n in list) {
+              widgets.add(_noticiaCard(n));
+            }
+          }
+
+          return widgets;
         },
       ),
     );
