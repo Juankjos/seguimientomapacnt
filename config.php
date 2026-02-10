@@ -27,7 +27,7 @@ if (file_exists($envFile)) {
 header('Content-Type: application/json; charset=utf-8');
 
 $host    = getenv('DB_HOST');
-$port    = getenv('DB_PORT') ?: 3306;
+$port    = getenv('DB_PORT');
 $dbname  = getenv('DB_NAME');
 $user    = getenv('DB_USER');
 $pass    = getenv('DB_PASS');
@@ -43,7 +43,7 @@ try {
         // DigitalOcean Managed MySQL normalmente exige SSL:
         // PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
         // Si tienes CA certificate, mejor úsalo (recomendado) con:
-        PDO::MYSQL_ATTR_SSL_CA => __DIR__ . '/ca-certificate.crt',
+        // PDO::MYSQL_ATTR_SSL_CA => __DIR__ . '/ca-certificate.crt',
     ];
 
     $pdo = new PDO($dsn, $user, $pass, $options);

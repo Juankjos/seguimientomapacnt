@@ -293,7 +293,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
   }) async {
     final doc = pw.Document();
 
-    final df = DateFormat('dd/MM/yyyy hh:mm a', 'es_MX');  
+    // final df = DateFormat('dd/MM/yyyy hh:mm a', 'es_MX');  
     final dfWeek = DateFormat('EEEE dd/MM/yyyy h:mm a', 'es_MX');
     final dfWeekDate = DateFormat('EEEE dd/MM/yyyy', 'es_MX');
 
@@ -701,6 +701,13 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
     _cargar();
   }
 
+  final ScrollController _chartHController = ScrollController();
+  @override
+  void dispose() {
+    _chartHController.dispose();
+    super.dispose();
+  }
+
   Future<void> _abrirSemanasRealizadas() async {
   if (mounted) {
     showDialog(
@@ -834,34 +841,66 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
     final theme = Theme.of(context);
     final wide = _isWebWide(context);
 
-    final header = Row(
+    final header = LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 520;
+
+    final titleRow = Row(
       children: [
         const Icon(Icons.star_rounded),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             'Empleado del Mes',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
             style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
           ),
         ),
+      ],
+    );
+
+    final actions = Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
         TextButton.icon(
           onPressed: _cargar,
           icon: const Icon(Icons.refresh),
           label: const Text('Refrescar'),
         ),
-        const SizedBox(width: 8),
         TextButton.icon(
-          onPressed: _abrirSemanasRealizadas,
-          icon: const Icon(Icons.view_week),
-          label: const Text('Semanas'),
-        ),
-        const SizedBox(width: 8),
-        TextButton.icon(
-          onPressed: _abrirDesglose,
-          icon: const Icon(Icons.picture_as_pdf),
-          label: const Text('Desglose'),
-        ),
-      ],
+              onPressed: _abrirSemanasRealizadas,
+              icon: const Icon(Icons.view_week),
+              label: const Text('Semanas'),
+            ),
+            TextButton.icon(
+              onPressed: _abrirDesglose,
+              icon: const Icon(Icons.picture_as_pdf),
+              label: const Text('Desglose'),
+            ),
+          ],
+        );
+
+        if (isNarrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              titleRow,
+              const SizedBox(height: 8),
+              actions,
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: titleRow),
+            actions,
+          ],
+        );
+      },
     );
 
     final filtros = Wrap(
@@ -1067,7 +1106,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
     const barW = 54.0;
     const gap = 18.0;
     final n = _items.length;
-    final width = math.max(640.0, n * (barW + gap) + 40);
+    final contentW = n * (barW + gap) + 40;
 
     final maxY = math.max(
       _minimo.toDouble(),
@@ -1076,21 +1115,37 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
 
     return SizedBox(
       height: 320,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SizedBox(
-          width: width,
-          child: CustomPaint(
-            painter: _ColumnChartPainter(
-              items: _items,
-              minimo: _minimo,
-              maxY: (maxY * 1.15).clamp(1, 999999).toDouble(),
-              theme: theme,
-              barWidth: barW,
-              gap: gap,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final viewportW = constraints.maxWidth;
+
+          final width = math.max(viewportW, contentW);
+
+          return Scrollbar(
+            controller: _chartHController,
+            thumbVisibility: true,
+            interactive: true,
+            child: SingleChildScrollView(
+              controller: _chartHController,
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: SizedBox(
+                width: width,
+                height: 320,
+                child: CustomPaint(
+                  painter: _ColumnChartPainter(
+                    items: _items,
+                    minimo: _minimo,
+                    maxY: (maxY * 1.15).clamp(1, 999999).toDouble(),
+                    theme: theme,
+                    barWidth: barW,
+                    gap: gap,
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

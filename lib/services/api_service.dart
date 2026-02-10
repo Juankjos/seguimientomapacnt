@@ -23,8 +23,8 @@ class ReporteroBusqueda {
 
 class ApiService {
 
-  static const String baseUrl = 'http://192.168.2.68/seguimientomapacnt';
-  static const String wsBaseUrl = 'ws://192.168.2.68:3001';
+  static const String baseUrl = 'https://nube.tvctepa.com/CNT';
+  static const String wsBaseUrl = 'ws://45.238.188.51:2246';
   static String wsToken = '';
   static String _mysqlDateTime(DateTime dt) => DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
   static bool _toBool(dynamic x) {
