@@ -445,6 +445,32 @@ class ApiService {
       throw Exception('Error en el servidor al buscar reporteros (${response.statusCode})');
     }
   }
+
+  // 🔹 Marcar si la ruta ya había sido iniciada
+  static Future<Noticia> marcarRutaIniciada({
+    required int noticiaId,
+    required String role,
+  }) async {
+    final url = Uri.parse('$baseUrl/update_noticia.php');
+
+    final response = await http.post(url, body: {
+      'noticia_id': noticiaId.toString(),
+      'role': role,
+      'ruta_iniciada': '1',
+      'ultima_mod': _mysqlDateTime(DateTime.now()),
+    });
+
+    if (response.statusCode != 200) {
+      throw Exception('Error en servidor (${response.statusCode})');
+    }
+
+    final data = json.decode(response.body);
+    if (data['success'] == true) {
+      return Noticia.fromJson(data['data']);
+    }
+    throw Exception(data['message'] ?? 'No se pudo marcar ruta iniciada');
+  }
+
   // 🔹 Al llegar al destino, guardar lat y long de llegada
   static Future<void> registrarLlegadaNoticia({
     required int noticiaId,

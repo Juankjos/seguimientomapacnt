@@ -25,6 +25,8 @@ if ($modo === 'admin') {
             n.llegada_latitud,
             n.llegada_longitud,
             n.pendiente,
+            n.ruta_iniciada,
+            n.ruta_iniciada_at,
             n.ultima_mod
         FROM noticias n
         LEFT JOIN clientes c   ON n.cliente_id  = c.id
@@ -81,6 +83,8 @@ $sql = "
         n.llegada_latitud,
         n.llegada_longitud,
         n.pendiente,
+        n.ruta_iniciada,
+        n.ruta_iniciada_at,
         n.ultima_mod
     FROM noticias n
     LEFT JOIN clientes c ON n.cliente_id = c.id

@@ -18,6 +18,8 @@ class Noticia {
   final double? llegadaLatitud;
   final double? llegadaLongitud;
   final bool pendiente;
+  final bool rutaIniciada;
+  final DateTime? rutaIniciadaAt;
 
   final DateTime? ultimaMod;
 
@@ -39,6 +41,8 @@ class Noticia {
     this.llegadaLatitud,
     this.llegadaLongitud,
     this.pendiente = true,
+    this.rutaIniciada = false,
+    this.rutaIniciadaAt,
     this.ultimaMod,
   });
 
@@ -72,6 +76,12 @@ class Noticia {
       return int.tryParse(v.toString());
     }
 
+    bool parseBool0(dynamic v) {
+      if (v == null) return false;
+      final s = v.toString().trim().toLowerCase();
+      return s == '1' || s == 'true';
+    }
+
     return Noticia(
       id: int.parse(json['id'].toString()),
       noticia: json['noticia'] ?? '',
@@ -91,6 +101,8 @@ class Noticia {
       llegadaLongitud: parseDouble(json['llegada_longitud']),
       pendiente: parseBool(json['pendiente']),
       ultimaMod: parseDateTime(json['ultima_mod']), 
+      rutaIniciada: parseBool0(json['ruta_iniciada']),
+      rutaIniciadaAt: parseDateTime(json['ruta_iniciada_at']),
     );
   }
 }

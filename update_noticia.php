@@ -41,6 +41,10 @@ if ($ultimaMod === null) {
     $ultimaMod = date('Y-m-d H:i:s');
 }
 
+$rutaIniciadaReq = array_key_exists('ruta_iniciada', $_POST)
+    ? (int)$_POST['ruta_iniciada']
+    : null;
+
 if ($noticiaId <= 0) {
     echo json_encode(['success' => false, 'message' => 'noticia_id inválido']);
     exit;
@@ -48,7 +52,14 @@ if ($noticiaId <= 0) {
 
 try {
     $stmt = $pdo->prepare("
-        SELECT noticia, descripcion, fecha_cita, fecha_cita_anterior, fecha_cita_cambios
+        SELECT
+            noticia,
+            descripcion,
+            fecha_cita,
+            fecha_cita_anterior,
+            fecha_cita_cambios,
+            ruta_iniciada,
+            ruta_iniciada_at
         FROM noticias
         WHERE id = ?
         LIMIT 1
@@ -67,6 +78,7 @@ try {
     $oldDesc  = $actual['descripcion'];
     $oldFecha = $actual['fecha_cita'];
     $cambios  = (int)($actual['fecha_cita_cambios'] ?? 0);
+    $rutaIniciadaActual = (int)($actual['ruta_iniciada'] ?? 0);
 
     $oldFechaStr = ($oldFecha ?? '');
     $newFechaStr = ($fechaNueva ?? '');
@@ -96,7 +108,10 @@ try {
             $updates[] = "fecha_cita = :fecha_cita";
             $params[':fecha_cita'] = $fechaNueva;
         }
-    } else {
+    }
+
+    // ========================= REPORTERO =========================
+    else {
         if ($titulo !== null && $titulo !== '') {
             echo json_encode(['success' => false, 'message' => 'No tienes permiso para cambiar el título']);
             exit;
@@ -141,7 +156,50 @@ try {
         }
     }
 
+    if ($rutaIniciadaReq === 1 && $rutaIniciadaActual === 0) {
+        $updates[] = "ruta_iniciada = 1";
+        $updates[] = "ruta_iniciada_at = COALESCE(ruta_iniciada_at, NOW())";
+    }
+
+    $wantsRutaIniciada = ($rutaIniciadaReq === 1);
     if (empty($updates)) {
+        if ($wantsRutaIniciada && $rutaIniciadaActual === 1) {
+            $stmt2 = $pdo->prepare("
+                SELECT
+                    n.id,
+                    n.noticia,
+                    n.descripcion,
+                    n.domicilio,
+                    n.reportero_id,
+                    n.fecha_pago,
+                    n.fecha_cita,
+                    n.fecha_cita_anterior,
+                    n.fecha_cita_cambios,
+                    n.latitud,
+                    n.longitud,
+                    n.hora_llegada,
+                    n.llegada_latitud,
+                    n.llegada_longitud,
+                    n.pendiente,
+                    n.ultima_mod,
+                    n.ruta_iniciada,
+                    n.ruta_iniciada_at,
+                    r.nombre AS reportero
+                FROM noticias n
+                LEFT JOIN reporteros r ON n.reportero_id = r.id
+                WHERE n.id = ?
+                LIMIT 1
+            ");
+            $stmt2->execute([$noticiaId]);
+            $row = $stmt2->fetch(PDO::FETCH_ASSOC);
+
+            echo json_encode([
+                'success' => true,
+                'message' => 'Ruta ya estaba iniciada',
+                'data' => $row
+            ]);
+            exit;
+        }
         echo json_encode(['success' => false, 'message' => 'No hay cambios para guardar']);
         exit;
     }
@@ -155,11 +213,25 @@ try {
 
     $stmt2 = $pdo->prepare("
         SELECT
-        n.id, n.noticia, n.descripcion, n.domicilio, n.reportero_id,
-        n.fecha_pago, n.fecha_cita, n.fecha_cita_anterior, n.fecha_cita_cambios,
-        n.latitud, n.longitud, n.hora_llegada, n.llegada_latitud, n.llegada_longitud,
-        n.pendiente, n.ultima_mod,
-        r.nombre AS reportero
+            n.id,
+            n.noticia,
+            n.descripcion,
+            n.domicilio,
+            n.reportero_id,
+            n.fecha_pago,
+            n.fecha_cita,
+            n.fecha_cita_anterior,
+            n.fecha_cita_cambios,
+            n.latitud,
+            n.longitud,
+            n.hora_llegada,
+            n.llegada_latitud,
+            n.llegada_longitud,
+            n.pendiente,
+            n.ultima_mod,
+            n.ruta_iniciada,
+            n.ruta_iniciada_at,
+            r.nombre AS reportero
         FROM noticias n
         LEFT JOIN reporteros r ON n.reportero_id = r.id
         WHERE n.id = ?
@@ -171,5 +243,9 @@ try {
     echo json_encode(['success' => true, 'data' => $row]);
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Error al actualizar', 'error' => $e->getMessage()]);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Error al actualizar',
+        'error' => $e->getMessage()
+    ]);
 }

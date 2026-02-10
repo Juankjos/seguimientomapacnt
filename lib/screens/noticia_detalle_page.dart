@@ -222,6 +222,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
             llegadaLatitud: _noticia.llegadaLatitud,
             llegadaLongitud: _noticia.llegadaLongitud,
             pendiente: _noticia.pendiente,
+            rutaIniciada: _noticia.rutaIniciada,
+            rutaIniciadaAt: _noticia.rutaIniciadaAt,
             ultimaMod: DateTime.now(),
           );
         });
@@ -334,7 +336,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                 ),
                 width: 80,
                 height: 80,
-                child: const Icon(Icons.no_crash_sharp, size: 38),
+                child: const Icon(Icons.no_crash_sharp, size: 38, color: Color.fromARGB(255, 30, 85, 204)),
               ),
           ],
         ),
@@ -388,8 +390,9 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     final int cambios = _noticia.fechaCitaCambios ?? 0;
     final bool limiteCambiosFecha = (widget.role == 'reportero') && cambios >= 2;
     final bool esAdmin = widget.role == 'admin';
+    final bool rutaYaIniciada = _noticia.rutaIniciada == true;
 
-    final routeGate = (!esAdmin && !_soloLectura)
+    final routeGate = (!esAdmin && !_soloLectura && !rutaYaIniciada)
         ? _validarInicioRuta()
         : (allowed: true, message: null);
 
@@ -623,9 +626,19 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    icon: Icon(_soloLectura ? Icons.map : Icons.directions),
+                    style: (!_soloLectura && rutaYaIniciada)
+                        ? ElevatedButton.styleFrom(
+                            backgroundColor: Colors.amber,
+                            foregroundColor: Colors.black,
+                          )
+                        : null,
+                    icon: Icon(_soloLectura
+                        ? Icons.map
+                        : (rutaYaIniciada ? Icons.play_arrow : Icons.directions)),
                     label: Text(
-                      _soloLectura ? 'Mostrar mapa completo' : 'Ir a destino ahora',
+                      _soloLectura
+                          ? 'Mostrar mapa completo'
+                          : (rutaYaIniciada ? 'Continuar ruta' : 'Iniciar ruta'),
                       textAlign: TextAlign.center,
                     ),
                     onPressed: _soloLectura
@@ -639,6 +652,25 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                           }
                         : (routeGate.allowed
                             ? () async {
+                                // 1) marcar inicio solo si es primera vez
+                                if (!rutaYaIniciada) {
+                                  try {
+                                    final updated = await ApiService.marcarRutaIniciada(
+                                      noticiaId: _noticia.id,
+                                      role: widget.role,
+                                    );
+                                    if (!mounted) return;
+                                    setState(() => _noticia = updated);
+                                  } catch (e) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('No se pudo iniciar ruta: $e')),
+                                    );
+                                    return;
+                                  }
+                                }
+
+                                // 2) abrir trayecto
                                 final result = await Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -654,15 +686,12 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                 if (result == null) return;
 
                                 DateTime _parseMysqlDateTime(String? v) {
-                                  if (v == null || v.trim().isEmpty) {
-                                    return DateTime.now();
-                                  }
+                                  if (v == null || v.trim().isEmpty) return DateTime.now();
                                   final s = v.trim().replaceFirst(' ', 'T');
                                   return DateTime.tryParse(s) ?? DateTime.now();
                                 }
 
-                                final Map<String, dynamic> r =
-                                    Map<String, dynamic>.from(result as Map);
+                                final Map<String, dynamic> r = Map<String, dynamic>.from(result as Map);
                                 final lat = (r['llegadaLatitud'] as num?)?.toDouble();
                                 final lon = (r['llegadaLongitud'] as num?)?.toDouble();
                                 final horaStr = r['horaLlegada']?.toString();
@@ -688,6 +717,9 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                       llegadaLongitud: lon,
                                       pendiente: _noticia.pendiente,
                                       ultimaMod: DateTime.now(),
+
+                                      rutaIniciada: _noticia.rutaIniciada,
+                                      rutaIniciadaAt: _noticia.rutaIniciadaAt,
                                     );
                                   });
                                 }
