@@ -1,4 +1,4 @@
-// session_gate.dart
+// lib/screens/session_gate.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import 'login_screen.dart';
 import 'noticias_page.dart';
 import 'agenda_page.dart';
+import '../services/session_service.dart';
 
 class SessionGate extends StatefulWidget {
   const SessionGate({super.key});
@@ -94,8 +95,8 @@ class _SessionGateState extends State<SessionGate> {
       return;
     }
 
-    if (_isSessionExpired(prefs)) {
-      await _clearSession();
+    if (await SessionService.isExpired()) {
+      await SessionService.clearSession();
       setState(() {
         _target = const LoginScreen();
         _loading = false;

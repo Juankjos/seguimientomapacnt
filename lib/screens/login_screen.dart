@@ -10,6 +10,7 @@ import '../services/api_service.dart';
 import 'noticias_page.dart';
 import 'agenda_page.dart';
 import '../auth_controller.dart';
+import '../services/session_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -138,7 +139,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
         await _stopAnyTrackingService();
         await _persistWsToken(wsToken);
-        await _setSessionExpiry8h();
+        await SessionService.setSessionExpiryFromServerOr8h(
+          wsTokenExp: data['ws_token_exp']?.toString(),
+        );
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt('auth_reportero_id', reporteroId);

@@ -22,6 +22,8 @@ import 'services/api_service.dart';
 import 'screens/session_gate.dart';
 import 'screens/tomar_noticias_page.dart';
 import 'screens/noticia_detalle_page.dart';
+import 'widgets/session_timeout_watcher.dart';
+import 'services/session_service.dart';
 
 // ------------------ Local Notifications (Foreground) ------------------
 final fln.FlutterLocalNotificationsPlugin _localNotifs =
@@ -204,6 +206,16 @@ Future<void> _openNoticiaFromData(Map<String, dynamic> data) async {
   final noticiaId = int.tryParse(idStr ?? '');
   if (noticiaId == null) return;
 
+  final expired = await SessionService.isExpired();
+  if (expired) {
+    await SessionService.clearSession();
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const SessionGate()),
+      (r) => false,
+    );
+    return;
+  }
+
   final prefs = await SharedPreferences.getInstance();
 
   final wsToken = prefs.getString('ws_token') ?? '';
@@ -332,8 +344,12 @@ class MyApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
           ],
           builder: (context, child) {
-            if (kIsWeb) return child ?? const SizedBox.shrink();
-            return WithForegroundTask(child: child ?? const SizedBox.shrink());
+            final wrapped = SessionTimeoutWatcher(
+              navigatorKey: navigatorKey,
+              child: child ?? const SizedBox.shrink(),
+            );
+            if (kIsWeb) return wrapped;
+            return WithForegroundTask(child: wrapped);
           },
           themeMode: mode,
           theme: ThemeData(
