@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart' as latlng;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../services/api_service.dart';
+import '../models/noticia.dart';
 
 const double _kWebMaxContentWidth = 1200;
 const double _kWebWideBreakpoint = 980;
@@ -36,6 +37,16 @@ ShapeBorder _softShape(ThemeData theme) => RoundedRectangleBorder(
         width: 0.9,
       ),
     );
+
+class _NoticiaMeta {
+  final String titulo;
+  final String reportero;
+
+  const _NoticiaMeta({
+    required this.titulo,
+    required this.reportero,
+  });
+}
 
 class _TrackInfo {
   _TrackInfo({
@@ -71,7 +82,7 @@ class _TrackInfo {
 }
 
 class RastreoGeneralPage extends StatefulWidget {
-  final String role; // ✅ guard de rol
+  final String role; // ✅ Solo admin
   const RastreoGeneralPage({super.key, required this.role});
 
   @override
@@ -99,6 +110,11 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
   /// session_id -> track
   final Map<int, _TrackInfo> _tracks = {};
 
+  /// noticia_id -> meta
+  final Map<int, _NoticiaMeta> _metaByNoticiaId = {};
+  bool _metaLoading = false;
+  DateTime? _metaLoadedAt;
+
   /// UI
   int? _selectedSessionId;
   bool _seguirSeleccion = false;
@@ -121,6 +137,69 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
     return null;
   }
 
+  String _safe(String? s, {String fallback = ''}) {
+    final v = (s ?? '').trim();
+    return v.isEmpty ? fallback : v;
+  }
+
+  String _tituloNoticia(int noticiaId) {
+    final m = _metaByNoticiaId[noticiaId];
+    if (m == null) return 'Noticia #$noticiaId';
+    return _safe(m.titulo, fallback: 'Noticia #$noticiaId');
+  }
+
+  String _nombreReportero(int noticiaId) {
+    final m = _metaByNoticiaId[noticiaId];
+    return _safe(m?.reportero, fallback: 'Sin reportero');
+  }
+
+  String _shortName(String s, {int max = 14}) {
+    final v = s.trim();
+    if (v.isEmpty) return 'Sin rep.';
+    // intenta primer nombre
+    final first = v.split(RegExp(r'\s+')).first;
+    final candidate = first.isNotEmpty ? first : v;
+    if (candidate.length <= max) return candidate;
+    return '${candidate.substring(0, max - 1)}…';
+  }
+
+  Future<void> _loadMetaAll({bool force = false}) async {
+    if (_metaLoading) return;
+
+    // evita pedir a cada rato
+    if (!force && _metaLoadedAt != null) {
+      final secs = DateTime.now().difference(_metaLoadedAt!).inSeconds;
+      if (secs < 90) return; // refresco mínimo cada 90s
+    }
+
+    _metaLoading = true;
+    try {
+      final List<Noticia> all = await ApiService.getNoticiasAdmin();
+
+      _metaByNoticiaId.clear();
+      for (final n in all) {
+        _metaByNoticiaId[n.id] = _NoticiaMeta(
+          titulo: _safe(n.noticia, fallback: 'Sin título'),
+          reportero: _safe(n.reportero, fallback: 'Sin reportero'),
+        );
+      }
+
+      _metaLoadedAt = DateTime.now();
+      if (mounted) setState(() {});
+    } catch (_) {
+      // silencioso: seguimos mostrando fallback (IDs)
+    } finally {
+      _metaLoading = false;
+    }
+  }
+
+  void _ensureMetaWarm() {
+    // Si aún no hay meta, intenta cargar una vez (sin bloquear UI)
+    if (_metaByNoticiaId.isEmpty && !_metaLoading) {
+      unawaited(_loadMetaAll());
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -139,6 +218,9 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
       _error = 'No hay token de WebSocket. Inicia sesión como admin.';
       return;
     }
+
+    // precarga nombres/títulos
+    unawaited(_loadMetaAll());
 
     unawaited(_connect());
   }
@@ -176,7 +258,7 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
       _error = null;
       _conectado = false;
       _lastAnyUpdateAt = null;
-      // Nota: NO limpiamos _tracks aquí para conservar continuidad visual al reconectar.
+      // NO limpiamos _tracks para mantener continuidad al reconectar
     });
 
     try {
@@ -259,6 +341,7 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
 
       if (type == 'active_sessions') {
         _lastAnyUpdateAt = DateTime.now();
+        _ensureMetaWarm();
 
         final sessions = (msg['sessions'] as List?) ?? [];
 
@@ -283,9 +366,7 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
             () => _TrackInfo(sessionId: sid, noticiaId: noticiaId),
           );
 
-          // por si el backend cambia noticia_id (raro), actualiza
           t.noticiaId = noticiaId;
-
           t.missingPolls = 0;
 
           if (lastLat != null && lastLon != null) {
@@ -294,7 +375,7 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
           }
         }
 
-        // limpia tracks que ya no están activos por varios polls
+        // limpia tracks inactivos por varios polls
         final toRemove = <int>[];
         _tracks.forEach((sid, t) {
           if (t.missingPolls >= 4) toRemove.add(sid);
@@ -314,6 +395,7 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
 
       if (type == 'tracking_location') {
         _lastAnyUpdateAt = DateTime.now();
+        _ensureMetaWarm();
 
         final sid = _toInt(msg['session_id']);
         final noticiaId = _toInt(msg['noticia_id']);
@@ -464,6 +546,11 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
                         style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
                     ),
+                    IconButton(
+                      tooltip: 'Refrescar nombres',
+                      onPressed: () => unawaited(_loadMetaAll(force: true)),
+                      icon: const Icon(Icons.refresh),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -488,6 +575,9 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
                             ? null
                             : DateTime.now().difference(t.lastAt!).inSeconds;
 
+                        final titulo = _tituloNoticia(t.noticiaId);
+                        final reportero = _nombreReportero(t.noticiaId);
+
                         return ListTile(
                           dense: true,
                           leading: CircleAvatar(
@@ -495,12 +585,17 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
                             child: const Icon(Icons.directions_run, color: Colors.white, size: 18),
                           ),
                           title: Text(
-                            'Noticia #${t.noticiaId}',
-                            style: const TextStyle(fontWeight: FontWeight.w800),
+                            titulo,
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Text(
-                            'Sesión: ${t.sessionId}${secs != null ? ' • Último: ${secs}s' : ''} • Puntos: ${t.total}',
-                            maxLines: 1,
+                            'Reportero: $reportero'
+                            '${secs != null ? ' • Último: ${secs}s' : ''}'
+                            ' • Sesión: ${t.sessionId}'
+                            ' • Puntos: ${t.total}',
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                           trailing: selected
@@ -579,11 +674,13 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
       final isSel = _selectedSessionId == t.sessionId;
       final c = _colorForSession(t.sessionId, theme);
 
+      final reportero = _shortName(_nombreReportero(t.noticiaId));
+
       markers.add(
         Marker(
           point: p,
-          width: 52,
-          height: 52,
+          width: 62,
+          height: 62,
           child: GestureDetector(
             onTap: () => _selectSession(t.sessionId),
             child: Stack(
@@ -591,7 +688,7 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
               children: [
                 Icon(
                   Icons.location_on,
-                  size: isSel ? 46 : 42,
+                  size: isSel ? 48 : 44,
                   color: isSel ? c : c.withOpacity(0.9),
                 ),
                 Positioned(
@@ -604,8 +701,8 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
                       border: Border.all(color: theme.dividerColor.withOpacity(0.65), width: 0.8),
                     ),
                     child: Text(
-                      '#${t.noticiaId}',
-                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900),
+                      reportero, // ✅ en lugar de #ID
+                      style: const TextStyle(fontSize: 10.2, fontWeight: FontWeight.w900),
                     ),
                   ),
                 ),
@@ -708,7 +805,7 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
                 ),
               ),
 
-              // Bottom selected info
+              // Bottom selected info (✅ aquí va el nombre/título de la noticia)
               if (selected != null)
                 Positioned(
                   bottom: 12,
@@ -730,16 +827,22 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Noticia #${selected.noticiaId}',
+                                    _tituloNoticia(selected.noticiaId),
                                     style: const TextStyle(fontWeight: FontWeight.w900),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                   Text(
-                                    'Sesión: ${selected.sessionId} • Puntos: ${selected.total}',
+                                    'Reportero: ${_nombreReportero(selected.noticiaId)}'
+                                    ' • Sesión: ${selected.sessionId}'
+                                    ' • Puntos: ${selected.total}',
                                     style: TextStyle(
                                       fontSize: 12.5,
                                       fontWeight: FontWeight.w700,
                                       color: theme.colorScheme.onSurface.withOpacity(0.70),
                                     ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
@@ -767,6 +870,11 @@ class _RastreoGeneralPageState extends State<RastreoGeneralPage> {
             tooltip: 'Ver todo',
             onPressed: _verTodo,
             icon: const Icon(Icons.alt_route),
+          ),
+          IconButton(
+            tooltip: 'Refrescar nombres',
+            onPressed: () => unawaited(_loadMetaAll(force: true)),
+            icon: const Icon(Icons.badge),
           ),
           IconButton(
             tooltip: 'Reconectar',
