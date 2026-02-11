@@ -15,6 +15,7 @@ import 'gestion_reporteros_page.dart';
 import 'gestion_noticias_page.dart';
 import 'estadisticas_screen.dart';
 import 'empleado_destacado.dart';
+import 'rastreo_general.dart';
 
 enum AgendaView { year, month, day }
 
@@ -552,6 +553,17 @@ class _AgendaPageState extends State<AgendaPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const EstadisticasScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.public),
+            title: const Text('Rastreo General'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => RastreoGeneralPage(role: 'admin')),
               );
             },
           ),
