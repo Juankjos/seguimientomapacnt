@@ -898,18 +898,18 @@ class _AgendaPageState extends State<AgendaPage> {
                 builder: (context, constraints) {
                   final w = constraints.maxWidth;
                   int crossAxisCount = 3;
-                  double aspect = 0.95;
+                  double aspect = 0.90;
 
                   if (kIsWeb) {
                     if (w >= 1200) {
                       crossAxisCount = 6;
-                      aspect = 1.15;
+                      aspect = 1.12;
                     } else if (w >= 980) {
                       crossAxisCount = 5;
-                      aspect = 1.10;
+                      aspect = 1.06;
                     } else if (w >= 720) {
                       crossAxisCount = 4;
-                      aspect = 1.02;
+                      aspect = 0.98;
                     }
                   }
 
