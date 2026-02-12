@@ -47,6 +47,9 @@ try {
     ];
 
     $pdo = new PDO($dsn, $user, $pass, $options);
+    
+    // ------------ CAMBIAR SI EL SERVIDOR TIENE DIFERENTE ZONA HORARIA ------------
+    $pdo->exec("SET time_zone = '-06:00'");
 
 } catch (PDOException $e) {
     http_response_code(500);

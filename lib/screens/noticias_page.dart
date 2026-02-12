@@ -11,6 +11,7 @@ import 'noticia_detalle_page.dart';
 import 'tomar_noticias_page.dart';
 import 'update_perfil_page.dart';
 import 'empleado_destacado.dart';
+import 'avisos_page.dart';
 
 const double _kWebMaxContentWidth = 1200;
 const double _kWebWideBreakpoint = 980;
@@ -133,6 +134,15 @@ class _NoticiasPageState extends State<NoticiasPage> {
     );
   }
 
+  Future<void> _irAvisos({bool closeDrawer = false}) async {
+    if (closeDrawer) Navigator.pop(context);
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AvisosPage()),
+    );
+  }
+
   void _mostrarAjustes({bool closeDrawer = false}) {
     if (closeDrawer) Navigator.pop(context);
 
@@ -242,6 +252,11 @@ class _NoticiasPageState extends State<NoticiasPage> {
                 leading: const Icon(Icons.person),
                 title: const Text('Perfil'),
                 onTap: () => _mostrarPerfil(closeDrawer: true),
+              ),
+              ListTile(
+                leading: const Icon(Icons.notifications),
+                title: const Text('Avisos'),
+                onTap: () => _irAvisos(closeDrawer: true),
               ),
               ListTile(
                 leading: const Icon(Icons.assignment),
@@ -407,6 +422,16 @@ class _NoticiasPageState extends State<NoticiasPage> {
                 ),
                 const SizedBox(height: 8),
 
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.notifications),
+                    label: const Text('Avisos'),
+                    onPressed: () => _irAvisos(),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(

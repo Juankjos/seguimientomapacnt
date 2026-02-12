@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
+import '../models/aviso.dart';
 
 class ReporteroBusqueda {
   final int id;
@@ -648,4 +649,65 @@ class ApiService {
       throw Exception(data['message'] ?? 'No se pudo actualizar el mínimo');
     }
   }
+
+  // 🔹 Crear Avisos (Volatil)
+  static Future<void> crearAviso({
+    required String titulo,
+    required String descripcion,
+    required DateTime vigenciaDia,
+  }) async {
+    final url = Uri.parse('$baseUrl/create_aviso.php');
+
+    if (wsToken.trim().isEmpty) {
+      throw Exception('No autorizado (ws_token vacío)');
+    }
+
+    final y = vigenciaDia.year.toString().padLeft(4, '0');
+    final m = vigenciaDia.month.toString().padLeft(2, '0');
+    final d = vigenciaDia.day.toString().padLeft(2, '0');
+    final vigStr = '$y-$m-$d';
+
+    final resp = await http.post(url, body: {
+      'ws_token': wsToken,
+      'titulo': titulo.trim(),
+      'descripcion': descripcion.trim(),
+      'vigencia': vigStr,
+    });
+
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
+
+    final decoded = jsonDecode(resp.body);
+    if (decoded is! Map) throw Exception('Respuesta inválida');
+
+    if (decoded['success'] != true) {
+      throw Exception(decoded['message']?.toString() ?? 'No se pudo crear aviso');
+    }
+  }
+
+  // 🔹 Ver Avisos
+  static Future<List<Aviso>> getAvisos() async {
+    if (wsToken.trim().isEmpty) {
+      throw Exception('No autorizado (ws_token vacío)');
+    }
+
+    final url = Uri.parse('$baseUrl/get_avisos.php?ws_token=${Uri.encodeQueryComponent(wsToken)}');
+    final resp = await http.get(url);
+
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
+
+    final decoded = jsonDecode(resp.body);
+    if (decoded is! Map) throw Exception('Respuesta inválida');
+
+    if (decoded['success'] != true) {
+      throw Exception(decoded['message']?.toString() ?? 'No se pudieron obtener avisos');
+    }
+
+    final List list = (decoded['data'] as List?) ?? [];
+    return list.map((e) => Aviso.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
 }

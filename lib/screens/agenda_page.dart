@@ -16,6 +16,8 @@ import 'gestion_noticias_page.dart';
 import 'estadisticas_screen.dart';
 import 'empleado_destacado.dart';
 import 'rastreo_general.dart';
+import 'package:intl/intl.dart';
+import 'avisos_page.dart';
 
 enum AgendaView { year, month, day }
 
@@ -472,6 +474,196 @@ class _AgendaPageState extends State<AgendaPage> {
     }
   }
 
+  Future<void> _abrirCrearAvisoDialog() async {
+    final theme = Theme.of(context);
+
+    final tituloCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    DateTime? vigencia;
+
+    final fmt = DateFormat('dd/MM/yyyy');
+
+    Future<void> pickVigencia(StateSetter setStateDialog) async {
+      final now = DateTime.now();
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: vigencia ?? now,
+        firstDate: DateTime(now.year, now.month, now.day),
+        lastDate: DateTime(now.year + 3, 12, 31),
+        helpText: 'Selecciona vigencia',
+        cancelText: 'Cancelar',
+        confirmText: 'Aceptar',
+      );
+      if (picked != null) setStateDialog(() => vigencia = picked);
+    }
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        bool saving = false;
+
+        // Tamaño “fijo” responsivo: buen marco en pantalla
+        final size = MediaQuery.of(dialogCtx).size;
+        final bool isWide = size.width >= 700;
+
+        // ancho ideal: 560 en pantallas grandes, en móvil casi todo menos márgenes
+        final double targetWidth = isWide ? 560 : size.width * 0.92;
+
+        // alto máximo: 70% de pantalla (scroll interno)
+        final double maxHeight = size.height * 0.70;
+
+        // alto fijo del campo descripción (para que no “deforme” el dialog)
+        final double descHeight = isWide ? 220 : 200;
+
+        final scrollCtrl = ScrollController();
+
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Crear aviso'),
+
+              // clave: forzar ancho/alto y scroll interno
+              content: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: targetWidth,
+                  minWidth: targetWidth,
+                  maxHeight: maxHeight,
+                ),
+                child: Scrollbar(
+                  controller: scrollCtrl,
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    controller: scrollCtrl,
+                    padding: const EdgeInsets.only(right: 6), // espacio para scrollbar
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: tituloCtrl,
+                          textInputAction: TextInputAction.next,
+                          enabled: !saving,
+                          decoration: const InputDecoration(
+                            labelText: 'Título del aviso',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Campo descripción con altura fija y scroll propio
+                        SizedBox(
+                          height: descHeight,
+                          child: TextField(
+                            controller: descCtrl,
+                            enabled: !saving,
+                            keyboardType: TextInputType.multiline,
+                            textInputAction: TextInputAction.newline,
+                            maxLines: null, // permite crecer internamente
+                            expands: true,  // ocupa el alto del SizedBox
+                            decoration: const InputDecoration(
+                              labelText: 'Descripción',
+                              alignLabelWithHint: true,
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Vigencia'),
+                          subtitle: Text(
+                            vigencia == null
+                                ? 'Selecciona una fecha'
+                                : 'Hasta: ${fmt.format(vigencia!)}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: vigencia == null
+                                  ? theme.colorScheme.onSurface.withOpacity(0.65)
+                                  : theme.colorScheme.onSurface,
+                            ),
+                          ),
+                          trailing: const Icon(Icons.calendar_month),
+                          onTap: saving ? null : () => pickVigencia(setStateDialog),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              actions: [
+                TextButton(
+                  onPressed: saving ? null : () => Navigator.pop(context),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          final titulo = tituloCtrl.text.trim();
+                          final desc = descCtrl.text.trim();
+
+                          if (titulo.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Escribe el título del aviso')),
+                            );
+                            return;
+                          }
+                          if (desc.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Escribe la descripción')),
+                            );
+                            return;
+                          }
+                          if (vigencia == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Selecciona la vigencia')),
+                            );
+                            return;
+                          }
+
+                          setStateDialog(() => saving = true);
+                          try {
+                            await ApiService.crearAviso(
+                              titulo: titulo,
+                              descripcion: desc,
+                              vigenciaDia: vigencia!,
+                            );
+
+                            if (!mounted) return;
+                            Navigator.pop(context);
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Aviso creado')),
+                            );
+                          } catch (e) {
+                            setStateDialog(() => saving = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: $e')),
+                            );
+                          }
+                        },
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Guardar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    tituloCtrl.dispose();
+    descCtrl.dispose();
+  }
+
   Future<void> _limpiarSesionLocal() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -533,6 +725,17 @@ class _AgendaPageState extends State<AgendaPage> {
             leading: const Icon(Icons.person),
             title: const Text('Perfil'),
             onTap: _abrirPerfilAdmin,
+          ),
+          ListTile(
+            leading: const Icon(Icons.notifications),
+            title: const Text('Avisos'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AvisosPage()),
+              );
+            },
           ),
           ListTile(
             leading: const Icon(Icons.article),
@@ -707,7 +910,12 @@ class _AgendaPageState extends State<AgendaPage> {
           drawer: widget.esAdmin ? _buildDrawerAdmin() : null,
           body: _wrapWebWidth(_buildBody(showFabCrear: showFabCrear)),
           floatingActionButton: showFabCrear
-              ? FloatingActionButton.extended(
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Crear noticia (igual que ya lo tienes)
+                FloatingActionButton.extended(
+                  heroTag: 'fab_crear_noticia',
                   icon: const Icon(Icons.add),
                   label: const Text('Crear noticia'),
                   onPressed: () async {
@@ -720,8 +928,20 @@ class _AgendaPageState extends State<AgendaPage> {
                       await _cargarNoticias();
                     }
                   },
-                )
-              : null,
+                ),
+
+                if (widget.esAdmin) ...[
+                  const SizedBox(width: 12),
+                  FloatingActionButton.extended(
+                    heroTag: 'fab_crear_aviso',
+                    icon: const Icon(Icons.notifications),
+                    label: const Text('Crear avisos'),
+                    onPressed: _abrirCrearAvisoDialog,
+                  ),
+                ],
+              ],
+            )
+          : null,
         );
       },
     );
