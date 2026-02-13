@@ -22,6 +22,7 @@ import 'services/api_service.dart';
 import 'screens/session_gate.dart';
 import 'screens/tomar_noticias_page.dart';
 import 'screens/noticia_detalle_page.dart';
+import 'screens/avisos_page.dart';
 import 'widgets/session_timeout_watcher.dart';
 import 'services/session_service.dart';
 
@@ -40,6 +41,13 @@ const fln.AndroidNotificationChannel _citasChannel = fln.AndroidNotificationChan
   'tvc_citas_high',
   'Citas',
   description: 'Recordatorios de citas próximas',
+  importance: fln.Importance.max,
+);
+
+const fln.AndroidNotificationChannel _avisosChannel = fln.AndroidNotificationChannel(
+  'tvc_avisos_high',
+  'Avisos',
+  description: 'Notificaciones de avisos',
   importance: fln.Importance.max,
 );
 
@@ -99,8 +107,10 @@ Future<void> _initFirebaseAndNotifications() async {
 
   final androidImpl = _localNotifs
       .resolvePlatformSpecificImplementation<fln.AndroidFlutterLocalNotificationsPlugin>();
+
   await androidImpl?.createNotificationChannel(_newsChannel);
   await androidImpl?.createNotificationChannel(_citasChannel);
+  await androidImpl?.createNotificationChannel(_avisosChannel);
 
   await FirebaseMessaging.instance.requestPermission(
     alert: true,
@@ -115,16 +125,30 @@ Future<void> _initFirebaseAndNotifications() async {
   );
 
   FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-    final notif = message.notification;
-    if (notif == null) return;
-
     final tipo = message.data['tipo']?.toString() ?? '';
-    final channel = (tipo == 'cita_proxima') ? _citasChannel : _newsChannel;
+
+    final channel = (tipo == 'cita_proxima')
+        ? _citasChannel
+        : (tipo == 'aviso')
+            ? _avisosChannel
+            : _newsChannel;
+
+    final title = message.notification?.title ??
+        message.data['title']?.toString() ??
+        (tipo == 'aviso' ? 'Nuevo aviso' : 'Nueva notificación');
+
+    final body = message.notification?.body ??
+        message.data['body']?.toString() ??
+        (tipo == 'aviso'
+            ? (message.data['titulo']?.toString() ?? 'Tienes un aviso nuevo')
+            : '');
+
+    if (title.trim().isEmpty && body.trim().isEmpty) return;
 
     await _localNotifs.show(
-      notif.hashCode,
-      notif.title ?? 'Nueva notificación',
-      notif.body ?? '',
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title,
+      body,
       fln.NotificationDetails(
         android: fln.AndroidNotificationDetails(
           channel.id,
@@ -137,7 +161,7 @@ Future<void> _initFirebaseAndNotifications() async {
         ),
         iOS: const fln.DarwinNotificationDetails(),
       ),
-      payload: jsonEncode(message.data), 
+      payload: jsonEncode(message.data),
     );
   });
 
@@ -158,7 +182,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 }
 
-// ------------------ Open Noticia from notification data ------------------
+// ------------------ Open from notification data ------------------
 Future<void> _setupNotificationTapHandlers() async {
   final initial = await FirebaseMessaging.instance.getInitialMessage();
   if (initial != null) {
@@ -175,7 +199,7 @@ Future<void> _enqueueOrOpen(Map<String, dynamic> data) async {
     _pendingOpenData = data;
     return;
   }
-  await _openNoticiaFromData(data);
+  await _openFromData(data);
 }
 
 Future<Noticia?> _buscarNoticiaPorId({
@@ -201,11 +225,8 @@ Future<Noticia?> _buscarNoticiaPorId({
   }
 }
 
-Future<void> _openNoticiaFromData(Map<String, dynamic> data) async {
-  final idStr = data['noticia_id']?.toString();
-  final noticiaId = int.tryParse(idStr ?? '');
-  if (noticiaId == null) return;
-
+Future<void> _openFromData(Map<String, dynamic> data) async {
+  // ✅ Siempre revisar expiración para cualquier notificación
   final expired = await SessionService.isExpired();
   if (expired) {
     await SessionService.clearSession();
@@ -240,6 +261,20 @@ Future<void> _openNoticiaFromData(Map<String, dynamic> data) async {
   final reporteroNombre = prefs.getString('auth_nombre') ?? '';
 
   final tipo = data['tipo']?.toString() ?? '';
+
+  // ✅ AVISOS: abrir pantalla y modal del aviso específico
+  if (tipo == 'aviso') {
+    final avisoId = int.tryParse(data['aviso_id']?.toString() ?? '');
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(builder: (_) => AvisosPage(openAvisoId: avisoId)),
+    );
+    return;
+  }
+
+  // ✅ NOTICIAS (requiere noticia_id)
+  final idStr = data['noticia_id']?.toString();
+  final noticiaId = int.tryParse(idStr ?? '');
+  if (noticiaId == null) return;
 
   if (role != 'admin' && tipo == 'noticia_sin_asignar') {
     navigatorKey.currentState?.push(
@@ -316,7 +351,7 @@ Future<void> main() async {
     final data = _pendingOpenData;
     if (data != null) {
       _pendingOpenData = null;
-      unawaited(_openNoticiaFromData(data));
+      unawaited(_openFromData(data));
     }
   });
 }

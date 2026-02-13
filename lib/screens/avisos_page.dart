@@ -6,7 +6,13 @@ import '../models/aviso.dart';
 import '../services/api_service.dart';
 
 class AvisosPage extends StatefulWidget {
-  const AvisosPage({super.key});
+  const AvisosPage({
+    super.key,
+    this.openAvisoId,
+  });
+
+  /// Si viene desde notificación, este ID se usa para abrir el modal automáticamente.
+  final int? openAvisoId;
 
   @override
   State<AvisosPage> createState() => _AvisosPageState();
@@ -18,6 +24,8 @@ class _AvisosPageState extends State<AvisosPage> {
   List<Aviso> _avisos = const [];
 
   final _fmt = DateFormat('dd/MM/yyyy');
+
+  bool _autoOpened = false; // evita reabrir modal varias veces
 
   @override
   void initState() {
@@ -38,9 +46,38 @@ class _AvisosPageState extends State<AvisosPage> {
       final now = DateTime.now();
       final activos = list.where((a) => a.vigencia.isAfter(now)).toList();
 
-      setState(() => _avisos = activos);
+      if (mounted) setState(() => _avisos = activos);
+
+      final targetId = widget.openAvisoId;
+      if (!_autoOpened && targetId != null) {
+        _autoOpened = true;
+
+        Aviso? found;
+        for (final a in activos) {
+          if (a.id == targetId) {
+            found = a;
+            break;
+          }
+        }
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+
+          if (found != null) {
+            _mostrarDetalle(found!);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'El aviso #$targetId ya no está disponible (pudo haber vencido).',
+                ),
+              ),
+            );
+          }
+        });
+      }
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
