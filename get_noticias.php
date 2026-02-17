@@ -10,6 +10,7 @@ if ($modo === 'admin') {
         SELECT
             n.id,
             n.noticia,
+            COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
             n.descripcion,
             c.nombre AS cliente,
             n.domicilio,
@@ -68,6 +69,7 @@ $sql = "
     SELECT
         n.id,
         n.noticia,
+        COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
         n.descripcion,
         c.nombre AS cliente,
         n.domicilio,

@@ -84,6 +84,11 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     return '$fecha, $hora';
   }
 
+  String _tipoNotaLabel() {
+    final raw = (_noticia.tipoDeNota ?? '').trim().toLowerCase();
+    return (raw == 'entrevista') ? 'Entrevista' : 'Nota';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -418,6 +423,21 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
           children: [
             Text(_noticia.noticia, style: theme.textTheme.titleLarge),
             const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                _tipoNotaLabel(),
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
             Text(
               'Reportero: $nombreReportero',
               style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),

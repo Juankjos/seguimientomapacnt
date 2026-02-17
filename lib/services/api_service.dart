@@ -25,7 +25,7 @@ class ReporteroBusqueda {
 class ApiService {
 
   static const String baseUrl = 'https://nube.tvctepa.com/CNT';
-  static const String wsBaseUrl = 'ws://45.238.188.51:2246';
+  static const String wsBaseUrl = 'ws://192.168.0.6'; //'ws://45.238.188.51:2246';
   static String wsToken = '';
   static String _mysqlDateTime(DateTime dt) => DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
   static bool _toBool(dynamic x) {
@@ -126,6 +126,7 @@ class ApiService {
     String? descripcion,
     String? domicilio,
     int? reporteroId,
+    required String tipoDeNota,
     DateTime? fechaCita,
   }) async {
     final url = Uri.parse('$baseUrl/crear_noticia.php');
@@ -137,6 +138,7 @@ class ApiService {
 
     final body = {
       'noticia': noticia,
+      'tipo_de_nota': tipoDeNota, 
       'descripcion': descripcion ?? '',
       'domicilio': domicilio ?? '',
       'reportero_id': reporteroId?.toString() ?? '',
@@ -526,6 +528,83 @@ class ApiService {
     }
   }
 
+  // 🔹 Revisar colision de noticia si es Entrevista
+  static bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+  static Future<Noticia?> buscarChoqueCitaEntrevista({
+    required int reporteroId,
+    required DateTime fechaCita,
+    int? excludeNoticiaId,
+  }) async {
+    final list = await getNoticiasPorReportero(
+      reporteroId: reporteroId,
+      incluyeCerradas: false,
+    );
+
+    for (final n in list) {
+      if (excludeNoticiaId != null && n.id == excludeNoticiaId) continue;
+
+      final fc = n.fechaCita;
+      if (fc == null) continue;
+
+      if (!_sameDay(fc, fechaCita)) continue;
+
+      final diffMin = fc.difference(fechaCita).inMinutes.abs();
+      if (diffMin <= 60) {
+        return n; // Rango de una hora
+      }
+    }
+    return null;
+  }
+
+  // 🔹 Revisar colision de noticia al reasignar reportero
+  static Noticia? _buscarChoqueEnLista({
+    required List<Noticia> existentes,
+    required DateTime fechaCita,
+    Set<int> excludeIds = const {},
+  }) {
+    for (final n in existentes) {
+      if (excludeIds.contains(n.id)) continue;
+      final fc = n.fechaCita;
+      if (fc == null) continue;
+      if (!_sameDay(fc, fechaCita)) continue;
+
+      final diffMin = fc.difference(fechaCita).inMinutes.abs();
+      if (diffMin <= 60) return n;
+    }
+    return null;
+  }
+
+  static Future<Map<int, Noticia>> buscarChoquesParaReasignacion({
+    required int reporteroId,
+    required List<Noticia> noticiasAAsignar,
+  }) async {
+    final existentes = await getNoticiasPorReportero(
+      reporteroId: reporteroId,
+      incluyeCerradas: false,
+    );
+
+    final excludeIds = noticiasAAsignar.map((e) => e.id).toSet();
+    final Map<int, Noticia> choques = {};
+
+    for (final n in noticiasAAsignar) {
+      if (n.tipoDeNota != 'Entrevista') continue;
+      final fc = n.fechaCita;
+      if (fc == null) continue;
+
+      final choque = _buscarChoqueEnLista(
+        existentes: existentes,
+        fechaCita: fc,
+        excludeIds: excludeIds,
+      );
+
+      if (choque != null) {
+        choques[n.id] = choque;
+      }
+    }
+
+    return choques;
+  }
+
   // 🔹 Actualizar campos de noticia
   static Future<Noticia> actualizarNoticia({
     required int noticiaId,
@@ -533,6 +612,7 @@ class ApiService {
     String? titulo,
     String? descripcion,
     DateTime? fechaCita,
+    String? tipoDeNota,
   }) async {
     final url = Uri.parse('$baseUrl/update_noticia.php');
 
@@ -550,6 +630,7 @@ class ApiService {
     if (titulo != null) body['noticia'] = titulo;
     if (descripcion != null) body['descripcion'] = descripcion;
     if (fechaCita != null) body['fecha_cita'] = fechaCitaStr!;
+    if (tipoDeNota != null) body['tipo_de_nota'] = tipoDeNota;
 
     final response = await http.post(url, body: body);
 

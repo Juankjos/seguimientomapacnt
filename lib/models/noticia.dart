@@ -2,6 +2,7 @@
 class Noticia {
   final int id;
   final String noticia;
+  final String tipoDeNota;
   final String? descripcion;
   final String? cliente;
   final String? domicilio;  
@@ -26,6 +27,7 @@ class Noticia {
   Noticia({
     required this.id,
     required this.noticia,
+    this.tipoDeNota = 'Nota',
     required this.reportero,
     this.descripcion,
     this.cliente,
@@ -82,9 +84,16 @@ class Noticia {
       return s == '1' || s == 'true';
     }
 
+    String parseTipo(dynamic v) {
+      final s = (v ?? '').toString().trim();
+      if (s == 'Entrevista') return 'Entrevista';
+      return 'Nota';
+    }
+
     return Noticia(
       id: int.parse(json['id'].toString()),
       noticia: json['noticia'] ?? '',
+      tipoDeNota: parseTipo(json['tipo_de_nota']),
       descripcion: json['descripcion'],
       cliente: json['cliente'],
       domicilio: json['domicilio'],

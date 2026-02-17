@@ -1,8 +1,10 @@
 // lib/screens/crear_noticia_page.dart
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart'; 
 
 import '../services/api_service.dart';
 
@@ -13,6 +15,39 @@ bool _isWebWide(BuildContext context) =>
     kIsWeb && MediaQuery.of(context).size.width >= _kWebWideBreakpoint;
 
 double _hPad(BuildContext context) => _isWebWide(context) ? 20 : 16;
+
+bool _usarHoraPorTexto(BuildContext context) {
+  if (kIsWeb) return true;
+
+  return defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux;
+}
+
+class _HHmmTextInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final clamped = digits.length > 4 ? digits.substring(0, 4) : digits;
+
+    String out;
+    if (clamped.length <= 2) {
+      out = clamped; 
+    } else if (clamped.length == 3) {
+      out = '${clamped.substring(0, 1)}:${clamped.substring(1, 3)}'; 
+    } else {
+      out = '${clamped.substring(0, 2)}:${clamped.substring(2, 4)}'; 
+    }
+
+    return TextEditingValue(
+      text: out,
+      selection: TextSelection.collapsed(offset: out.length),
+    );
+  }
+}
 
 Widget _wrapWebWidth(Widget child) {
   if (!kIsWeb) return child;
@@ -56,6 +91,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
   int? _reporteroIdSeleccionado;
   String? _reporteroNombreSeleccionado;
   String? _fechaError;
+  String _tipoDeNota = 'Nota';
   List<ReporteroBusqueda> _resultadosReporteros = [];
   bool _buscandoReporteros = false;
   bool _mostrarBuscadorReportero = false;
@@ -65,9 +101,17 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
 
   bool _guardando = false;
 
-  final DateFormat _fmtFechaHora = DateFormat('dd/MM/yyyy HH:mm');
+  final DateFormat _fmtFechaHora = DateFormat('dd/MM/yyyy hh:mm a', 'es_MX');
 
   DateTime _soloFecha(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  String _fmtFechaHora12hAmPm(DateTime dt) {
+    final date = DateFormat('dd/MM/yyyy', 'es_MX').format(dt);
+    final hour12 = (dt.hour % 12 == 0) ? 12 : (dt.hour % 12);
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+    return '$date ${hour12.toString().padLeft(2, '0')}:$minute $ampm';
+  }
 
   Future<TimeOfDay?> _showAmPmCarouselTimePicker(
     BuildContext context, {
@@ -127,7 +171,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
                   height: 220,
                   child: CupertinoDatePicker(
                     mode: CupertinoDatePickerMode.time,
-                    use24hFormat: false,
+                    use24hFormat: false, // ✅ carrusel AM/PM
                     minuteInterval: minuteInterval,
                     initialDateTime: selected,
                     onDateTimeChanged: (dt) => selected = dt,
@@ -149,6 +193,235 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
       },
     );
   }
+
+  Future<TimeOfDay?> _showTextTimePicker(
+    BuildContext context, {
+    required TimeOfDay initialTime,
+    int minuteInterval = 1,
+  }) async {
+    bool isPm = initialTime.hour >= 12;
+    int hour12 = initialTime.hour % 12;
+    if (hour12 == 0) hour12 = 12;
+
+    final ctrl = TextEditingController(
+      text:
+          '${hour12.toString().padLeft(2, '0')}:${initialTime.minute.toString().padLeft(2, '0')}',
+    );
+
+    String? errorText;
+
+    TimeOfDay? parse12hTo24h(String t, bool isPm) {
+      final parts = t.split(':');
+      if (parts.length != 2) return null;
+
+      final h12 = int.tryParse(parts[0]);
+      final m = int.tryParse(parts[1]);
+      if (h12 == null || m == null) return null;
+
+      if (h12 < 1 || h12 > 12) return null;
+      if (m < 0 || m > 59) return null;
+
+      if (minuteInterval > 1 && (m % minuteInterval != 0)) return null;
+
+      int h24;
+      if (isPm) {
+        h24 = (h12 == 12) ? 12 : (h12 + 12);
+      } else {
+        h24 = (h12 == 12) ? 0 : h12;
+      }
+
+      return TimeOfDay(hour: h24, minute: m);
+    }
+
+    final ampmCtrl = FixedExtentScrollController(initialItem: isPm ? 1 : 0);
+
+    return showModalBottomSheet<TimeOfDay>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+
+        final sheet = StatefulBuilder(
+          builder: (ctx, setModalState) {
+            void tryAccept() {
+              final t = parse12hTo24h(ctrl.text, isPm);
+              if (t == null) {
+                setModalState(() => errorText =
+                    'Hora inválida. Usa formato hh:mm (1–12 : 00–59) y selecciona AM/PM.');
+                return;
+              }
+              Navigator.pop(ctx, t);
+            }
+
+            const double boxSize = 124;
+            const double sheetRadius = 18;
+            const double boxRadius = 14;
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+                child: Material(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(sheetRadius), 
+                  clipBehavior: Clip.antiAlias,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 10, bottom: 12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Row(
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, null),
+                                child: const Text('Cancelar'),
+                              ),
+                              const Spacer(),
+                              Text(
+                                'Seleccionar hora',
+                                style: theme.textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                              const Spacer(),
+                              TextButton(
+                                onPressed: tryAccept,
+                                child: const Text('Aceptar'),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Center(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: boxSize,
+                                  height: boxSize,
+                                  child: TextField(
+                                    controller: ctrl,
+                                    autofocus: true,
+                                    keyboardType: TextInputType.number,
+                                    textInputAction: TextInputAction.done,
+                                    onSubmitted: (_) => tryAccept(),
+                                    expands: true,
+                                    maxLines: null,
+                                    minLines: null,
+                                    inputFormatters: [
+                                      _HHmmTextInputFormatter(),
+                                      LengthLimitingTextInputFormatter(5),
+                                    ],
+                                    textAlign: TextAlign.center,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                    decoration: InputDecoration(
+                                      labelText: 'Hora (12h)',
+                                      hintText: '9:30',
+                                      errorText: errorText,
+                                      isDense: true,
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(boxRadius),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(boxRadius),
+                                        borderSide: BorderSide(color: theme.colorScheme.primary),
+                                      ),
+                                      errorBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(boxRadius),
+                                        borderSide: BorderSide(color: theme.colorScheme.error),
+                                      ),
+                                      focusedErrorBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(boxRadius),
+                                        borderSide: BorderSide(color: theme.colorScheme.error),
+                                      ),
+                                    ),
+                                    onChanged: (_) {
+                                      if (errorText != null) {
+                                        setModalState(() => errorText = null);
+                                      }
+                                    },
+                                  ),
+                                ),
+
+                                const SizedBox(width: 14),
+
+                                SizedBox(
+                                  width: boxSize,
+                                  height: boxSize,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(boxRadius),
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        border: Border.all(color: theme.dividerColor),
+                                        borderRadius: BorderRadius.circular(boxRadius),
+                                      ),
+                                      child: CupertinoPicker(
+                                        scrollController: ampmCtrl,
+                                        itemExtent: 36,
+                                        magnification: 1.08,
+                                        useMagnifier: true,
+                                        onSelectedItemChanged: (i) {
+                                          setModalState(() {
+                                            isPm = (i == 1);
+                                            if (errorText != null) errorText = null;
+                                          });
+                                        },
+                                        children: const [
+                                          Center(child: Text('AM')),
+                                          Center(child: Text('PM')),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            'Tip: escribe, por ejemplo, 930 → 9:30 ó 0930 → 9:30',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurface.withOpacity(0.7),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+
+        if (!kIsWeb) return sheet;
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: sheet,
+          ),
+        );
+      },
+    );
+  }
+
 
   @override
   void dispose() {
@@ -181,11 +454,19 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
   }
 
   Future<void> _seleccionarHora() async {
-    final picked = await _showAmPmCarouselTimePicker(
-      context,
-      initialTime: _horaSeleccionada ?? TimeOfDay.now(),
-      minuteInterval: 1,
-    );
+    final initial = _horaSeleccionada ?? TimeOfDay.now();
+
+    final picked = _usarHoraPorTexto(context)
+        ? await _showTextTimePicker(
+            context,
+            initialTime: initial,
+            minuteInterval: 1,
+          )
+        : await _showAmPmCarouselTimePicker(
+            context,
+            initialTime: initial,
+            minuteInterval: 1,
+          );
 
     if (picked != null) {
       setState(() => _horaSeleccionada = picked);
@@ -228,6 +509,30 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
     }
   }
 
+  Future<bool> _confirmarChoqueHorario({String? extra}) async {
+    final r = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Advertencia'),
+        content: Text(
+          'Existe una nota que podría interferir con tu horario, ¿Continuar de todos modos?'
+          '${extra != null ? '\n\n$extra' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+    return r ?? false;
+  }
+
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -248,13 +553,34 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
       return;
     }
 
+    final fechaCita = _combinarFechaHora();
+
+    if (_tipoDeNota == 'Entrevista' &&
+        fechaCita != null &&
+        _reporteroIdSeleccionado != null) {
+
+      final choque = await ApiService.buscarChoqueCitaEntrevista(
+        reporteroId: _reporteroIdSeleccionado!,
+        fechaCita: fechaCita,
+      );
+
+      if (choque != null) {
+        final extra = (choque.fechaCita != null)
+            ? 'Posible conflicto con: "${choque.noticia}" (${_fmtFechaHora.format(choque.fechaCita!)})'
+            : 'Posible conflicto con: "${choque.noticia}"';
+
+        final continuar = await _confirmarChoqueHorario(extra: extra);
+        if (!continuar) return;
+      }
+    }
+
     setState(() => _guardando = true);
 
     try {
-      final fechaCita = _combinarFechaHora();
 
       await ApiService.crearNoticia(
         noticia: _noticiaCtrl.text.trim(),
+        tipoDeNota: _tipoDeNota,
         descripcion: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
         domicilio: _domicilioCtrl.text.trim().isEmpty ? null : _domicilioCtrl.text.trim(),
         reporteroId: _reporteroIdSeleccionado,
@@ -300,7 +626,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
 
     final fechaCita = _combinarFechaHora();
     final String textoFechaCita =
-        fechaCita != null ? _fmtFechaHora.format(fechaCita) : 'Sin fecha/hora asignada';
+        fechaCita != null ? _fmtFechaHora12hAmPm(fechaCita) : 'Sin fecha/hora asignada';
 
     final leftCard = _card(
       theme,
@@ -329,6 +655,22 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
               return null;
             },
           ),
+
+          const SizedBox(height: 12),
+
+          DropdownButtonFormField<String>(
+            value: _tipoDeNota,
+            decoration: const InputDecoration(
+              labelText: 'Tipo de noticia',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'Nota', child: Text('Nota')),
+              DropdownMenuItem(value: 'Entrevista', child: Text('Entrevista')),
+            ],
+            onChanged: (v) => setState(() => _tipoDeNota = v ?? 'Nota'),
+          ),
+
           const SizedBox(height: 12),
           TextFormField(
             controller: _descCtrl,

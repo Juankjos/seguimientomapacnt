@@ -32,6 +32,22 @@ $role        = isset($_POST['role']) ? trim($_POST['role']) : 'reportero';
 $titulo      = isset($_POST['noticia']) ? trim($_POST['noticia']) : null;
 $descripcion = isset($_POST['descripcion']) ? trim($_POST['descripcion']) : null;
 
+$tipoDeNota = array_key_exists('tipo_de_nota', $_POST)
+    ? trim((string)$_POST['tipo_de_nota'])
+    : null;
+
+if ($tipoDeNota !== null) {
+    if ($tipoDeNota === '') {
+        $tipoDeNota = null;
+    } else {
+        $allowed = ['Nota', 'Entrevista'];
+        if (!in_array($tipoDeNota, $allowed, true)) {
+            echo json_encode(['success' => false, 'message' => 'tipo_de_nota inválido']);
+            exit;
+        }
+    }
+}
+
 $fechaNueva = array_key_exists('fecha_cita', $_POST)
     ? normalize_mysql_datetime($_POST['fecha_cita'])
     : null;
@@ -54,6 +70,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT
             noticia,
+            tipo_de_nota,
             descripcion,
             fecha_cita,
             fecha_cita_anterior,
@@ -79,6 +96,7 @@ try {
     $oldFecha = $actual['fecha_cita'];
     $cambios  = (int)($actual['fecha_cita_cambios'] ?? 0);
     $rutaIniciadaActual = (int)($actual['ruta_iniciada'] ?? 0);
+    $oldTipo = $actual['tipo_de_nota'] ?? 'Nota';
 
     $oldFechaStr = ($oldFecha ?? '');
     $newFechaStr = ($fechaNueva ?? '');
@@ -94,6 +112,11 @@ try {
         if ($descripcion !== null) {
             $updates[] = "descripcion = :descripcion";
             $params[':descripcion'] = ($descripcion === '') ? null : $descripcion;
+        }
+
+        if ($tipoDeNota !== null && $tipoDeNota !== $oldTipo) {
+            $updates[] = "tipo_de_nota = :tipo_de_nota";
+            $params[':tipo_de_nota'] = $tipoDeNota;
         }
 
         if (array_key_exists('fecha_cita', $_POST)) {
@@ -133,6 +156,12 @@ try {
             $params[':descripcion'] = $descripcion;
         }
 
+        // ✅✅✅ AQUÍ ESTÁ EL CAMBIO: Reportero SÍ puede cambiar tipo_de_nota
+        if ($tipoDeNota !== null && $tipoDeNota !== $oldTipo) {
+            $updates[] = "tipo_de_nota = :tipo_de_nota";
+            $params[':tipo_de_nota'] = $tipoDeNota;
+        }
+
         if (array_key_exists('fecha_cita', $_POST)) {
             if ($cambiaFecha) {
                 if ($cambios >= 2) {
@@ -168,6 +197,7 @@ try {
                 SELECT
                     n.id,
                     n.noticia,
+                    COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
                     n.descripcion,
                     n.domicilio,
                     n.reportero_id,
@@ -215,6 +245,7 @@ try {
         SELECT
             n.id,
             n.noticia,
+            COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
             n.descripcion,
             n.domicilio,
             n.reportero_id,

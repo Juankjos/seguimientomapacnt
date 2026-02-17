@@ -30,6 +30,14 @@ $noticia     = isset($in['noticia']) ? trim((string)$in['noticia']) : '';
 $descripcion = isset($in['descripcion']) ? trim((string)$in['descripcion']) : '';
 $domicilio   = isset($in['domicilio']) ? trim((string)$in['domicilio']) : '';
 $fechaCita   = isset($in['fecha_cita']) ? trim((string)$in['fecha_cita']) : '';
+$tipoDeNota = isset($in['tipo_de_nota']) ? trim((string)$in['tipo_de_nota']) : 'Nota';
+if ($tipoDeNota === '') $tipoDeNota = 'Nota';
+
+$allowedTipos = ['Nota', 'Entrevista'];
+if (!in_array($tipoDeNota, $allowedTipos, true)) {
+  echo json_encode(['success' => false, 'message' => 'tipo_de_nota inválido (usa Nota o Entrevista)']);
+  exit;
+}
 
 // reportero_id opcional (null si no viene o viene vacío/0)
 $reporteroId = null;
@@ -74,15 +82,16 @@ if ($fechaCita !== '') {
 try {
   $sql = "
     INSERT INTO noticias (
-      noticia, descripcion, cliente_id, domicilio, reportero_id, fecha_cita, pendiente
+      noticia, tipo_de_nota, descripcion, cliente_id, domicilio, reportero_id, fecha_cita, pendiente
     ) VALUES (
-      :noticia, :descripcion, NULL, :domicilio, :reportero_id, :fecha_cita, 1
+      :noticia, :tipo_de_nota, :descripcion, NULL, :domicilio, :reportero_id, :fecha_cita, 1
     )
   ";
 
   $stmt = $pdo->prepare($sql);
   $stmt->execute([
     ':noticia'      => $noticia,
+    ':tipo_de_nota' => $tipoDeNota,
     ':descripcion'  => $descripcionValue,
     ':domicilio'    => $domicilioValue,
     ':reportero_id' => $reporteroId,

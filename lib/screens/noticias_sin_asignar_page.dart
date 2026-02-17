@@ -256,12 +256,65 @@ class _NoticiasSinAsignarPageState extends State<NoticiasSinAsignarPage> {
 
     final reportero = await _elegirReportero();
     if (reportero == null) return;
+    final seleccionadas = _items.where((n) => _seleccion.contains(n.id)).toList();
+
+    Map<int, Noticia> choques = {};
+    final requiereChequeo = seleccionadas.any(
+      (n) => n.tipoDeNota == 'Entrevista' && n.fechaCita != null,
+    );
+
+    if (requiereChequeo) {
+      try {
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => const Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        choques = await ApiService.buscarChoquesParaReasignacion(
+          reporteroId: reportero.id,
+          noticiasAAsignar: seleccionadas,
+        );
+      } finally {
+        if (mounted) Navigator.pop(context); 
+      }
+    }
+
+    String contenido;
+    if (choques.isNotEmpty) {
+      final buffer = StringBuffer()
+        ..writeln(
+          'Se detectaron ${choques.length} posible(s) conflicto(s) con la agenda de "${reportero.nombre}".\n',
+        );
+
+      final take = choques.entries.take(5).toList();
+      for (final e in take) {
+        final sel = seleccionadas.firstWhere((n) => n.id == e.key);
+        final conf = e.value;
+
+        buffer.writeln('• "${sel.noticia}"');
+        buffer.writeln('  Cita: ${_fmtFecha(sel.fechaCita)}');
+        buffer.writeln('  ↳ Conflicto con: "${conf.noticia}"');
+        buffer.writeln('    Cita: ${_fmtFecha(conf.fechaCita)}\n');
+      }
+
+      if (choques.length > 5) {
+        buffer.writeln('…y ${choques.length - 5} conflicto(s) más.\n');
+      }
+
+      buffer.writeln('¿Asignar de todos modos ${_seleccion.length} noticia(s) a "${reportero.nombre}"?');
+      contenido = buffer.toString();
+    } else {
+      contenido = '¿Asignar ${_seleccion.length} noticia(s) a "${reportero.nombre}"?';
+    }
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Asignar noticias'),
-        content: Text('¿Asignar ${_seleccion.length} noticia(s) a "${reportero.nombre}"?'),
+        title: Text(choques.isNotEmpty ? 'Posible conflicto de horarios' : 'Asignar noticias'),
+        content: SingleChildScrollView(child: Text(contenido)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Asignar')),
