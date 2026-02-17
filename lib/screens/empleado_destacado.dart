@@ -482,6 +482,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
       final estado = pendiente ? 'Pendiente' : 'Realizada';
 
       final titulo = (n.noticia).toString();
+      final tipo = (n.tipoDeNota).toString().trim();
       final desc = (n.descripcion ?? '').toString();
       final cliente = (n.cliente ?? '').toString();
       final domicilio = (n.domicilio ?? '').toString();
@@ -489,6 +490,9 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
       final cita = n.fechaCita;
       final llegada = n.horaLlegada;
       final pago = n.fechaPago;
+
+      final baseLineStyle = const pw.TextStyle(fontSize: 10.5);
+      final boldLabelStyle = pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold);
 
       String _cap(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 
@@ -530,9 +534,34 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
                   pw.Text(' ', style: pw.TextStyle(fontSize: 12.5, fontWeight: pw.FontWeight.bold, color: PdfColors.amber800)),
                 ],
                 pw.Expanded(
-                  child: pw.Text(
-                    titulo.isEmpty ? '(Sin título)' : titulo,
-                    style: pw.TextStyle(fontSize: 12.5, fontWeight: pw.FontWeight.bold),
+                  child: pw.Wrap(
+                    crossAxisAlignment: pw.WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 2,
+                    children: [
+                      pw.Text(
+                        titulo.isEmpty ? '(Sin título)' : titulo,
+                        style: pw.TextStyle(fontSize: 12.5, fontWeight: pw.FontWeight.bold),
+                      ),
+
+                      if (tipo.isNotEmpty)
+                        pw.Container(
+                          margin: const pw.EdgeInsets.symmetric(horizontal: 4),
+                          width: 1,
+                          height: 12,
+                          color: PdfColors.grey600,
+                        ),
+
+                      if (tipo.isNotEmpty)
+                        pw.Text(
+                          tipo,
+                          style: pw.TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.grey800,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 pw.SizedBox(width: 10),
@@ -552,11 +581,28 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
               ),
             pw.SizedBox(height: 4),
             if (cliente.isNotEmpty) pw.Text('Cliente: $cliente', style: const pw.TextStyle(fontSize: 10.5)),
-            pw.Text(
-              pendiente ? 'Fecha de cita (Pendiente): $fechaLinea' : 'Fecha y Hora de llegada: $fechaLinea',
-              style: const pw.TextStyle(fontSize: 10.5),
+            pw.RichText(
+              text: pw.TextSpan(
+                style: baseLineStyle,
+                children: [
+                  pw.TextSpan(
+                    text: pendiente ? 'Fecha de cita' : 'Fecha y Hora de llegada',
+                    style: boldLabelStyle,
+                  ),
+                  pw.TextSpan(text: pendiente ? ' (Pendiente): ' : ': '),
+                  pw.TextSpan(text: fechaLinea),
+                ],
+              ),
             ),
-            if (domicilio.isNotEmpty) pw.Text('Domicilio: $domicilio', style: const pw.TextStyle(fontSize: 10.5)),
+            if (domicilio.isNotEmpty) pw.RichText(
+              text: pw.TextSpan(
+                style: baseLineStyle,
+                children: [
+                  pw.TextSpan(text: 'Domicilio: ', style: boldLabelStyle),
+                  pw.TextSpan(text: domicilio),
+                ],
+              ),
+            ),
             if (desc.isNotEmpty) ...[
               pw.SizedBox(height: 4),
               pw.Text('Descripción:', style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
