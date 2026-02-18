@@ -640,9 +640,32 @@ class ApiService {
         return Noticia.fromJson(data['data']);
       }
       throw Exception(data['message'] ?? 'Error al actualizar noticia');
-    } else {
+    } else { 
       throw Exception('Error en el servidor (${response.statusCode})');
     }
+  }
+
+  // 🔹 Guardar tiempo transcurrido en la nota
+  static Future<Noticia> guardarTiempoEnNota({
+    required int noticiaId,
+    required String role,
+    required int segundos,
+  }) async {
+    final url = Uri.parse('$baseUrl/update_noticia.php');
+    final response = await http.post(url, body: {
+      'noticia_id': noticiaId.toString(),
+      'role': role,
+      'tiempo_en_nota': segundos.toString(),
+      'ultima_mod': _mysqlDateTime(DateTime.now()),
+    });
+    if (response.statusCode != 200) {
+      throw Exception('Error en servidor (${response.statusCode}): ${response.body}');
+    }
+    final data = json.decode(response.body);
+    if (data is Map && data['success'] == true) {
+      return Noticia.fromJson(data['data']);
+    }
+    throw Exception((data is Map ? data['message'] : null) ?? 'No se pudo guardar tiempo_en_nota');
   }
 
   // 🔹 Cambiar ubicación de una noticia

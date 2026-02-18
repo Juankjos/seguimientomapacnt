@@ -15,6 +15,7 @@ import 'espectador_ruta_page.dart';
 import 'mapa_completo_page.dart';
 import 'mapa_ubicacion_page.dart';
 import 'trayecto_ruta_page.dart';
+import 'cronometro_nota_page.dart';
 
 const double _kWebMaxContentWidth = 1200;
 const double _kWebWideBreakpoint = 980;
@@ -71,7 +72,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   Timer? _clockTick;
 
   bool get _soloLectura => widget.soloLectura || _noticia.pendiente == false;
-
   bool get _yaTieneHoraLlegada => _noticia.horaLlegada != null;
 
   String _formatearFechaHora(DateTime dt) {
@@ -85,8 +85,14 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   }
 
   String _tipoNotaLabel() {
-    final raw = (_noticia.tipoDeNota ?? '').trim().toLowerCase();
+    final raw = (_noticia.tipoDeNota).trim().toLowerCase();
     return (raw == 'entrevista') ? 'Entrevista' : 'Nota';
+  }
+
+  String _fmtSegundos(int secs) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    final d = Duration(seconds: secs);
+    return '${two(d.inHours)}:${two(d.inMinutes.remainder(60))}:${two(d.inSeconds.remainder(60))}';
   }
 
   @override
@@ -210,25 +216,10 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
       if (lat != null && lon != null) {
         setState(() {
-          _noticia = Noticia(
-            id: _noticia.id,
-            noticia: _noticia.noticia,
-            descripcion: _noticia.descripcion,
-            cliente: _noticia.cliente,
-            domicilio: domicilio ?? _noticia.domicilio,
-            reportero: _noticia.reportero,
-            fechaCita: _noticia.fechaCita,
-            fechaCitaAnterior: _noticia.fechaCitaAnterior,
-            fechaCitaCambios: _noticia.fechaCitaCambios,
-            fechaPago: _noticia.fechaPago,
+          _noticia = _noticia.copyWith(
             latitud: lat,
             longitud: lon,
-            horaLlegada: _noticia.horaLlegada,
-            llegadaLatitud: _noticia.llegadaLatitud,
-            llegadaLongitud: _noticia.llegadaLongitud,
-            pendiente: _noticia.pendiente,
-            rutaIniciada: _noticia.rutaIniciada,
-            rutaIniciadaAt: _noticia.rutaIniciadaAt,
+            domicilio: domicilio ?? _noticia.domicilio,
             ultimaMod: DateTime.now(),
           );
         });
@@ -306,7 +297,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceVariant.withOpacity(0.35),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: theme.dividerColor.withOpacity(0.6), width: 0.8),
+          border:
+              Border.all(color: theme.dividerColor.withOpacity(0.6), width: 0.8),
         ),
         child: const Text('Sin mapa disponible'),
       );
@@ -317,7 +309,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
       options: MapOptions(
         initialCenter: punto,
         initialZoom: _isWebWide(context) ? 15.5 : 16,
-        // En web conviene permitir interacción completa
         interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
       ),
       children: [
@@ -331,9 +322,11 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
               point: punto,
               width: 80,
               height: 80,
-              child: const Icon(Icons.location_on, size: 40, color: Colors.red),
+              child:
+                  const Icon(Icons.location_on, size: 40, color: Colors.red),
             ),
-            if (_noticia.llegadaLatitud != null && _noticia.llegadaLongitud != null)
+            if (_noticia.llegadaLatitud != null &&
+                _noticia.llegadaLongitud != null)
               Marker(
                 point: latlng.LatLng(
                   _noticia.llegadaLatitud!,
@@ -341,7 +334,11 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                 ),
                 width: 80,
                 height: 80,
-                child: const Icon(Icons.no_crash_sharp, size: 38, color: Color.fromARGB(255, 30, 85, 204)),
+                child: const Icon(
+                  Icons.no_crash_sharp,
+                  size: 38,
+                  color: Color.fromARGB(255, 30, 85, 204),
+                ),
               ),
           ],
         ),
@@ -355,13 +352,13 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
         child: Stack(
           children: [
             Positioned.fill(child: map),
-            // En web, un pequeño “hint”
             if (kIsWeb)
               Positioned(
                 right: 10,
                 bottom: 10,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surface.withOpacity(0.85),
                     borderRadius: BorderRadius.circular(999),
@@ -396,6 +393,9 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     final bool limiteCambiosFecha = (widget.role == 'reportero') && cambios >= 2;
     final bool esAdmin = widget.role == 'admin';
     final bool rutaYaIniciada = _noticia.rutaIniciada == true;
+
+    final bool puedeCronometrarNota =
+        !esAdmin && !_soloLectura && _noticia.horaLlegada != null && _noticia.tiempoEnNota == null;
 
     final routeGate = (!esAdmin && !_soloLectura && !rutaYaIniciada)
         ? _validarInicioRuta()
@@ -440,13 +440,16 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
             const SizedBox(height: 10),
             Text(
               'Reportero: $nombreReportero',
-              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+              style:
+                  theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            if (_noticia.descripcion != null && _noticia.descripcion!.trim().isNotEmpty)
+            if (_noticia.descripcion != null &&
+                _noticia.descripcion!.trim().isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8.0),
-                child: Text(_noticia.descripcion!, style: theme.textTheme.bodyMedium),
+                child:
+                    Text(_noticia.descripcion!, style: theme.textTheme.bodyMedium),
               ),
             if (_noticia.cliente != null && _noticia.cliente!.trim().isNotEmpty)
               Text('Cliente: ${_noticia.cliente}'),
@@ -536,6 +539,14 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
               ),
             ],
 
+            if (_noticia.tiempoEnNota != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Tiempo en Nota: ${_fmtSegundos(_noticia.tiempoEnNota!)}',
+                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+            ],
+
             const SizedBox(height: 12),
 
             // ---------- Editar noticia ----------
@@ -572,16 +583,18 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
               ),
             ),
 
-
-
             const SizedBox(height: 10),
 
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: (_soloLectura || _yaTieneHoraLlegada) ? null : _abrirMapaUbicacion,
+                onPressed: (_soloLectura || _yaTieneHoraLlegada)
+                    ? null
+                    : _abrirMapaUbicacion,
                 icon: Icon(
-                  tieneCoordenadas ? Icons.edit_location_alt : Icons.add_location_alt,
+                  tieneCoordenadas
+                      ? Icons.edit_location_alt
+                      : Icons.add_location_alt,
                 ),
                 label: Text(
                   _yaTieneHoraLlegada
@@ -654,7 +667,9 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                         : null,
                     icon: Icon(_soloLectura
                         ? Icons.map
-                        : (rutaYaIniciada ? Icons.play_arrow : Icons.directions)),
+                        : (rutaYaIniciada
+                            ? Icons.play_arrow
+                            : Icons.directions)),
                     label: Text(
                       _soloLectura
                           ? 'Mostrar mapa completo'
@@ -684,7 +699,9 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                   } catch (e) {
                                     if (!mounted) return;
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('No se pudo iniciar ruta: $e')),
+                                      SnackBar(
+                                          content:
+                                              Text('No se pudo iniciar ruta: $e')),
                                     );
                                     return;
                                   }
@@ -706,12 +723,16 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                 if (result == null) return;
 
                                 DateTime _parseMysqlDateTime(String? v) {
-                                  if (v == null || v.trim().isEmpty) return DateTime.now();
+                                  if (v == null || v.trim().isEmpty) {
+                                    return DateTime.now();
+                                  }
                                   final s = v.trim().replaceFirst(' ', 'T');
                                   return DateTime.tryParse(s) ?? DateTime.now();
                                 }
 
-                                final Map<String, dynamic> r = Map<String, dynamic>.from(result as Map);
+                                final Map<String, dynamic> r =
+                                    Map<String, dynamic>.from(result as Map);
+
                                 final lat = (r['llegadaLatitud'] as num?)?.toDouble();
                                 final lon = (r['llegadaLongitud'] as num?)?.toDouble();
                                 final horaStr = r['horaLlegada']?.toString();
@@ -719,27 +740,11 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
                                 if (lat != null && lon != null) {
                                   setState(() {
-                                    _noticia = Noticia(
-                                      id: _noticia.id,
-                                      noticia: _noticia.noticia,
-                                      descripcion: _noticia.descripcion,
-                                      cliente: _noticia.cliente,
-                                      domicilio: _noticia.domicilio,
-                                      reportero: _noticia.reportero,
-                                      fechaCita: _noticia.fechaCita,
-                                      fechaCitaAnterior: _noticia.fechaCitaAnterior,
-                                      fechaCitaCambios: _noticia.fechaCitaCambios,
-                                      fechaPago: _noticia.fechaPago,
-                                      latitud: _noticia.latitud,
-                                      longitud: _noticia.longitud,
+                                    _noticia = _noticia.copyWith(
                                       horaLlegada: hora,
                                       llegadaLatitud: lat,
                                       llegadaLongitud: lon,
-                                      pendiente: _noticia.pendiente,
                                       ultimaMod: DateTime.now(),
-
-                                      rutaIniciada: _noticia.rutaIniciada,
-                                      rutaIniciadaAt: _noticia.rutaIniciadaAt,
                                     );
                                   });
                                 }
@@ -748,14 +753,43 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                   ),
                 ),
 
-                if (!_soloLectura && !routeGate.allowed && routeGate.message != null) ...[
+                if (!_soloLectura &&
+                    !routeGate.allowed &&
+                    routeGate.message != null) ...[
                   const SizedBox(height: 6),
                   Text(
                     routeGate.message!,
-                    style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                        color: Colors.red, fontWeight: FontWeight.w600),
                     textAlign: TextAlign.center,
                   ),
                 ],
+              ],
+
+              if (puedeCronometrarNota) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.timer),
+                    label: const Text('Cronometrar Nota'),
+                    onPressed: () async {
+                      final updated = await Navigator.push<Noticia>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CronometroNotaPage(
+                            noticia: _noticia,
+                            role: widget.role,
+                          ),
+                        ),
+                      );
+
+                      if (updated != null && mounted) {
+                        setState(() => _noticia = updated);
+                      }
+                    },
+                  ),
+                ),
               ],
 
               if (!_soloLectura &&
@@ -828,7 +862,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => MapaCompletoPage(noticia: _noticia),
+                                  builder: (_) =>
+                                      MapaCompletoPage(noticia: _noticia),
                                 ),
                               );
                             },

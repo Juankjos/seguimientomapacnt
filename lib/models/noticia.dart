@@ -21,6 +21,7 @@ class Noticia {
   final bool pendiente;
   final bool rutaIniciada;
   final DateTime? rutaIniciadaAt;
+  final int? tiempoEnNota;
 
   final DateTime? ultimaMod;
 
@@ -46,6 +47,7 @@ class Noticia {
     this.rutaIniciada = false,
     this.rutaIniciadaAt,
     this.ultimaMod,
+    this.tiempoEnNota,
   });
 
   factory Noticia.fromJson(Map<String, dynamic> json) {
@@ -112,6 +114,43 @@ class Noticia {
       ultimaMod: parseDateTime(json['ultima_mod']), 
       rutaIniciada: parseBool0(json['ruta_iniciada']),
       rutaIniciadaAt: parseDateTime(json['ruta_iniciada_at']),
+      tiempoEnNota: parseNullableInt(json['tiempo_en_nota']),
+    );
+  }
+
+  Noticia copyWith({
+    String? domicilio,
+    double? latitud,
+    double? longitud,
+    DateTime? horaLlegada,
+    double? llegadaLatitud,
+    double? llegadaLongitud,
+    int? tiempoEnNota,
+    DateTime? ultimaMod,
+  }) {
+    return Noticia(
+      id: id,
+      noticia: noticia,
+      tipoDeNota: tipoDeNota,
+      reportero: reportero,
+      descripcion: descripcion,
+      cliente: cliente,
+      domicilio: domicilio ?? this.domicilio,
+      reporteroId: reporteroId,
+      fechaCita: fechaCita,
+      fechaCitaAnterior: fechaCitaAnterior,
+      fechaCitaCambios: fechaCitaCambios,
+      fechaPago: fechaPago,
+      latitud: latitud ?? this.latitud,
+      longitud: longitud ?? this.longitud,
+      horaLlegada: horaLlegada ?? this.horaLlegada,
+      llegadaLatitud: llegadaLatitud ?? this.llegadaLatitud,
+      llegadaLongitud: llegadaLongitud ?? this.llegadaLongitud,
+      pendiente: pendiente,
+      rutaIniciada: rutaIniciada,
+      rutaIniciadaAt: rutaIniciadaAt,
+      ultimaMod: ultimaMod ?? this.ultimaMod,
+      tiempoEnNota: tiempoEnNota ?? this.tiempoEnNota,
     );
   }
 }

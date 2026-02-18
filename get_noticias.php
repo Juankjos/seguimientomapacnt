@@ -1,6 +1,7 @@
 <?php
 require 'config.php';
 
+header('Content-Type: application/json; charset=utf-8');
 // modo = 'admin' o 'reportero' (por defecto)
 $modo = isset($_GET['modo']) ? $_GET['modo'] : 'reportero';
 
@@ -28,7 +29,8 @@ if ($modo === 'admin') {
             n.pendiente,
             n.ruta_iniciada,
             n.ruta_iniciada_at,
-            n.ultima_mod
+            n.ultima_mod,
+            n.tiempo_en_nota
         FROM noticias n
         LEFT JOIN clientes c   ON n.cliente_id  = c.id
         LEFT JOIN reporteros r ON n.reportero_id = r.id
@@ -40,7 +42,7 @@ if ($modo === 'admin') {
 
     try {
         $stmt = $pdo->query($sql);
-        $rows = $stmt->fetchAll();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         echo json_encode([
             'success' => true,
@@ -87,7 +89,8 @@ $sql = "
         n.pendiente,
         n.ruta_iniciada,
         n.ruta_iniciada_at,
-        n.ultima_mod
+        n.ultima_mod,
+        n.tiempo_en_nota
     FROM noticias n
     LEFT JOIN clientes c ON n.cliente_id = c.id
     INNER JOIN reporteros r ON n.reportero_id = r.id
@@ -106,11 +109,20 @@ $sql .= "
         n.id ASC
 ";
 
-$stmt = $pdo->prepare($sql);
-$stmt->execute([$reporteroId]);
-$rows = $stmt->fetchAll();
+try {
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$reporteroId]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-echo json_encode([
-    'success' => true,
-    'data'    => $rows,
-]);
+    echo json_encode([
+        'success' => true,
+        'data'    => $rows,
+    ]);
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Error al obtener noticias (reportero)',
+        'error'   => $e->getMessage(),
+    ]);
+}

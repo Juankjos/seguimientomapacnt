@@ -26,11 +26,11 @@ function normalize_mysql_datetime($v) {
     return $dt->format('Y-m-d H:i:s');
 }
 
-$noticiaId   = isset($_POST['noticia_id']) ? intval($_POST['noticia_id']) : 0;
-$role        = isset($_POST['role']) ? trim($_POST['role']) : 'reportero';
+$noticiaId = isset($_POST['noticia_id']) ? intval($_POST['noticia_id']) : 0;
+$role      = isset($_POST['role']) ? trim($_POST['role']) : 'reportero';
 
-$titulo      = isset($_POST['noticia']) ? trim($_POST['noticia']) : null;
-$descripcion = isset($_POST['descripcion']) ? trim($_POST['descripcion']) : null;
+$titulo      = array_key_exists('noticia', $_POST) ? trim((string)$_POST['noticia']) : null;
+$descripcion = array_key_exists('descripcion', $_POST) ? trim((string)$_POST['descripcion']) : null;
 
 $tipoDeNota = array_key_exists('tipo_de_nota', $_POST)
     ? trim((string)$_POST['tipo_de_nota'])
@@ -48,18 +48,19 @@ if ($tipoDeNota !== null) {
     }
 }
 
-$fechaNueva = array_key_exists('fecha_cita', $_POST)
-    ? normalize_mysql_datetime($_POST['fecha_cita'])
-    : null;
+$hasFechaCita = array_key_exists('fecha_cita', $_POST);
+$fechaNueva = $hasFechaCita ? normalize_mysql_datetime($_POST['fecha_cita']) : null;
 
 $ultimaMod = normalize_mysql_datetime($_POST['ultima_mod'] ?? null);
 if ($ultimaMod === null) {
     $ultimaMod = date('Y-m-d H:i:s');
 }
 
-$rutaIniciadaReq = array_key_exists('ruta_iniciada', $_POST)
-    ? (int)$_POST['ruta_iniciada']
-    : null;
+$hasRutaIniciada = array_key_exists('ruta_iniciada', $_POST);
+$rutaIniciadaReq = $hasRutaIniciada ? intval($_POST['ruta_iniciada']) : null;
+
+$hasTiempoNota = array_key_exists('tiempo_en_nota', $_POST);
+$tiempoNotaReq = $hasTiempoNota ? intval((string)$_POST['tiempo_en_nota']) : null;
 
 if ($noticiaId <= 0) {
     echo json_encode(['success' => false, 'message' => 'noticia_id inválido']);
@@ -76,7 +77,9 @@ try {
             fecha_cita_anterior,
             fecha_cita_cambios,
             ruta_iniciada,
-            ruta_iniciada_at
+            ruta_iniciada_at,
+            hora_llegada,
+            tiempo_en_nota
         FROM noticias
         WHERE id = ?
         LIMIT 1
@@ -90,7 +93,7 @@ try {
     }
 
     $updates = [];
-    $params = [':id' => $noticiaId];
+    $params  = [':id' => $noticiaId];
 
     $oldDesc  = $actual['descripcion'];
     $oldFecha = $actual['fecha_cita'];
@@ -100,7 +103,10 @@ try {
 
     $oldFechaStr = ($oldFecha ?? '');
     $newFechaStr = ($fechaNueva ?? '');
-    $cambiaFecha = array_key_exists('fecha_cita', $_POST) && ($oldFechaStr !== $newFechaStr);
+    $cambiaFecha = $hasFechaCita && ($oldFechaStr !== $newFechaStr);
+
+    $horaLlegadaActual = $actual['hora_llegada'];
+    $tiempoNotaActual  = $actual['tiempo_en_nota'];
 
     // ========================= ADMIN =========================
     if ($role === 'admin') {
@@ -119,7 +125,7 @@ try {
             $params[':tipo_de_nota'] = $tipoDeNota;
         }
 
-        if (array_key_exists('fecha_cita', $_POST)) {
+        if ($hasFechaCita) {
             if ($cambiaFecha) {
                 $updates[] = "fecha_cita_anterior = :fecha_anterior";
                 $params[':fecha_anterior'] = $oldFecha;
@@ -156,13 +162,13 @@ try {
             $params[':descripcion'] = $descripcion;
         }
 
-        // ✅✅✅ AQUÍ ESTÁ EL CAMBIO: Reportero SÍ puede cambiar tipo_de_nota
+        // Reportero SÍ puede cambiar tipo_de_nota
         if ($tipoDeNota !== null && $tipoDeNota !== $oldTipo) {
             $updates[] = "tipo_de_nota = :tipo_de_nota";
             $params[':tipo_de_nota'] = $tipoDeNota;
         }
 
-        if (array_key_exists('fecha_cita', $_POST)) {
+        if ($hasFechaCita) {
             if ($cambiaFecha) {
                 if ($cambios >= 2) {
                     echo json_encode(['success' => false, 'message' => 'Límite alcanzado: ya no puedes cambiar la fecha de cita']);
@@ -185,12 +191,36 @@ try {
         }
     }
 
-    if ($rutaIniciadaReq === 1 && $rutaIniciadaActual === 0) {
+    // ========================= RUTA INICIADA =========================
+    if ($hasRutaIniciada && $rutaIniciadaReq === 1 && $rutaIniciadaActual === 0) {
         $updates[] = "ruta_iniciada = 1";
         $updates[] = "ruta_iniciada_at = COALESCE(ruta_iniciada_at, NOW())";
     }
 
-    $wantsRutaIniciada = ($rutaIniciadaReq === 1);
+    // ========================= TIEMPO EN NOTA =========================
+    if ($hasTiempoNota) {
+        if ($horaLlegadaActual === null || trim((string)$horaLlegadaActual) === '') {
+            echo json_encode(['success' => false, 'message' => 'Aún no se ha finalizado la ruta para cronometrar nota']);
+            exit;
+        }
+        if ($tiempoNotaReq === null || $tiempoNotaReq <= 0) {
+            echo json_encode(['success' => false, 'message' => 'tiempo_en_nota inválido']);
+            exit;
+        }
+        if ($tiempoNotaActual !== null && trim((string)$tiempoNotaActual) !== '') {
+            if (intval($tiempoNotaActual) !== intval($tiempoNotaReq)) {
+                echo json_encode(['success' => false, 'message' => 'El tiempo en nota ya fue registrado']);
+                exit;
+            }
+        } else {
+            $updates[] = "tiempo_en_nota = :tiempo_en_nota";
+            $params[':tiempo_en_nota'] = $tiempoNotaReq;
+        }
+    }
+
+    $wantsRutaIniciada = ($hasRutaIniciada && $rutaIniciadaReq === 1);
+    $wantsTiempoNota   = $hasTiempoNota;
+
     if (empty($updates)) {
         if ($wantsRutaIniciada && $rutaIniciadaActual === 1) {
             $stmt2 = $pdo->prepare("
@@ -214,6 +244,7 @@ try {
                     n.ultima_mod,
                     n.ruta_iniciada,
                     n.ruta_iniciada_at,
+                    n.tiempo_en_nota,
                     r.nombre AS reportero
                 FROM noticias n
                 LEFT JOIN reporteros r ON n.reportero_id = r.id
@@ -230,6 +261,49 @@ try {
             ]);
             exit;
         }
+
+        if ($wantsTiempoNota && $tiempoNotaActual !== null && trim((string)$tiempoNotaActual) !== ''
+            && intval($tiempoNotaActual) === intval($tiempoNotaReq)) {
+
+            $stmt2 = $pdo->prepare("
+                SELECT
+                    n.id,
+                    n.noticia,
+                    COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
+                    n.descripcion,
+                    n.domicilio,
+                    n.reportero_id,
+                    n.fecha_pago,
+                    n.fecha_cita,
+                    n.fecha_cita_anterior,
+                    n.fecha_cita_cambios,
+                    n.latitud,
+                    n.longitud,
+                    n.hora_llegada,
+                    n.llegada_latitud,
+                    n.llegada_longitud,
+                    n.pendiente,
+                    n.ultima_mod,
+                    n.ruta_iniciada,
+                    n.ruta_iniciada_at,
+                    n.tiempo_en_nota,
+                    r.nombre AS reportero
+                FROM noticias n
+                LEFT JOIN reporteros r ON n.reportero_id = r.id
+                WHERE n.id = ?
+                LIMIT 1
+            ");
+            $stmt2->execute([$noticiaId]);
+            $row = $stmt2->fetch(PDO::FETCH_ASSOC);
+
+            echo json_encode([
+                'success' => true,
+                'message' => 'Tiempo en nota ya estaba registrado',
+                'data' => $row
+            ]);
+            exit;
+        }
+
         echo json_encode(['success' => false, 'message' => 'No hay cambios para guardar']);
         exit;
     }
@@ -262,6 +336,7 @@ try {
             n.ultima_mod,
             n.ruta_iniciada,
             n.ruta_iniciada_at,
+            n.tiempo_en_nota,
             r.nombre AS reportero
         FROM noticias n
         LEFT JOIN reporteros r ON n.reportero_id = r.id
@@ -272,6 +347,7 @@ try {
     $row = $stmt2->fetch(PDO::FETCH_ASSOC);
 
     echo json_encode(['success' => true, 'data' => $row]);
+    exit;
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode([
@@ -279,4 +355,5 @@ try {
         'message' => 'Error al actualizar',
         'error' => $e->getMessage()
     ]);
+    exit;
 }
