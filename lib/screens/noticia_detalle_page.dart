@@ -396,6 +396,8 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
     final bool puedeCronometrarNota =
         !esAdmin && !_soloLectura && _noticia.horaLlegada != null && _noticia.tiempoEnNota == null;
+    final bool puedeEliminarPendiente =
+        !esAdmin && !_soloLectura && _noticia.tiempoEnNota != null;
 
     final routeGate = (!esAdmin && !_soloLectura && !rutaYaIniciada)
         ? _validarInicioRuta()
@@ -792,9 +794,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                 ),
               ],
 
-              if (!_soloLectura &&
-                  _noticia.llegadaLatitud != null &&
-                  _noticia.llegadaLongitud != null) ...[
+              if (puedeEliminarPendiente) ...[
                 const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,
