@@ -487,6 +487,9 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
       final cliente = (n.cliente ?? '').toString();
       final domicilio = (n.domicilio ?? '').toString();
 
+      final int? tNota = n.tiempoEnNota; // segundos
+      final int? limMin = n.limiteTiempoMinutos; // minutos
+
       final cita = n.fechaCita;
       final llegada = n.horaLlegada;
       final pago = n.fechaPago;
@@ -499,7 +502,68 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
       String _ampmEs(String s) =>
           s.replaceAll('AM', 'A.M.').replaceAll('PM', 'P.M.');
 
+      String _fmtDelayHm(Duration d) {
+        final totalMin = (d.inSeconds / 60).ceil();
+        final h = totalMin ~/ 60;
+        final m = totalMin % 60;
+
+        if (h <= 0) return '$m min';
+        if (m == 0) return '$h h';
+        return '$h h $m min';
+      }
+
+      final citaLocal = cita?.toLocal();
+      final llegadaLocal = llegada?.toLocal();
+
+      final String citaLinea = (citaLocal != null)
+          ? _ampmEs(_cap(dfWeek.format(citaLocal)))
+          : '—';
+
+      String llegadaLinea = '—';
+      if (llegadaLocal != null) {
+        llegadaLinea = _ampmEs(_cap(dfWeek.format(llegadaLocal)));
+      } else if (pago != null) {
+        llegadaLinea = _cap(dfWeekDate.format(pago));
+      }
+
+      // Puntualidad comparando cita vs llegada (solo si existen ambas)
+      String? puntualidadLlegada;
+      if (citaLocal != null && llegadaLocal != null) {
+        final diff = llegadaLocal.difference(citaLocal);
+        if (diff <= Duration.zero) {
+          puntualidadLlegada = 'A tiempo';
+        } else {
+          puntualidadLlegada = 'Llegó ${_fmtDelayHm(diff)} tarde';
+        }
+      }
+
+      String _fmtHmFromSeconds(int secs) {
+        String two(int n) => n.toString().padLeft(2, '0');
+        final d = Duration(seconds: secs);
+        final h = d.inHours;
+        final m = d.inMinutes.remainder(60);
+        return '${two(h)}:${two(m)}';
+      }
+
       String fechaLinea = '';
+
+      String _tipoLabelPdf(String raw) {
+        final t = raw.trim();
+        if (t.isEmpty) return 'Nota';
+        final low = t.toLowerCase();
+        return low.isEmpty ? 'Nota' : '${low[0].toUpperCase()}${low.substring(1)}';
+      }
+
+      String? tiempoEstado;
+      String? tiempoTipoLabel;
+      String? tiempoFmt;
+
+      if (tNota != null && limMin != null && limMin > 0) {
+        tiempoFmt = _fmtHmFromSeconds(tNota);
+        final limiteSeg = limMin * 60;
+        tiempoEstado = (tNota <= limiteSeg) ? 'A tiempo' : 'Sobrepasó límite';
+        tiempoTipoLabel = _tipoLabelPdf(tipo);
+      }
 
       if (pendiente) {
         fechaLinea = cita != null ? _ampmEs(_cap(dfWeek.format(cita))) : '—';
@@ -585,12 +649,38 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
               text: pw.TextSpan(
                 style: baseLineStyle,
                 children: [
+                  pw.TextSpan(text: 'Fecha de cita', style: boldLabelStyle),
+                  pw.TextSpan(text: pendiente ? ' (Pendiente): ' : ': '),
+                  pw.TextSpan(text: citaLinea),
+                ],
+              ),
+            ),
+            if (!pendiente)
+            pw.RichText(
+              text: pw.TextSpan(
+                style: baseLineStyle,
+                children: [
+                  pw.TextSpan(text: 'Fecha y Hora de llegada: ', style: boldLabelStyle),
+                  pw.TextSpan(text: llegadaLinea),
+                  if (puntualidadLlegada != null) ...[
+                    pw.TextSpan(text: ' • '),
+                    pw.TextSpan(text: puntualidadLlegada),
+                  ],
+                ],
+              ),
+            ),
+            if (tiempoEstado != null && tiempoTipoLabel != null && tiempoFmt != null)
+            pw.RichText(
+              text: pw.TextSpan(
+                style: baseLineStyle,
+                children: [
                   pw.TextSpan(
-                    text: pendiente ? 'Fecha de cita' : 'Fecha y Hora de llegada',
+                    text: 'Tiempo en $tiempoTipoLabel: ',
                     style: boldLabelStyle,
                   ),
-                  pw.TextSpan(text: pendiente ? ' (Pendiente): ' : ': '),
-                  pw.TextSpan(text: fechaLinea),
+                  pw.TextSpan(
+                    text: '$tiempoFmt • $tiempoEstado',
+                  ),
                 ],
               ),
             ),
@@ -622,6 +712,17 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
         theme: pw.ThemeData.withFont(base: base, bold: bold),
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 28),
+        footer: (context) => pw.Container(
+          alignment: pw.Alignment.centerRight,
+          margin: const pw.EdgeInsets.only(top: 10),
+          child: pw.Text(
+            'Hoja ${context.pageNumber}',
+            style: pw.TextStyle(
+              fontSize: 9,
+              color: PdfColors.grey700,
+            ),
+          ),
+        ),
         build: (context) {
           final widgets = <pw.Widget>[
             pw.Text(
