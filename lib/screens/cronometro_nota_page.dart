@@ -39,6 +39,7 @@ class _CronometroNotaPageState extends State<CronometroNotaPage>
   static const _kStartMs = 'nota_timer_start_ms';
   static const _kAccMs = 'nota_timer_acc_ms';
   static const _kNoticiaId = 'nota_timer_noticia_id';
+  static const _kNoticiaTitulo = 'nota_timer_noticia_titulo';
 
   @override
   void initState() {
@@ -93,6 +94,7 @@ class _CronometroNotaPageState extends State<CronometroNotaPage>
   Future<void> _persistTimer() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kNoticiaId, _noticia.id);
+    await prefs.setString(_kNoticiaTitulo, _noticia.noticia);
     await prefs.setBool(_kRunning, _running);
     if (_startEpochMs != null) {
       await prefs.setInt(_kStartMs, _startEpochMs!);
@@ -108,6 +110,7 @@ class _CronometroNotaPageState extends State<CronometroNotaPage>
     await prefs.remove(_kStartMs);
     await prefs.remove(_kAccMs);
     await prefs.remove(_kNoticiaId);
+    await prefs.remove(_kNoticiaTitulo);
   }
 
   void _startTicker() {

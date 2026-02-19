@@ -74,6 +74,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   static const _kRunning = 'nota_timer_running';
   static const _kStartMs = 'nota_timer_start_ms';
   static const _kNoticiaId = 'nota_timer_noticia_id';
+  static const _kNoticiaTitulo = 'nota_timer_noticia_titulo';
 
   Timer? _clockTick;
 
@@ -332,6 +333,41 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     }
   }
 
+  Future<bool> _permitirAbrirCronometro() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final running = prefs.getBool(_kRunning) ?? false;
+    final startMs = prefs.getInt(_kStartMs);
+    final savedId = prefs.getInt(_kNoticiaId);
+    final titulo = (prefs.getString(_kNoticiaTitulo) ?? '').trim();
+    final display = titulo.isNotEmpty ? titulo : 'ID: $savedId';
+
+    if (!running || startMs == null || savedId == null) return true;
+    if (savedId == _noticia.id) return true;
+
+    if (!mounted) return false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cronómetro activo'),
+        content: Text(
+          'Tienes un cronómetro activo en otra nota:\n'
+          '$display\n\n'
+          'Finalízalo antes de iniciar uno nuevo.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+
+    return false;
+  }
+
   // ===================== UI helpers =====================
 
   Widget _buildMapWidget({
@@ -554,7 +590,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
             if (_noticia.ultimaMod != null) ...[
               const SizedBox(height: 4),
               Text(
-                'Última modificación: ${_formatearFechaHora(_noticia.ultimaMod!)}',
+                'Última modificación: ${_formatearFechaCitaAmPm(_noticia.ultimaMod!)}',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: Colors.grey[700],
                   fontStyle: FontStyle.italic,
@@ -570,18 +606,18 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                     _noticia.fechaCita!.toIso8601String()) ...[
               const SizedBox(height: 4),
               Text(
-                'Fecha de cita anterior: ${_formatearFechaHora(_noticia.fechaCitaAnterior!)}',
-                style: const TextStyle(
-                  color: Color.fromARGB(255, 54, 117, 244),
-                  fontWeight: FontWeight.w600,
-                ),
+                'Fecha de cita Anterior: ${_formatearFechaCitaAmPm(_noticia.fechaCitaAnterior!)}',
+                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
             ],
 
             Text(
-              'Fecha de cita: '
+              'Fecha de cita Actual: '
               '${_noticia.fechaCita != null ? _formatearFechaCitaAmPm(_noticia.fechaCita!) : 'Sin fecha de cita'}',
-              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                  color: Color.fromARGB(255, 54, 117, 244),
+                  fontWeight: FontWeight.w600,
+                ),
             ),
             const SizedBox(height: 4),
 
@@ -598,7 +634,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
             const SizedBox(height: 4),
             Text(
-              'Límite de tiempo para Nota: ${_fmtLimiteTiempoNota()}',
+              'Límite de tiempo para ${_tipoNotaLabel()}: ${_fmtLimiteTiempoNota()}',
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -848,6 +884,11 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                     icon: Icon(_cronometroActivo ? Icons.check_circle : Icons.timer),
                     label: Text(_cronometroActivo ? 'Cronómetro Activo' : 'Cronometrar Nota'),
                     onPressed: () async {
+                      if (!_cronometroActivo) {
+                        final ok = await _permitirAbrirCronometro();
+                        if (!ok) return;
+                      }
+
                       final updated = await Navigator.push<Noticia>(
                         context,
                         MaterialPageRoute(
