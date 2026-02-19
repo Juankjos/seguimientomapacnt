@@ -62,6 +62,20 @@ $rutaIniciadaReq = $hasRutaIniciada ? intval($_POST['ruta_iniciada']) : null;
 $hasTiempoNota = array_key_exists('tiempo_en_nota', $_POST);
 $tiempoNotaReq = $hasTiempoNota ? intval((string)$_POST['tiempo_en_nota']) : null;
 
+$hasLimiteTiempo = array_key_exists('limite_tiempo_minutos', $_POST);
+$limiteTiempoReq = $hasLimiteTiempo ? intval((string)$_POST['limite_tiempo_minutos']) : null;
+
+if ($hasLimiteTiempo) {
+    if ($limiteTiempoReq === null || $limiteTiempoReq < 60) {
+        echo json_encode(['success' => false, 'message' => 'limite_tiempo_minutos debe ser mínimo 60']);
+        exit;
+    }
+    if ($limiteTiempoReq > 65535) {
+        echo json_encode(['success' => false, 'message' => 'limite_tiempo_minutos excede el máximo permitido']);
+        exit;
+    }
+}
+
 if ($noticiaId <= 0) {
     echo json_encode(['success' => false, 'message' => 'noticia_id inválido']);
     exit;
@@ -79,7 +93,8 @@ try {
             ruta_iniciada,
             ruta_iniciada_at,
             hora_llegada,
-            tiempo_en_nota
+            tiempo_en_nota,
+            limite_tiempo_minutos
         FROM noticias
         WHERE id = ?
         LIMIT 1
@@ -100,6 +115,7 @@ try {
     $cambios  = (int)($actual['fecha_cita_cambios'] ?? 0);
     $rutaIniciadaActual = (int)($actual['ruta_iniciada'] ?? 0);
     $oldTipo = $actual['tipo_de_nota'] ?? 'Nota';
+    $oldLimite = (int)($actual['limite_tiempo_minutos'] ?? 60);
 
     $oldFechaStr = ($oldFecha ?? '');
     $newFechaStr = ($fechaNueva ?? '');
@@ -191,6 +207,14 @@ try {
         }
     }
 
+    // ========================= LIMITE TIEMPO =========================
+    if ($hasLimiteTiempo) {
+        if ($limiteTiempoReq !== $oldLimite) {
+            $updates[] = "limite_tiempo_minutos = :limite_tiempo_minutos";
+            $params[':limite_tiempo_minutos'] = $limiteTiempoReq;
+        }
+    }
+
     // ========================= RUTA INICIADA =========================
     if ($hasRutaIniciada && $rutaIniciadaReq === 1 && $rutaIniciadaActual === 0) {
         $updates[] = "ruta_iniciada = 1";
@@ -245,6 +269,7 @@ try {
                     n.ruta_iniciada,
                     n.ruta_iniciada_at,
                     n.tiempo_en_nota,
+                    n.limite_tiempo_minutos,
                     r.nombre AS reportero
                 FROM noticias n
                 LEFT JOIN reporteros r ON n.reportero_id = r.id
@@ -287,6 +312,7 @@ try {
                     n.ruta_iniciada,
                     n.ruta_iniciada_at,
                     n.tiempo_en_nota,
+                    n.limite_tiempo_minutos,
                     r.nombre AS reportero
                 FROM noticias n
                 LEFT JOIN reporteros r ON n.reportero_id = r.id

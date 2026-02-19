@@ -91,6 +91,22 @@ class EditarNoticiaPage extends StatefulWidget {
 class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
   late final TextEditingController _tituloCtrl;
   late final TextEditingController _descCtrl;
+  int _limiteTiempoMin = 60;
+
+  static const List<int> _limitesMin = [60, 120, 180, 240, 300];
+
+  String _labelLimite(int min) {
+    final h = (min ~/ 60);
+    return h == 1 ? '1 HORA' : '$h HORAS';
+  }
+
+  int _normalizarLimite(int? min) {
+    if (min == null) return 60;
+    final clamped = min.clamp(60, 300);
+    // Lo ajusta al múltiplo de 60 más cercano (por si llega 90, 150, etc.)
+    final h = ((clamped / 60).round()).clamp(1, 5);
+    return h * 60;
+  }
 
   DateTime? _fechaCita;
   bool _guardando = false;
@@ -409,6 +425,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     _descCtrl = TextEditingController(text: widget.noticia.descripcion ?? '');
     _fechaCita = widget.noticia.fechaCita;
     _tipoDeNota = widget.noticia.tipoDeNota;
+    _limiteTiempoMin = _normalizarLimite(widget.noticia.limiteTiempoMinutos);
   }
 
   @override
@@ -501,6 +518,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
 
     final titulo = _tituloCtrl.text.trim();
     final desc = _descCtrl.text.trim();
+    final limiteMin = _limiteTiempoMin;
 
     if (_esAdmin && titulo.isEmpty) {
       setState(() => _error = 'El título no puede estar vacío.');
@@ -532,10 +550,14 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
         ? (_tipoDeNota != widget.noticia.tipoDeNota ? _tipoDeNota : null)
         : null;
 
+    final int? limiteSend =
+      (limiteMin != widget.noticia.limiteTiempoMinutos) ? limiteMin : null;
+
     final nadaQueGuardar = (tituloSend == null) &&
         (descSend == null) &&
         (fechaSend == null) &&
-        (tipoSend == null);
+        (tipoSend == null) &&
+        (limiteSend == null);
 
     if (nadaQueGuardar) {
       setState(() => _error = 'No tienes cambios para guardar.');
@@ -574,6 +596,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
         descripcion: descSend,
         fechaCita: fechaSend,
         tipoDeNota: tipoSend,
+        limiteTiempoMinutos: limiteSend,
       );
 
       if (!mounted) return;
@@ -635,6 +658,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
             ? theme.colorScheme.primaryContainer
             : theme.colorScheme.surfaceVariant.withOpacity(0.6),
       ),
+      _chip(theme, 'Límite: ${_labelLimite(_limiteTiempoMin)}'),
       _chip(
         theme,
         _puedeEditarFecha ? 'Fecha editable' : 'Fecha bloqueada',
@@ -810,6 +834,25 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
             ),
 
             const SizedBox(height: 12),
+
+            DropdownButtonFormField<int>(
+              value: _limiteTiempoMin,
+              decoration: const InputDecoration(
+                labelText: 'Límite de tiempo',
+                helperText: 'Selecciona de 1 a 5 horas.',
+                border: OutlineInputBorder(),
+              ),
+              items: _limitesMin
+                  .map((m) => DropdownMenuItem<int>(
+                        value: m,
+                        child: Text(_labelLimite(m)),
+                      ))
+                  .toList(),
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() => _limiteTiempoMin = v);
+              },
+            ),
 
             Container(
               width: double.infinity,

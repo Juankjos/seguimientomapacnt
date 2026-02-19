@@ -22,6 +22,7 @@ class Noticia {
   final bool rutaIniciada;
   final DateTime? rutaIniciadaAt;
   final int? tiempoEnNota;
+  final int limiteTiempoMinutos;
 
   final DateTime? ultimaMod;
 
@@ -48,6 +49,7 @@ class Noticia {
     this.rutaIniciadaAt,
     this.ultimaMod,
     this.tiempoEnNota,
+    this.limiteTiempoMinutos = 60,
   });
 
   factory Noticia.fromJson(Map<String, dynamic> json) {
@@ -115,6 +117,10 @@ class Noticia {
       rutaIniciada: parseBool0(json['ruta_iniciada']),
       rutaIniciadaAt: parseDateTime(json['ruta_iniciada_at']),
       tiempoEnNota: parseNullableInt(json['tiempo_en_nota']),
+      limiteTiempoMinutos: (() { final v = json['limite_tiempo_minutos']; 
+        final n = int.tryParse(v?.toString() ?? '');
+        return (n != null && n >= 60) ? n : 60;
+    })(),
     );
   }
 
@@ -126,6 +132,7 @@ class Noticia {
     double? llegadaLatitud,
     double? llegadaLongitud,
     int? tiempoEnNota,
+    int? limiteTiempoMinutos,
     DateTime? ultimaMod,
   }) {
     return Noticia(
@@ -151,6 +158,7 @@ class Noticia {
       rutaIniciadaAt: rutaIniciadaAt,
       ultimaMod: ultimaMod ?? this.ultimaMod,
       tiempoEnNota: tiempoEnNota ?? this.tiempoEnNota,
+      limiteTiempoMinutos: limiteTiempoMinutos ?? this.limiteTiempoMinutos,
     );
   }
 }

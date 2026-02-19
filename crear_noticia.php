@@ -31,6 +31,23 @@ $descripcion = isset($in['descripcion']) ? trim((string)$in['descripcion']) : ''
 $domicilio   = isset($in['domicilio']) ? trim((string)$in['domicilio']) : '';
 $fechaCita   = isset($in['fecha_cita']) ? trim((string)$in['fecha_cita']) : '';
 $tipoDeNota = isset($in['tipo_de_nota']) ? trim((string)$in['tipo_de_nota']) : 'Nota';
+$role = isset($in['role']) ? trim((string)$in['role']) : 'reportero';
+
+$limiteTiempoMinutos = 60;
+if (isset($in['limite_tiempo_minutos']) && $in['limite_tiempo_minutos'] !== '') {
+  $limiteTiempoMinutos = (int)$in['limite_tiempo_minutos'];
+}
+
+if ($limiteTiempoMinutos < 60) {
+  echo json_encode(['success' => false, 'message' => 'limite_tiempo_minutos debe ser mínimo 60']);
+  exit;
+}
+
+if ($limiteTiempoMinutos > 65535) {
+  echo json_encode(['success' => false, 'message' => 'limite_tiempo_minutos excede el máximo permitido']);
+  exit;
+}
+
 if ($tipoDeNota === '') $tipoDeNota = 'Nota';
 
 $allowedTipos = ['Nota', 'Entrevista'];
@@ -82,9 +99,9 @@ if ($fechaCita !== '') {
 try {
   $sql = "
     INSERT INTO noticias (
-      noticia, tipo_de_nota, descripcion, cliente_id, domicilio, reportero_id, fecha_cita, pendiente
+      noticia, tipo_de_nota, descripcion, cliente_id, domicilio, reportero_id, fecha_cita, pendiente, limite_tiempo_minutos
     ) VALUES (
-      :noticia, :tipo_de_nota, :descripcion, NULL, :domicilio, :reportero_id, :fecha_cita, 1
+      :noticia, :tipo_de_nota, :descripcion, NULL, :domicilio, :reportero_id, :fecha_cita, 1, :limite_tiempo_minutos
     )
   ";
 
@@ -96,6 +113,7 @@ try {
     ':domicilio'    => $domicilioValue,
     ':reportero_id' => $reporteroId,
     ':fecha_cita'   => $fechaCitaValue,
+    ':limite_tiempo_minutos' => $limiteTiempoMinutos,
   ]);
 
   $newId = (int)$pdo->lastInsertId();

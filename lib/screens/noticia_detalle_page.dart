@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart' as latlng;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
@@ -69,6 +70,11 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   late Noticia _noticia;
   bool _eliminando = false;
 
+  bool _cronometroActivo = false;
+  static const _kRunning = 'nota_timer_running';
+  static const _kStartMs = 'nota_timer_start_ms';
+  static const _kNoticiaId = 'nota_timer_noticia_id';
+
   Timer? _clockTick;
 
   bool get _soloLectura => widget.soloLectura || _noticia.pendiente == false;
@@ -76,6 +82,19 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
   String _formatearFechaHora(DateTime dt) {
     return DateFormat("d 'de' MMMM 'de' y, HH:mm", 'es_MX').format(dt);
+  }
+
+  String _fmtLimiteTiempoNota() {
+    final min = _noticia.limiteTiempoMinutos;
+    if (min == null) return 'Sin límite';
+
+    final h = min ~/ 60;
+    if (min % 60 == 0 && h >= 1 && h <= 5) {
+      final label = (h == 1) ? '1 HORA' : '$h HORAS';
+      return '$label ($min min)';
+    }
+
+    return '$min min';
   }
 
   String _formatearFechaCitaAmPm(DateTime dt) {
@@ -99,9 +118,11 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   void initState() {
     super.initState();
     _noticia = widget.noticia;
+    _checkCronometroActivo();
 
-    _clockTick = Timer.periodic(const Duration(seconds: 30), (_) {
+    _clockTick = Timer.periodic(const Duration(seconds: 30), (_) async {
       if (!mounted) return;
+      await _checkCronometroActivo();
       setState(() {});
     });
   }
@@ -171,6 +192,21 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     return Colors.red;
   }
 
+  Color? _colorTiempoEnNota() {
+    final tiempo = _noticia.tiempoEnNota; 
+    if (tiempo == null) return null;
+
+    final limiteMin = _noticia.limiteTiempoMinutos;
+    if (limiteMin == null || limiteMin <= 0) return null;
+
+    final limiteSeg = limiteMin * 60;
+
+    if (tiempo <= limiteSeg) return Colors.green.shade900;
+
+    return Colors.red;
+  }
+
+
   bool get _tieneCoordenadas =>
       _noticia.latitud != null && _noticia.longitud != null;
 
@@ -191,6 +227,24 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No se pudo actualizar la noticia: $e')),
       );
+    }
+  }
+
+  Future<void> _checkCronometroActivo() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final running = prefs.getBool(_kRunning) ?? false;
+    final savedId = prefs.getInt(_kNoticiaId);
+    final startMs = prefs.getInt(_kStartMs);
+
+    final active = running &&
+        savedId == _noticia.id &&
+        startMs != null &&
+        _noticia.tiempoEnNota == null; 
+
+    if (!mounted) return;
+    if (active != _cronometroActivo) {
+      setState(() => _cronometroActivo = active);
     }
   }
 
@@ -509,12 +563,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
             ],
 
             const SizedBox(height: 8),
-            Text(
-              'Fecha de cita: '
-              '${_noticia.fechaCita != null ? _formatearFechaCitaAmPm(_noticia.fechaCita!) : 'Sin fecha de cita'}',
-              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
 
             if (_noticia.fechaCitaAnterior != null &&
                 _noticia.fechaCita != null &&
@@ -530,6 +578,13 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
               ),
             ],
 
+            Text(
+              'Fecha de cita: '
+              '${_noticia.fechaCita != null ? _formatearFechaCitaAmPm(_noticia.fechaCita!) : 'Sin fecha de cita'}',
+              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+
             if (_noticia.horaLlegada != null) ...[
               const SizedBox(height: 4),
               Text(
@@ -541,11 +596,22 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
               ),
             ],
 
+            const SizedBox(height: 4),
+            Text(
+              'Límite de tiempo para Nota: ${_fmtLimiteTiempoNota()}',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+
             if (_noticia.tiempoEnNota != null) ...[
               const SizedBox(height: 4),
               Text(
                 'Tiempo en Nota: ${_fmtSegundos(_noticia.tiempoEnNota!)}',
-                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: _colorTiempoEnNota(),
+                ),
               ),
             ],
 
@@ -773,8 +839,14 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    icon: const Icon(Icons.timer),
-                    label: const Text('Cronometrar Nota'),
+                    style: _cronometroActivo
+                        ? FilledButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                          )
+                        : null,
+                    icon: Icon(_cronometroActivo ? Icons.check_circle : Icons.timer),
+                    label: Text(_cronometroActivo ? 'Cronómetro Activo' : 'Cronometrar Nota'),
                     onPressed: () async {
                       final updated = await Navigator.push<Noticia>(
                         context,
@@ -789,6 +861,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                       if (updated != null && mounted) {
                         setState(() => _noticia = updated);
                       }
+                      await _checkCronometroActivo();
                     },
                   ),
                 ),

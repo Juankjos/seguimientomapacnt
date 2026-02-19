@@ -128,6 +128,7 @@ class ApiService {
     int? reporteroId,
     required String tipoDeNota,
     DateTime? fechaCita,
+    int limiteTiempoMinutos = 60,
   }) async {
     final url = Uri.parse('$baseUrl/crear_noticia.php');
 
@@ -143,6 +144,7 @@ class ApiService {
       'domicilio': domicilio ?? '',
       'reportero_id': reporteroId?.toString() ?? '',
       'fecha_cita': fechaCitaStr ?? '',
+      'limite_tiempo_minutos': limiteTiempoMinutos.toString(),
     };
 
     final response = await http.post(url, body: body);
@@ -556,7 +558,7 @@ class ApiService {
     return null;
   }
 
-  // 🔹 Revisar colision de noticia al reasignar reportero
+  // 🔹 Revisar colision de noticia de reasignación en la lista de reporteros
   static Noticia? _buscarChoqueEnLista({
     required List<Noticia> existentes,
     required DateTime fechaCita,
@@ -574,6 +576,7 @@ class ApiService {
     return null;
   }
 
+  // 🔹 Revisar colision de noticia al reasignar reportero
   static Future<Map<int, Noticia>> buscarChoquesParaReasignacion({
     required int reporteroId,
     required List<Noticia> noticiasAAsignar,
@@ -613,6 +616,7 @@ class ApiService {
     String? descripcion,
     DateTime? fechaCita,
     String? tipoDeNota,
+    int? limiteTiempoMinutos,
   }) async {
     final url = Uri.parse('$baseUrl/update_noticia.php');
 
@@ -631,6 +635,7 @@ class ApiService {
     if (descripcion != null) body['descripcion'] = descripcion;
     if (fechaCita != null) body['fecha_cita'] = fechaCitaStr!;
     if (tipoDeNota != null) body['tipo_de_nota'] = tipoDeNota;
+    if (limiteTiempoMinutos != null) { body['limite_tiempo_minutos'] = limiteTiempoMinutos.toString(); }
 
     final response = await http.post(url, body: body);
 

@@ -88,6 +88,15 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
   final TextEditingController _domicilioCtrl = TextEditingController();
 
   final TextEditingController _buscarReporteroCtrl = TextEditingController();
+  int _limiteTiempoMin = 60;
+
+  static const List<int> _limitesMin = [60, 120, 180, 240, 300];
+
+  String _labelLimite(int min) {
+    final h = (min ~/ 60);
+    return h == 1 ? '1 HORA' : '$h HORAS';
+  }
+
   int? _reporteroIdSeleccionado;
   String? _reporteroNombreSeleccionado;
   String? _fechaError;
@@ -577,6 +586,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
     setState(() => _guardando = true);
 
     try {
+      final limiteMin = _limiteTiempoMin;
 
       await ApiService.crearNoticia(
         noticia: _noticiaCtrl.text.trim(),
@@ -585,6 +595,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
         domicilio: _domicilioCtrl.text.trim().isEmpty ? null : _domicilioCtrl.text.trim(),
         reporteroId: _reporteroIdSeleccionado,
         fechaCita: fechaCita,
+        limiteTiempoMinutos: limiteMin,
       );
 
       if (!mounted) return;
@@ -854,7 +865,23 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
             ],
           ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<int>(
+            value: _limiteTiempoMin,
+            decoration: const InputDecoration(
+              labelText: 'Límite de tiempo *',
+              helperText: 'Selecciona de 1 a 5 horas.',
+              border: OutlineInputBorder(),
+            ),
+            items: _limitesMin
+                .map((m) => DropdownMenuItem<int>(
+                      value: m,
+                      child: Text(_labelLimite(m)),
+                    ))
+                .toList(),
+            onChanged: (v) => setState(() => _limiteTiempoMin = v ?? 60),
+            validator: (v) => (v == null) ? 'Selecciona un límite' : null,
+          ),
 
           SizedBox(
             width: double.infinity,

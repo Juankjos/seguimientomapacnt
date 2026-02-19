@@ -13,7 +13,8 @@ $sql = "
         n.fecha_pago,
         n.fecha_cita,
         n.latitud,
-        n.longitud
+        n.longitud,
+        n.limite_tiempo_minutos,
     FROM noticias n
     LEFT JOIN clientes c ON n.cliente_id = c.id
     WHERE n.reportero_id IS NULL

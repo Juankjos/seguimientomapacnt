@@ -1,6 +1,7 @@
 // lib/screens/cronometro_nota_page.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
@@ -19,27 +20,108 @@ class CronometroNotaPage extends StatefulWidget {
   State<CronometroNotaPage> createState() => _CronometroNotaPageState();
 }
 
-class _CronometroNotaPageState extends State<CronometroNotaPage> {
+class _CronometroNotaPageState extends State<CronometroNotaPage>
+    with WidgetsBindingObserver {
   late Noticia _noticia;
 
-  final Stopwatch _sw = Stopwatch();
   Timer? _ticker;
 
-  bool _running = false;
   bool _saving = false;
   bool _startedOnce = false;
+
+  // ====== Estado persistible ======
+  int? _startEpochMs;
+  int _accumulatedMs = 0;
+
+  bool get _running => _startEpochMs != null;
+
+  static const _kRunning = 'nota_timer_running';
+  static const _kStartMs = 'nota_timer_start_ms';
+  static const _kAccMs = 'nota_timer_acc_ms';
+  static const _kNoticiaId = 'nota_timer_noticia_id';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _noticia = widget.noticia;
+    _restoreTimer();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _ticker?.cancel();
-    _sw.stop();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    if (state == AppLifecycleState.resumed) {
+      if (_running) _startTicker();
+      setState(() {});
+    } else if (state == AppLifecycleState.paused) {
+      _ticker?.cancel();
+      _ticker = null;
+    }
+  }
+
+  Future<void> _restoreTimer() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedRunning = prefs.getBool(_kRunning) ?? false;
+    final savedId = prefs.getInt(_kNoticiaId);
+    final savedStart = prefs.getInt(_kStartMs);
+    final savedAcc = prefs.getInt(_kAccMs) ?? 0;
+
+    if (savedId == _noticia.id && savedRunning && savedStart != null) {
+      setState(() {
+        _startEpochMs = savedStart;
+        _accumulatedMs = savedAcc;
+        _startedOnce = true;
+      });
+      _startTicker();
+    } else {
+      // Si hay basura de otra noticia, la ignoramos (o podrías limpiarla)
+      setState(() {
+        _startEpochMs = null;
+        _accumulatedMs = 0;
+      });
+    }
+  }
+
+  Future<void> _persistTimer() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kNoticiaId, _noticia.id);
+    await prefs.setBool(_kRunning, _running);
+    if (_startEpochMs != null) {
+      await prefs.setInt(_kStartMs, _startEpochMs!);
+    } else {
+      await prefs.remove(_kStartMs);
+    }
+    await prefs.setInt(_kAccMs, _accumulatedMs);
+  }
+
+  Future<void> _clearPersistedTimer() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kRunning);
+    await prefs.remove(_kStartMs);
+    await prefs.remove(_kAccMs);
+    await prefs.remove(_kNoticiaId);
+  }
+
+  void _startTicker() {
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
+
+  Duration get _elapsed {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final runningMs = (_startEpochMs != null) ? (now - _startEpochMs!) : 0;
+    return Duration(milliseconds: _accumulatedMs + runningMs);
   }
 
   String _fmt(Duration d) {
@@ -50,25 +132,20 @@ class _CronometroNotaPageState extends State<CronometroNotaPage> {
     return '${two(h)}:${two(m)}:${two(s)}';
   }
 
-  void _start() {
+  Future<void> _start() async {
     if (_saving) return;
     if (_running) return;
 
     setState(() {
-      _running = true;
       _startedOnce = true;
+      _startEpochMs = DateTime.now().millisecondsSinceEpoch;
     });
 
-    _sw.start();
-    _ticker?.cancel();
-    _ticker = Timer.periodic(const Duration(milliseconds: 250), (_) {
-      if (!mounted) return;
-      setState(() {});
-    });
+    await _persistTimer();
+    _startTicker();
   }
 
-  void _stopTickerAndSw() {
-    _sw.stop();
+  void _stopVisualTickerOnly() {
     _ticker?.cancel();
     _ticker = null;
   }
@@ -76,22 +153,20 @@ class _CronometroNotaPageState extends State<CronometroNotaPage> {
   Future<bool> _confirmarFinalizar() async {
     final res = await showDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Finalizar nota'),
-          content: const Text('¿Seguro que deseas finalizar y guardar el tiempo?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Sí, finalizar'),
-            ),
-          ],
-        );
-      },
+      builder: (context) => AlertDialog(
+        title: const Text('Finalizar nota'),
+        content: const Text('¿Seguro que deseas finalizar y guardar el tiempo?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sí, finalizar'),
+          ),
+        ],
+      ),
     );
     return res == true;
   }
@@ -99,7 +174,6 @@ class _CronometroNotaPageState extends State<CronometroNotaPage> {
   Future<void> _finalizarNota() async {
     if (_saving) return;
 
-    // Si ya hay tiempo registrado, solo regresamos
     if (_noticia.tiempoEnNota != null) {
       Navigator.pop(context, _noticia);
       return;
@@ -122,14 +196,12 @@ class _CronometroNotaPageState extends State<CronometroNotaPage> {
     final ok = await _confirmarFinalizar();
     if (!ok) return;
 
-    _stopTickerAndSw();
+    setState(() => _saving = true);
 
-    setState(() {
-      _running = false;
-      _saving = true;
-    });
+    _stopVisualTickerOnly();
 
-    final secs = _sw.elapsed.inSeconds;
+    final total = _elapsed;
+    final secs = total.inSeconds;
 
     if (secs <= 0) {
       setState(() => _saving = false);
@@ -140,8 +212,7 @@ class _CronometroNotaPageState extends State<CronometroNotaPage> {
     }
 
     try {
-      // IMPORTANTE: esto debe devolverte una Noticia ya con tiempoEnNota cargado
-      final Noticia updated = await ApiService.guardarTiempoEnNota(
+      final updated = await ApiService.guardarTiempoEnNota(
         noticiaId: _noticia.id,
         role: widget.role,
         segundos: secs,
@@ -149,17 +220,19 @@ class _CronometroNotaPageState extends State<CronometroNotaPage> {
 
       if (!mounted) return;
 
-      // Actualizamos el estado (por si no regresaras inmediatamente)
+      await _clearPersistedTimer();
+
       setState(() {
         _noticia = updated;
         _saving = false;
+        _startEpochMs = null;
+        _accumulatedMs = 0;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Tiempo guardado: ${_fmt(Duration(seconds: secs))}')),
       );
 
-      // CLAVE: regresamos la noticia actualizada al Detalle
       Navigator.pop(context, updated);
     } catch (e) {
       if (!mounted) return;
@@ -176,7 +249,7 @@ class _CronometroNotaPageState extends State<CronometroNotaPage> {
     final yaGuardado = _noticia.tiempoEnNota != null;
 
     return PopScope(
-      canPop: !_saving, // bloquea back mientras guarda
+      canPop: !_saving,
       onPopInvoked: (didPop) async {
         if (didPop) return;
         if (_saving) return;
@@ -185,32 +258,29 @@ class _CronometroNotaPageState extends State<CronometroNotaPage> {
         if (_running) {
           final salir = await showDialog<bool>(
             context: context,
-            builder: (context) {
-              return AlertDialog(
-                title: const Text('Salir del cronómetro'),
-                content: const Text('El cronómetro está corriendo. ¿Deseas salir?'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('Quedarme'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('Salir'),
-                  ),
-                ],
-              );
-            },
+            builder: (context) => AlertDialog(
+              title: const Text('Salir del cronómetro'),
+              content: const Text('El cronómetro está corriendo. ¿Deseas salir?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Quedarme'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Salir'),
+                ),
+              ],
+            ),
           );
 
           if (salir == true && mounted) {
-            _stopTickerAndSw();
-            Navigator.pop(context); // sin devolver nada
+            _stopVisualTickerOnly();
+            Navigator.pop(context);
           }
           return;
         }
 
-        // Si no está corriendo, salimos normal (devolviendo _noticia por si acaso)
         if (mounted) Navigator.pop(context, _noticia);
       },
       child: Scaffold(
@@ -222,7 +292,7 @@ class _CronometroNotaPageState extends State<CronometroNotaPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  _fmt(_sw.elapsed),
+                  _fmt(_elapsed),
                   style: const TextStyle(fontSize: 54, fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 18),

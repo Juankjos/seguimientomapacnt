@@ -90,7 +90,8 @@ $sql = "
         n.ruta_iniciada,
         n.ruta_iniciada_at,
         n.ultima_mod,
-        n.tiempo_en_nota
+        n.tiempo_en_nota,
+        n.limite_tiempo_minutos
     FROM noticias n
     LEFT JOIN clientes c ON n.cliente_id = c.id
     INNER JOIN reporteros r ON n.reportero_id = r.id
