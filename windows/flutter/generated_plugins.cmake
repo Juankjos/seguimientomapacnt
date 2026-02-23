@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   firebase_core
+  flutter_timezone
   geolocator_windows
   printing
 )

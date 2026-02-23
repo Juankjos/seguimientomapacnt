@@ -8,6 +8,10 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart' as fln;
@@ -26,7 +30,7 @@ import 'screens/avisos_page.dart';
 import 'widgets/session_timeout_watcher.dart';
 import 'services/session_service.dart';
 
-// ------------------ Local Notifications (Foreground) ------------------
+// ------------------ Local Notifications ------------------
 final fln.FlutterLocalNotificationsPlugin _localNotifs =
     fln.FlutterLocalNotificationsPlugin();
 
@@ -51,9 +55,16 @@ const fln.AndroidNotificationChannel _avisosChannel = fln.AndroidNotificationCha
   importance: fln.Importance.max,
 );
 
+// Canal para alertas del cronómetro (15 min antes)
+const fln.AndroidNotificationChannel _timerChannel = fln.AndroidNotificationChannel(
+  'tvc_timer_high',
+  'Cronómetro',
+  description: 'Alertas del cronómetro de notas',
+  importance: fln.Importance.high,
+);
+
 // ------------------ Navigation (tap notifications) ------------------
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
 Map<String, dynamic>? _pendingOpenData;
 
 // ------------------ Firebase init once ------------------
@@ -64,8 +75,34 @@ Future<void> initFirebaseOnce() {
   return _firebaseInitFuture!;
 }
 
-Future<void> _initFirebaseAndNotifications() async {
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
+}
 
+// Handler recomendado por el plugin para taps en background isolate.
+// Para deep-link cuando la app arranca desde cerrada, usamos getNotificationAppLaunchDetails.
+@pragma('vm:entry-point')
+void notificationTapBackground(fln.NotificationResponse notificationResponse) {
+  // No-op
+}
+
+Future<void> _initLocalTimeZone() async {
+  tzdata.initializeTimeZones();
+  try {
+    final info = await FlutterTimezone.getLocalTimezone(); // TimezoneInfo
+    tz.setLocalLocation(tz.getLocation(info.identifier));
+  } catch (_) {
+    tz.setLocalLocation(tz.getLocation('UTC'));
+  }
+}
+
+Future<void> _initFirebaseAndNotifications() async {
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -73,12 +110,6 @@ Future<void> _initFirebaseAndNotifications() async {
   }
 
   if (kIsWeb) return;
-
-  if (Firebase.apps.isEmpty) {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  }
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
@@ -88,7 +119,7 @@ Future<void> _initFirebaseAndNotifications() async {
   );
 
   await _localNotifs.initialize(
-    initSettings,
+    settings: initSettings,
     onDidReceiveNotificationResponse: (resp) async {
       final payload = resp.payload;
       if (payload == null || payload.isEmpty) return;
@@ -103,7 +134,21 @@ Future<void> _initFirebaseAndNotifications() async {
         debugPrint('⚠️ Payload inválido: $e');
       }
     },
+    onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
   );
+
+  // Si la app fue lanzada desde una notificación local, aquí la capturamos
+  try {
+    final launchDetails = await _localNotifs.getNotificationAppLaunchDetails();
+    final payload = launchDetails?.notificationResponse?.payload;
+    if ((_pendingOpenData == null) && payload != null && payload.isNotEmpty) {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map) {
+        _pendingOpenData =
+            decoded.map((k, v) => MapEntry(k.toString(), v as dynamic));
+      }
+    }
+  } catch (_) {}
 
   final androidImpl = _localNotifs
       .resolvePlatformSpecificImplementation<fln.AndroidFlutterLocalNotificationsPlugin>();
@@ -111,6 +156,10 @@ Future<void> _initFirebaseAndNotifications() async {
   await androidImpl?.createNotificationChannel(_newsChannel);
   await androidImpl?.createNotificationChannel(_citasChannel);
   await androidImpl?.createNotificationChannel(_avisosChannel);
+  await androidImpl?.createNotificationChannel(_timerChannel);
+
+  // Timezone para zonedSchedule
+  await _initLocalTimeZone();
 
   await FirebaseMessaging.instance.requestPermission(
     alert: true,
@@ -118,12 +167,14 @@ Future<void> _initFirebaseAndNotifications() async {
     sound: true,
   );
   await androidImpl?.requestNotificationsPermission();
+
   await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
     alert: true,
     badge: true,
     sound: true,
   );
 
+  // Mostrar push en foreground como local notification
   FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
     final tipo = message.data['tipo']?.toString() ?? '';
 
@@ -146,10 +197,10 @@ Future<void> _initFirebaseAndNotifications() async {
     if (title.trim().isEmpty && body.trim().isEmpty) return;
 
     await _localNotifs.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title,
-      body,
-      fln.NotificationDetails(
+      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title: title,
+      body: body,
+      notificationDetails: fln.NotificationDetails(
         android: fln.AndroidNotificationDetails(
           channel.id,
           channel.name,
@@ -169,17 +220,6 @@ Future<void> _initFirebaseAndNotifications() async {
 
   final token = await FirebaseMessaging.instance.getToken();
   debugPrint('✅ FCM Token: $token');
-}
-
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  WidgetsFlutterBinding.ensureInitialized();
-  if (Firebase.apps.isEmpty) {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  }
-
 }
 
 // ------------------ Open from notification data ------------------
@@ -226,7 +266,7 @@ Future<Noticia?> _buscarNoticiaPorId({
 }
 
 Future<void> _openFromData(Map<String, dynamic> data) async {
-  // ✅ Siempre revisar expiración para cualquier notificación
+  // ✅ Siempre revisar expiración
   final expired = await SessionService.isExpired();
   if (expired) {
     await SessionService.clearSession();
@@ -262,7 +302,7 @@ Future<void> _openFromData(Map<String, dynamic> data) async {
 
   final tipo = data['tipo']?.toString() ?? '';
 
-  // ✅ AVISOS: abrir pantalla y modal del aviso específico
+  // ✅ AVISOS
   if (tipo == 'aviso') {
     final avisoId = int.tryParse(data['aviso_id']?.toString() ?? '');
     navigatorKey.currentState?.push(

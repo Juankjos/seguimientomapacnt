@@ -1,7 +1,12 @@
 // lib/screens/cronometro_nota_page.dart
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart' as fln;
+import 'package:timezone/timezone.dart' as tz;
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
@@ -40,6 +45,17 @@ class _CronometroNotaPageState extends State<CronometroNotaPage>
   static const _kAccMs = 'nota_timer_acc_ms';
   static const _kNoticiaId = 'nota_timer_noticia_id';
   static const _kNoticiaTitulo = 'nota_timer_noticia_titulo';
+
+  // ====== Notificación 15 min ======
+  static const String _timerChannelId = 'tvc_timer_high';
+  static const String _timerChannelName = 'Cronómetro';
+  static const String _timerChannelDesc = 'Alertas del cronómetro de notas';
+
+  // DEBUG PRUEBAS
+  final fln.FlutterLocalNotificationsPlugin _notifs =
+      fln.FlutterLocalNotificationsPlugin();
+
+  int get _notif15Id => 900000000 + _noticia.id;
 
   @override
   void initState() {
@@ -82,8 +98,8 @@ class _CronometroNotaPageState extends State<CronometroNotaPage>
         _startedOnce = true;
       });
       _startTicker();
+      await _schedule15MinWarningIfNeeded();
     } else {
-      // Si hay basura de otra noticia, la ignoramos (o podrías limpiarla)
       setState(() {
         _startEpochMs = null;
         _accumulatedMs = 0;
@@ -96,11 +112,13 @@ class _CronometroNotaPageState extends State<CronometroNotaPage>
     await prefs.setInt(_kNoticiaId, _noticia.id);
     await prefs.setString(_kNoticiaTitulo, _noticia.noticia);
     await prefs.setBool(_kRunning, _running);
+
     if (_startEpochMs != null) {
       await prefs.setInt(_kStartMs, _startEpochMs!);
     } else {
       await prefs.remove(_kStartMs);
     }
+
     await prefs.setInt(_kAccMs, _accumulatedMs);
   }
 
@@ -111,6 +129,8 @@ class _CronometroNotaPageState extends State<CronometroNotaPage>
     await prefs.remove(_kAccMs);
     await prefs.remove(_kNoticiaId);
     await prefs.remove(_kNoticiaTitulo);
+
+    await _cancel15MinWarning();
   }
 
   void _startTicker() {
@@ -135,9 +155,109 @@ class _CronometroNotaPageState extends State<CronometroNotaPage>
     return '${two(h)}:${two(m)}:${two(s)}';
   }
 
+  Future<void> _cancel15MinWarning() async {
+    if (kIsWeb) return;
+    try {
+      await _notifs.cancel(id: _notif15Id);
+    } catch (_) {}
+  }
+
+  Future<void> _schedule15MinWarningIfNeeded() async {
+    if (kIsWeb) return;
+    if (_startEpochMs == null) return;
+
+    DateTime warnAt;
+    int? limitMinForMsg;
+
+
+    final limitMin = _noticia.limiteTiempoMinutos;
+    if (limitMin == null || limitMin <= 15) return;
+
+    final warnAtEpochMs = _startEpochMs! + ((limitMin - 15) * 60 * 1000);
+    warnAt = DateTime.fromMillisecondsSinceEpoch(warnAtEpochMs);
+
+    if (warnAt.isBefore(DateTime.now())) return;
+    limitMinForMsg = limitMin;
+
+    await _cancel15MinWarning();
+
+    final details = fln.NotificationDetails(
+      android: fln.AndroidNotificationDetails(
+        _timerChannelId,
+        _timerChannelName,
+        channelDescription: _timerChannelDesc,
+        importance: fln.Importance.high,
+        priority: fln.Priority.high,
+        icon: 'ic_stat_notification',
+      ),
+      iOS: const fln.DarwinNotificationDetails(),
+    );
+
+    final payload = jsonEncode({
+      'tipo': 'timer_15m',
+      'noticia_id': _noticia.id,
+    });
+
+    final body =
+    'A "${_noticia.noticia}" le quedan 15 minutos para llegar al límite de $limitMinForMsg min.';
+
+    final tz.TZDateTime tzWhen = tz.TZDateTime.from(warnAt, tz.local);
+    try {
+      await _notifs.zonedSchedule(
+        id: _notif15Id,
+        title: 'Cronómetro: 15 min restantes',
+        body: body,
+        scheduledDate: tzWhen,
+        notificationDetails: details,
+        androidScheduleMode: fln.AndroidScheduleMode.exactAllowWhileIdle,
+        payload: payload,
+      );
+    } catch (_) {
+      await _notifs.zonedSchedule(
+        id: _notif15Id,
+        title: 'Cronómetro: 15 min restantes',
+        body: body,
+        scheduledDate: tzWhen,
+        notificationDetails: details,
+        androidScheduleMode: fln.AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: payload,
+      );
+    }
+  }
+
   Future<void> _start() async {
     if (_saving) return;
     if (_running) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final running = prefs.getBool(_kRunning) ?? false;
+    final savedId = prefs.getInt(_kNoticiaId);
+    final savedStart = prefs.getInt(_kStartMs);
+
+    final otroActivo = running && savedStart != null && savedId != null && savedId != _noticia.id;
+    if (otroActivo && mounted) {
+      final titulo = (prefs.getString(_kNoticiaTitulo) ?? '').trim();
+      final display = titulo.isNotEmpty ? titulo : 'ID: $savedId';
+
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Cronómetro activo'),
+          content: Text(
+            'Ya tienes un cronómetro activo en otra nota:\n'
+            '$display\n\n'
+            'Finalízalo antes de iniciar uno nuevo.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
 
     setState(() {
       _startedOnce = true;
@@ -145,6 +265,7 @@ class _CronometroNotaPageState extends State<CronometroNotaPage>
     });
 
     await _persistTimer();
+    await _schedule15MinWarningIfNeeded();
     _startTicker();
   }
 
@@ -203,11 +324,11 @@ class _CronometroNotaPageState extends State<CronometroNotaPage>
 
     _stopVisualTickerOnly();
 
-    final total = _elapsed;
-    final secs = total.inSeconds;
+    final secs = _elapsed.inSeconds;
 
     if (secs <= 0) {
       setState(() => _saving = false);
+      _startTicker(); // 🔧 reanuda UI si algo salió raro
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('El tiempo debe ser mayor a 0 segundos.')),
       );
@@ -241,6 +362,9 @@ class _CronometroNotaPageState extends State<CronometroNotaPage>
       if (!mounted) return;
       setState(() => _saving = false);
 
+      // 🔧 Si falló el guardado, el cronómetro sigue corriendo: reanuda el ticker
+      if (_running) _startTicker();
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No se pudo guardar tiempo: $e')),
       );
@@ -257,7 +381,6 @@ class _CronometroNotaPageState extends State<CronometroNotaPage>
         if (didPop) return;
         if (_saving) return;
 
-        // Si está corriendo, confirmamos antes de salir
         if (_running) {
           final salir = await showDialog<bool>(
             context: context,
@@ -299,7 +422,6 @@ class _CronometroNotaPageState extends State<CronometroNotaPage>
                   style: const TextStyle(fontSize: 54, fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 18),
-
                 if (yaGuardado) ...[
                   Text(
                     'Esta nota ya tiene tiempo registrado: ${_fmt(Duration(seconds: _noticia.tiempoEnNota!))}',
