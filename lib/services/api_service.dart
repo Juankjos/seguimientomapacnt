@@ -127,6 +127,7 @@ class ApiService {
     String? descripcion,
     String? domicilio,
     int? reporteroId,
+    int? clienteId,
     required String tipoDeNota,
     DateTime? fechaCita,
     int limiteTiempoMinutos = 60,
@@ -144,6 +145,7 @@ class ApiService {
       'descripcion': descripcion ?? '',
       'domicilio': domicilio ?? '',
       'reportero_id': reporteroId?.toString() ?? '',
+      'cliente_id': clienteId?.toString() ?? '',
       'fecha_cita': fechaCitaStr ?? '',
       'limite_tiempo_minutos': limiteTiempoMinutos.toString(),
     };
@@ -679,7 +681,7 @@ class ApiService {
     required int noticiaId,
     required double latitud,
     required double longitud,
-    String? domicilio,
+    String? ubicacionEnMapa,
   }) async {
     final url = Uri.parse('$baseUrl/actualizar_ubicacion_noticia.php');
 
@@ -690,8 +692,8 @@ class ApiService {
       'ultima_mod': _mysqlDateTime(DateTime.now()),
     };
 
-    if (domicilio != null && domicilio.isNotEmpty) {
-      body['domicilio'] = domicilio;
+    if (ubicacionEnMapa != null && ubicacionEnMapa.trim().isNotEmpty) {
+      body['ubicacion_en_mapa'] = ubicacionEnMapa.trim();
     }
 
     final response = await http.post(url, body: body);

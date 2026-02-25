@@ -1,5 +1,6 @@
 <?php
 require 'config.php';
+header('Content-Type: application/json; charset=utf-8');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -25,16 +26,24 @@ function normalize_mysql_datetime($v) {
 }
 
 $noticiaId = isset($_POST['noticia_id']) ? intval($_POST['noticia_id']) : 0;
-$latitud   = isset($_POST['latitud'])    ? trim($_POST['latitud'])      : null;
-$longitud  = isset($_POST['longitud'])   ? trim($_POST['longitud'])     : null;
-$domicilio = isset($_POST['domicilio'])  ? trim($_POST['domicilio'])    : null;
+$latitud   = isset($_POST['latitud'])    ? trim((string)$_POST['latitud'])  : null;
+$longitud  = isset($_POST['longitud'])   ? trim((string)$_POST['longitud']) : null;
+
+$ubicacionEnMapa = isset($_POST['ubicacion_en_mapa'])
+    ? trim((string)$_POST['ubicacion_en_mapa'])
+    : null;
+
+if (($ubicacionEnMapa === null || $ubicacionEnMapa === '') && isset($_POST['domicilio'])) {
+    $fallback = trim((string)$_POST['domicilio']);
+    if ($fallback !== '') $ubicacionEnMapa = $fallback;
+}
 
 $ultimaMod = normalize_mysql_datetime($_POST['ultima_mod'] ?? null);
 if ($ultimaMod === null) {
     $ultimaMod = date('Y-m-d H:i:s');
 }
 
-if ($noticiaId <= 0 || $latitud === null || $longitud === null) {
+if ($noticiaId <= 0 || $latitud === null || $latitud === '' || $longitud === null || $longitud === '') {
     echo json_encode([
         'success' => false,
         'message' => 'Datos inválidos'
@@ -50,9 +59,9 @@ try {
             longitud = :longitud
     ";
 
-    if ($domicilio !== null && $domicilio !== '') {
+    if ($ubicacionEnMapa !== null && $ubicacionEnMapa !== '') {
         $sql .= ",
-            domicilio = :domicilio
+            ubicacion_en_mapa = :ubicacion_en_mapa
         ";
     }
 
@@ -71,23 +80,16 @@ try {
         ':id'         => $noticiaId,
     ];
 
-    if ($domicilio !== null && $domicilio !== '') {
-        $params[':domicilio'] = $domicilio;
+    if ($ubicacionEnMapa !== null && $ubicacionEnMapa !== '') {
+        $params[':ubicacion_en_mapa'] = $ubicacionEnMapa;
     }
 
     $stmt->execute($params);
 
-    if ($stmt->rowCount() > 0) {
-        echo json_encode([
-            'success' => true,
-            'message' => 'Ubicación actualizada correctamente',
-        ]);
-    } else {
-        echo json_encode([
-            'success' => false,
-            'message' => 'No se actualizó la ubicación (¿datos iguales o id inexistente?)',
-        ]);
-    }
+    echo json_encode([
+        'success' => true,
+        'message' => 'Ubicación actualizada correctamente',
+    ]);
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode([

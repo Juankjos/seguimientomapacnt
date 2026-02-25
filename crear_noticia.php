@@ -63,6 +63,21 @@ if (isset($in['reportero_id']) && $in['reportero_id'] !== '' && $in['reportero_i
   if ($tmp > 0) $reporteroId = $tmp;
 }
 
+$clienteId = null;
+if (isset($in['cliente_id']) && $in['cliente_id'] !== '' && $in['cliente_id'] !== null) {
+  $tmp = (int)$in['cliente_id'];
+  if ($tmp > 0) $clienteId = $tmp;
+}
+
+if ($clienteId !== null) {
+  $chk = $pdo->prepare("SELECT 1 FROM clientes WHERE id = ? LIMIT 1");
+  $chk->execute([$clienteId]);
+  if (!$chk->fetchColumn()) {
+    echo json_encode(['success' => false, 'message' => 'cliente_id no existe']);
+    exit;
+  }
+}
+
 // Validación principal
 if ($noticia === '') {
   echo json_encode(['success' => false, 'message' => 'El campo noticia es obligatorio']);
@@ -101,7 +116,7 @@ try {
     INSERT INTO noticias (
       noticia, tipo_de_nota, descripcion, cliente_id, domicilio, reportero_id, fecha_cita, pendiente, limite_tiempo_minutos
     ) VALUES (
-      :noticia, :tipo_de_nota, :descripcion, NULL, :domicilio, :reportero_id, :fecha_cita, 1, :limite_tiempo_minutos
+      :noticia, :tipo_de_nota, :descripcion, :cliente_id, :domicilio, :reportero_id, :fecha_cita, 1, :limite_tiempo_minutos
     )
   ";
 
@@ -112,6 +127,7 @@ try {
     ':descripcion'  => $descripcionValue,
     ':domicilio'    => $domicilioValue,
     ':reportero_id' => $reporteroId,
+    ':cliente_id'   => $clienteId, 
     ':fecha_cita'   => $fechaCitaValue,
     ':limite_tiempo_minutos' => $limiteTiempoMinutos,
   ]);

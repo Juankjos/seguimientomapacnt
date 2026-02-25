@@ -81,10 +81,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   bool get _soloLectura => widget.soloLectura || _noticia.pendiente == false;
   bool get _yaTieneHoraLlegada => _noticia.horaLlegada != null;
 
-  String _formatearFechaHora(DateTime dt) {
-    return DateFormat("d 'de' MMMM 'de' y, HH:mm", 'es_MX').format(dt);
-  }
-
   String _fmtLimiteTiempoNota() {
     final min = _noticia.limiteTiempoMinutos;
     if (min == null) return 'Sin límite';
@@ -113,6 +109,35 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     String two(int n) => n.toString().padLeft(2, '0');
     final d = Duration(seconds: secs);
     return '${two(d.inHours)}:${two(d.inMinutes.remainder(60))}:${two(d.inSeconds.remainder(60))}';
+  }
+
+  String _formatPhoneDigits(String digits) {
+    if (digits.isEmpty) return '';
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return '${digits.substring(0, 3)} ${digits.substring(3)}';
+    if (digits.length <= 10) {
+      return '${digits.substring(0, 3)} ${digits.substring(3, 6)} ${digits.substring(6)}';
+    }
+    return digits;
+  }
+
+  String _formatWhatsappPretty(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return '—';
+
+    final noSpaces = s.replaceAll(RegExp(r'\s+'), '');
+    if (noSpaces.startsWith('+')) {
+      final onlyDigits = noSpaces.replaceAll(RegExp(r'[^0-9+]'), '');
+      final digits = onlyDigits.substring(1);
+      if (digits.length == 12) {
+        final cc = digits.substring(0, 2);
+        final nat = digits.substring(2);
+        return '+$cc ${_formatPhoneDigits(nat)}';
+      }
+      return noSpaces;
+    }
+    final digits = noSpaces.replaceAll(RegExp(r'\D'), '');
+    return _formatPhoneDigits(digits);
   }
 
   @override
@@ -259,7 +284,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
           noticiaId: _noticia.id,
           latitudInicial: _noticia.latitud,
           longitudInicial: _noticia.longitud,
-          domicilioInicial: _noticia.domicilio,
+          domicilioInicial: _noticia.ubicacionEnMapa,
         ),
       ),
     );
@@ -267,14 +292,14 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     if (resultado != null) {
       final double? lat = resultado['lat'] as double?;
       final double? lon = resultado['lon'] as double?;
-      final String? domicilio = resultado['domicilio'] as String?;
+      final String? ubicacion = resultado['ubicacion_en_mapa'] as String?;
 
       if (lat != null && lon != null) {
         setState(() {
           _noticia = _noticia.copyWith(
             latitud: lat,
             longitud: lon,
-            domicilio: domicilio ?? _noticia.domicilio,
+            ubicacionEnMapa: ubicacion ?? _noticia.ubicacionEnMapa,
             ultimaMod: DateTime.now(),
           );
         });
@@ -479,7 +504,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     final wide = _isWebWide(context);
 
     final tieneCoordenadas = _tieneCoordenadas;
-    final int cambios = _noticia.fechaCitaCambios ?? 0;
+    final int cambios = _noticia.fechaCitaCambios;
     final bool limiteCambiosFecha = (widget.role == 'reportero') && cambios >= 2;
     final bool esAdmin = widget.role == 'admin';
     final bool rutaYaIniciada = _noticia.rutaIniciada == true;
@@ -496,9 +521,19 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     final domicilio = (_noticia.domicilio ?? '').trim();
     final domicilioTxt = domicilio.isNotEmpty ? domicilio : 'Sin domicilio';
 
+    final ubicMap = (_noticia.ubicacionEnMapa ?? '').trim();
+    final ubicMapTxt = ubicMap.isNotEmpty ? ubicMap : 'Sin ubicación en mapa';
+
     final nombreReportero = (_noticia.reportero.trim().isNotEmpty)
         ? _noticia.reportero.trim()
         : 'Sin reportero asignado';
+
+    final clienteNombre = (_noticia.cliente ?? '').trim();
+    final clienteTelRaw = (_noticia.clienteWhatsapp ?? '').trim();
+    final clienteTel = clienteTelRaw.isEmpty ? '—' : _formatWhatsappPretty(clienteTelRaw);
+    final clienteTelCopiar = clienteTelRaw.isEmpty
+        ? ''
+        : clienteTelRaw.replaceAll(RegExp(r'\s+'), '');
 
     latlng.LatLng? punto;
     if (tieneCoordenadas) {
@@ -543,9 +578,34 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                 child:
                     Text(_noticia.descripcion!, style: theme.textTheme.bodyMedium),
               ),
-            if (_noticia.cliente != null && _noticia.cliente!.trim().isNotEmpty)
-              Text('Cliente: ${_noticia.cliente}'),
-            const SizedBox(height: 4),
+            if (clienteNombre.isNotEmpty) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Cliente: $clienteNombre, $clienteTel',
+                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Copiar teléfono',
+                    icon: const Icon(Icons.copy, size: 20),
+                    onPressed: clienteTelCopiar.isEmpty
+                        ? null
+                        : () async {
+                            await Clipboard.setData(ClipboardData(text: clienteTelCopiar));
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Teléfono copiado')),
+                            );
+                          },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+            ],
 
             // Domicilio (copy)
             Row(
@@ -581,6 +641,46 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                           if (!mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Domicilio copiado')),
+                          );
+                        },
+                ),
+              ],
+            ),
+
+            // Ubicación en mapa (copy)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onLongPress: (!kIsWeb && ubicMap.isNotEmpty)
+                        ? () async {
+                            await Clipboard.setData(ClipboardData(text: ubicMap));
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Ubicación en mapa copiada')),
+                            );
+                          }
+                        : null,
+                    child: Text(
+                      'Ubicación en mapa: $ubicMapTxt',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Copiar ubicación en mapa',
+                  icon: const Icon(Icons.copy, size: 20),
+                  onPressed: ubicMap.isEmpty
+                      ? null
+                      : () async {
+                          await Clipboard.setData(ClipboardData(text: ubicMap));
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Ubicación en mapa copiada')),
                           );
                         },
                 ),

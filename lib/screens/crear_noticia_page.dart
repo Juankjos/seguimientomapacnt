@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart'; 
 
+import '../models/cliente.dart';
 import '../services/api_service.dart';
 
 const double _kWebMaxContentWidth = 1100;
@@ -91,6 +92,21 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
   int _limiteTiempoMin = 60;
 
   static const List<int> _limitesMin = [60, 120, 180, 240, 300];
+
+  final TextEditingController _buscarClienteCtrl = TextEditingController();
+
+  int? _clienteIdSeleccionado;
+  String? _clienteNombreSeleccionado;
+
+  List<Cliente> _resultadosClientes = [];
+  bool _buscandoClientes = false;
+  bool _mostrarBuscadorCliente = false;
+
+  Cliente? _clienteSeleccionado;
+  bool _usarDomicilioCliente = false;
+  bool _cargandoDomicilioCliente = false;
+  String get _domicilioCliente => (_clienteSeleccionado?.domicilio ?? '').trim();
+  bool get _clienteTieneDomicilio => _domicilioCliente.isNotEmpty;
 
   String _labelLimite(int min) {
     final h = (min ~/ 60);
@@ -431,6 +447,41 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
     );
   }
 
+  Future<void> _seleccionarCliente(Cliente c) async {
+    setState(() {
+      _clienteSeleccionado = c;
+      _clienteIdSeleccionado = c.id;
+      _clienteNombreSeleccionado = c.nombre;
+      _mostrarBuscadorCliente = false;
+      _cargandoDomicilioCliente = true;
+    });
+
+    try {
+      final detalle = await ApiService.getClienteDetalle(clienteId: c.id);
+      if (!mounted) return;
+      setState(() {
+        _clienteSeleccionado = detalle;
+        _cargandoDomicilioCliente = false;
+      });
+      if (_usarDomicilioCliente) {
+        final dom = (detalle.domicilio ?? '').trim();
+        setState(() {
+          if (dom.isNotEmpty) {
+            _domicilioCtrl.text = dom;
+          } else {
+            _domicilioCtrl.clear();
+            _usarDomicilioCliente = false;
+          }
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _cargandoDomicilioCliente = false);
+      if (_usarDomicilioCliente && _clienteTieneDomicilio) {
+        _domicilioCtrl.text = _domicilioCliente;
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -438,6 +489,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
     _descCtrl.dispose();
     _domicilioCtrl.dispose();
     _buscarReporteroCtrl.dispose();
+    _buscarClienteCtrl.dispose();
     super.dispose();
   }
 
@@ -518,6 +570,28 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
     }
   }
 
+  Future<void> _buscarClientes(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() => _resultadosClientes = []);
+      return;
+    }
+
+    setState(() => _buscandoClientes = true);
+
+    try {
+      final resultados = await ApiService.getClientes(q: query.trim());
+      if (!mounted) return;
+      setState(() => _resultadosClientes = resultados);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al buscar clientes: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _buscandoClientes = false);
+    }
+  }
+
   Future<bool> _confirmarChoqueHorario({String? extra}) async {
     final r = await showDialog<bool>(
       context: context,
@@ -594,6 +668,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
         descripcion: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
         domicilio: _domicilioCtrl.text.trim().isEmpty ? null : _domicilioCtrl.text.trim(),
         reporteroId: _reporteroIdSeleccionado,
+        clienteId: _clienteIdSeleccionado,
         fechaCita: fechaCita,
         limiteTiempoMinutos: limiteMin,
       );
@@ -683,6 +758,152 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
           ),
 
           const SizedBox(height: 12),
+
+          Row(
+            children: [
+              const Icon(Icons.person_outline),
+              const SizedBox(width: 8),
+              Text(
+                'Cliente (opcional)',
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Cliente:', style: theme.textTheme.bodyMedium),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _clienteNombreSeleccionado ?? 'Ninguno',
+                  textAlign: TextAlign.right,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ElevatedButton.icon(
+                icon: const Icon(Icons.person_search),
+                label: Text(_mostrarBuscadorCliente ? 'Ocultar buscador' : 'Asignar cliente'),
+                onPressed: () => setState(() {
+                  _mostrarBuscadorCliente = !_mostrarBuscadorCliente;
+                }),
+              ),
+              if (_clienteIdSeleccionado != null)
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.person_off),
+                  label: const Text('Quitar cliente'),
+                  onPressed: () {
+                    setState(() {
+                      _clienteIdSeleccionado = null;
+                      _clienteNombreSeleccionado = null;
+                      _clienteSeleccionado = null;
+                      _mostrarBuscadorCliente = false;
+
+                      if (_usarDomicilioCliente) {
+                        _usarDomicilioCliente = false;
+                        _domicilioCtrl.clear();
+                      }
+                    });
+                  },
+                ),
+            ],
+          ),
+
+          if (_mostrarBuscadorCliente) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _buscarClienteCtrl,
+              decoration: InputDecoration(
+                labelText: 'Buscar cliente por nombre',
+                prefixIcon: const Icon(Icons.search),
+                border: const OutlineInputBorder(),
+                suffixIcon: _buscarClienteCtrl.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          setState(() {
+                            _buscarClienteCtrl.clear();
+                            _resultadosClientes = [];
+                          });
+                        },
+                      )
+                    : null,
+              ),
+              onChanged: (v) {
+                setState(() {});
+                _buscarClientes(v);
+              },
+            ),
+            const SizedBox(height: 10),
+            if (_buscandoClientes)
+              const Center(child: CircularProgressIndicator())
+            else if (_resultadosClientes.isEmpty)
+              const Text('Sin resultados')
+            else
+              SizedBox(
+                height: wide ? 260 : 180,
+                child: _maybeScrollbar(
+                  child: ListView.builder(
+                    itemCount: _resultadosClientes.length,
+                    itemBuilder: (context, index) {
+                      final c = _resultadosClientes[index];
+                      return ListTile(
+                        leading: const Icon(Icons.person),
+                        title: Text(c.nombre),
+                        subtitle: (c.domicilio ?? '').trim().isEmpty
+                            ? null
+                            : Text(
+                                (c.domicilio ?? '').trim(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                        onTap: () => _seleccionarCliente(c),
+                      );
+                    },
+                  ),
+                ),
+              ),
+          ],
+
+          if (_clienteIdSeleccionado != null) ...[
+            const SizedBox(height: 12),
+
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('¿Agregar domicilio del cliente a la noticia?'),
+              subtitle: Text(
+                _cargandoDomicilioCliente
+                    ? 'Cargando domicilio...'
+                    : 'Domicilio: ${_domicilioCliente.isEmpty ? '—' : _domicilioCliente}',
+              ),
+              value: _usarDomicilioCliente,
+              onChanged: (_guardando || _cargandoDomicilioCliente || !_clienteTieneDomicilio)
+                  ? null
+                  : (v) {
+                      setState(() {
+                        _usarDomicilioCliente = v;
+                        if (v) {
+                          _domicilioCtrl.text = _domicilioCliente;
+                        } else {
+                          _domicilioCtrl.clear();
+                        }
+                      });
+                    },
+            ),
+          ],
+
+          const SizedBox(height: 12),
           TextFormField(
             controller: _descCtrl,
             decoration: const InputDecoration(
@@ -694,6 +915,8 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _domicilioCtrl,
+            readOnly: _usarDomicilioCliente,
+            enabled: !_guardando,
             decoration: const InputDecoration(
               labelText: 'Domicilio (opcional)',
               border: OutlineInputBorder(),
@@ -819,6 +1042,8 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
           ],
 
           const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 12),
 
           Text('Fecha y hora de cita:', style: theme.textTheme.bodyMedium),
           const SizedBox(height: 4),

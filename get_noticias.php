@@ -14,7 +14,9 @@ if ($modo === 'admin') {
             COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
             n.descripcion,
             c.nombre AS cliente,
+            c.whatsapp AS cliente_whatsapp,
             n.domicilio,
+            n.ubicacion_en_mapa,
             n.reportero_id,
             r.nombre AS reportero,
             n.fecha_pago,
@@ -30,7 +32,8 @@ if ($modo === 'admin') {
             n.ruta_iniciada,
             n.ruta_iniciada_at,
             n.ultima_mod,
-            n.tiempo_en_nota
+            n.tiempo_en_nota,
+            n.limite_tiempo_minutos 
         FROM noticias n
         LEFT JOIN clientes c   ON n.cliente_id  = c.id
         LEFT JOIN reporteros r ON n.reportero_id = r.id
@@ -74,7 +77,9 @@ $sql = "
         COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
         n.descripcion,
         c.nombre AS cliente,
+        c.whatsapp AS cliente_whatsapp,
         n.domicilio,
+        n.ubicacion_en_mapa,
         n.reportero_id,
         r.nombre AS reportero,
         n.fecha_pago,

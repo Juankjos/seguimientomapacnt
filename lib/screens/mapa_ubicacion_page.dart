@@ -1,3 +1,4 @@
+// lib/screens/mapa_ubicacion_page.dart
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -169,13 +170,13 @@ class _MapaUbicacionPageState extends State<MapaUbicacionPage> {
       final lon = center.longitude;
 
       // Reverse geocoding: construye "Calle, CP Municipio"
-      final domicilio = await _obtenerDomicilioDesdeCoordenadas(lat, lon);
+      final ubicacion = await _obtenerDomicilioDesdeCoordenadas(lat, lon);
 
       await ApiService.actualizarUbicacionNoticia(
         noticiaId: widget.noticiaId,
         latitud: lat,
         longitud: lon,
-        domicilio: domicilio,
+        ubicacionEnMapa: ubicacion,
       );
 
       if (!mounted) return;
@@ -183,8 +184,8 @@ class _MapaUbicacionPageState extends State<MapaUbicacionPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            domicilio != null
-                ? 'Ubicación guardada:\n$domicilio'
+            ubicacion != null
+                ? 'Ubicación guardada:\n$ubicacion'
                 : 'Ubicación guardada correctamente',
           ),
         ),
@@ -195,7 +196,7 @@ class _MapaUbicacionPageState extends State<MapaUbicacionPage> {
         {
           'lat': lat,
           'lon': lon,
-          'domicilio': domicilio,
+          'ubicacion_en_mapa': ubicacion,
         },
       );
     } catch (e) {
