@@ -18,6 +18,7 @@ import 'empleado_destacado.dart';
 import 'rastreo_general.dart';
 import 'package:intl/intl.dart';
 import 'avisos_page.dart';
+import 'clientes_page.dart';
 
 enum AgendaView { year, month, day }
 
@@ -789,6 +790,17 @@ class _AgendaPageState extends State<AgendaPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const GestionReporterosPage()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.groups_rounded),
+            title: const Text('Clientes'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ClientesPage()),
               );
             },
           ),

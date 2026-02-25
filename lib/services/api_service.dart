@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
 import '../models/aviso.dart';
+import '../models/cliente.dart';
 
 class ReporteroBusqueda {
   final int id;
@@ -817,6 +818,109 @@ class ApiService {
 
     final List list = (decoded['data'] as List?) ?? [];
     return list.map((e) => Aviso.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  // 🔹 Buscar cliente
+  static Future<List<Cliente>> getClientes({String q = ''}) async {
+    final uri = Uri.parse('$baseUrl/search_clientes.php')
+        .replace(queryParameters: {'q': q});
+
+    final res = await http.get(uri);
+
+    if (res.statusCode != 200) {
+      throw Exception('Error en servidor (${res.statusCode}): ${res.body}');
+    }
+
+    final data = json.decode(res.body);
+    if (data is Map && data['success'] == true) {
+      final list = (data['data'] as List?) ?? [];
+      return list
+          .whereType<Map>()
+          .map((m) => Cliente.fromJson(m.map((k, v) => MapEntry(k.toString(), v))))
+          .toList();
+    }
+
+    throw Exception((data is Map ? data['message'] : null) ?? 'No se pudieron cargar clientes');
+  }
+
+  // 🔹 Buscar detalle de cliente
+  static Future<Cliente> getClienteDetalle({required int clienteId}) async {
+    if (clienteId <= 0) {
+      throw Exception('clienteId inválido: $clienteId');
+    }
+    final uri = Uri.parse('$baseUrl/get_cliente.php')
+        .replace(queryParameters: {'id': clienteId.toString()});
+    final res = await http.get(uri);
+    if (res.statusCode != 200) {
+      throw Exception('Error en servidor (${res.statusCode}): ${res.body}');
+    }
+    final data = json.decode(res.body);
+    if (data is Map && data['success'] == true) {
+      return Cliente.fromJson(
+        (data['data'] as Map).map((k, v) => MapEntry(k.toString(), v)),
+      );
+    }
+    throw Exception((data is Map ? data['message'] : null) ?? 'No se pudo cargar cliente');
+  }
+
+  // 🔹 Crear cliente
+  static Future<Cliente> createCliente({
+    required String nombre,
+    String? whatsapp,
+    String? domicilio,
+    required String password,
+  }) async {
+    final url = Uri.parse('$baseUrl/create_cliente.php');
+
+    final res = await http.post(url, body: {
+      'nombre': nombre,
+      'whatsapp': (whatsapp ?? '').trim(),
+      'domicilio': (domicilio ?? '').trim(),
+      'password': password,
+    });
+
+    if (res.statusCode != 200) {
+      throw Exception('Error en servidor (${res.statusCode}): ${res.body}');
+    }
+
+    final data = json.decode(res.body);
+    if (data is Map && data['success'] == true) {
+      return Cliente.fromJson(
+        (data['data'] as Map).map((k, v) => MapEntry(k.toString(), v)),
+      );
+    }
+
+    throw Exception((data is Map ? data['message'] : null) ?? 'No se pudo crear cliente');
+  }
+
+  // 🔹 Actualizar cliente
+  static Future<Cliente> updateCliente({
+    required int id,
+    required String nombre,
+    String? whatsapp,
+    String? domicilio,
+  }) async {
+    final url = Uri.parse('$baseUrl/update_cliente.php');
+
+    final res = await http.post(url, body: {
+      'id': id.toString(),
+      'nombre': nombre.trim(),
+      'whatsapp': (whatsapp ?? '').trim(),
+      'domicilio': (domicilio ?? '').trim(),
+    });
+
+    if (res.statusCode != 200) {
+      throw Exception('Error en servidor (${res.statusCode}): ${res.body}');
+    }
+
+    final data = json.decode(res.body);
+    if (data is Map && data['success'] == true) {
+      return Cliente.fromJson(
+        (data['data'] as Map).map((k, v) => MapEntry(k.toString(), v)),
+      );
+    }
+
+    throw Exception((data is Map ? data['message'] : null) ?? 'No se pudo actualizar cliente');
   }
 
 }
