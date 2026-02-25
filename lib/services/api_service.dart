@@ -620,6 +620,11 @@ class ApiService {
     DateTime? fechaCita,
     String? tipoDeNota,
     int? limiteTiempoMinutos,
+
+    bool setCliente = false,
+    int? clienteId,
+    bool setDomicilio = false,
+    String? domicilio,
   }) async {
     final url = Uri.parse('$baseUrl/update_noticia.php');
 
@@ -634,6 +639,8 @@ class ApiService {
       'ultima_mod': _mysqlDateTime(DateTime.now()),
     };
 
+    if (setCliente) body['cliente_id'] = clienteId?.toString() ?? '';
+    if (setDomicilio) body['domicilio'] = (domicilio ?? '');
     if (titulo != null) body['noticia'] = titulo;
     if (descripcion != null) body['descripcion'] = descripcion;
     if (fechaCita != null) body['fecha_cita'] = fechaCitaStr!;

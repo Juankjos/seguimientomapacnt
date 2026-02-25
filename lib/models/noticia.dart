@@ -6,6 +6,7 @@ class Noticia {
   final String? descripcion;
   final String? ubicacionEnMapa;
   final String? cliente;
+  final int? clienteId;
   final String? clienteWhatsapp;
   final String? domicilio;  
   final int? reporteroId;
@@ -35,6 +36,7 @@ class Noticia {
     required this.reportero,
     this.descripcion,
     this.cliente,
+    this.clienteId,
     this.clienteWhatsapp,
     this.domicilio,
     this.ubicacionEnMapa,
@@ -104,6 +106,7 @@ class Noticia {
       tipoDeNota: parseTipo(json['tipo_de_nota']),
       descripcion: json['descripcion'],
       cliente: json['cliente'],
+      clienteId: json['cliente_id'] == null ? null : int.tryParse(json['cliente_id'].toString()),
       clienteWhatsapp: json['cliente_whatsapp']?.toString(),
       domicilio: json['domicilio'],
       ubicacionEnMapa: json['ubicacion_en_mapa']?.toString(),
@@ -131,6 +134,9 @@ class Noticia {
   }
 
   Noticia copyWith({
+    int? clienteId,
+    String? cliente,
+    String? clienteWhatsapp,
     String? domicilio,
     String? ubicacionEnMapa,
     double? latitud,
@@ -149,6 +155,8 @@ class Noticia {
       reportero: reportero,
       descripcion: descripcion,
       cliente: cliente,
+      clienteId: clienteId ?? this.clienteId,
+      clienteWhatsapp: clienteWhatsapp ?? this.clienteWhatsapp,
       domicilio: domicilio ?? this.domicilio,
       ubicacionEnMapa: ubicacionEnMapa ?? this.ubicacionEnMapa,
       reporteroId: reporteroId,

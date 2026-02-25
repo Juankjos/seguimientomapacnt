@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
+import '../models/cliente.dart';
 
 const double _kWebMaxContentWidth = 1200;
 const double _kWebWideBreakpoint = 980;
@@ -91,8 +92,29 @@ class EditarNoticiaPage extends StatefulWidget {
 class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
   late final TextEditingController _tituloCtrl;
   late final TextEditingController _descCtrl;
+  late final TextEditingController _domCtrl;
+
   int _limiteTiempoMin = 60;
 
+  // ---------- Cliente ----------
+  final TextEditingController _buscarClienteCtrl = TextEditingController();
+  List<Cliente> _resultadosClientes = [];
+  bool _buscandoClientes = false;
+  bool _mostrarBuscadorCliente = false;
+
+  int? _clienteId;
+  String? _clienteNombre;
+  Cliente? _clienteSeleccionado;
+
+  bool _usarDomicilioCliente = false;
+  bool _cargandoClienteDetalle = false;
+
+  String get _domicilioCliente => (_clienteSeleccionado?.domicilio ?? '').trim();
+  bool get _clienteTieneDomicilio => _domicilioCliente.isNotEmpty;
+  bool get _tieneClienteAsignado =>
+    _clienteId != null || (_clienteNombre?.trim().isNotEmpty ?? false);
+
+  // ---------- Límite ----------
   static const List<int> _limitesMin = [60, 120, 180, 240, 300];
 
   String _labelLimite(int min) {
@@ -103,11 +125,11 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
   int _normalizarLimite(int? min) {
     if (min == null) return 60;
     final clamped = min.clamp(60, 300);
-    // Lo ajusta al múltiplo de 60 más cercano (por si llega 90, 150, etc.)
     final h = ((clamped / 60).round()).clamp(1, 5);
     return h * 60;
   }
 
+  // ---------- Cita ----------
   DateTime? _fechaCita;
   bool _guardando = false;
   String? _error;
@@ -166,11 +188,8 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
       final m = int.tryParse(parts[1]);
 
       if (h12 == null || m == null) return null;
-
       if (h12 < 1 || h12 > 12) return null;
-
       if (m < 0 || m > 59) return null;
-
       if (minuteInterval > 1 && (m % minuteInterval != 0)) return null;
 
       int h24;
@@ -203,7 +222,8 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
               }
               Navigator.pop(ctx, t);
             }
-            const double boxSize = 124; 
+
+            const double boxSize = 124;
             return SafeArea(
               child: Padding(
                 padding: EdgeInsets.only(
@@ -259,7 +279,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                                 keyboardType: TextInputType.number,
                                 textInputAction: TextInputAction.done,
                                 onSubmitted: (_) => tryAccept(),
-                                expands: true, 
+                                expands: true,
                                 maxLines: null,
                                 minLines: null,
                                 inputFormatters: [
@@ -278,7 +298,8 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                                   errorText: errorText,
                                   border: const OutlineInputBorder(),
                                   isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12),
                                 ),
                                 onChanged: (_) {
                                   if (errorText != null) {
@@ -326,7 +347,8 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                         child: Text(
                           'Tip: escribe, por ejemplo, 930 → 9:30 ó 0930 → 9:30',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withOpacity(0.7),
+                            color:
+                                theme.colorScheme.onSurface.withOpacity(0.7),
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -341,7 +363,6 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
       },
     );
   }
-
 
   Future<TimeOfDay?> _showCarouselTimePicker(
     BuildContext context, {
@@ -369,7 +390,8 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
           child: Container(
             decoration: BoxDecoration(
               color: theme.cardColor,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(18)),
             ),
             padding: const EdgeInsets.only(top: 10, bottom: 12),
             child: Column(
@@ -423,15 +445,34 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     super.initState();
     _tituloCtrl = TextEditingController(text: widget.noticia.noticia);
     _descCtrl = TextEditingController(text: widget.noticia.descripcion ?? '');
+    _domCtrl = TextEditingController(text: widget.noticia.domicilio ?? '');
+
     _fechaCita = widget.noticia.fechaCita;
     _tipoDeNota = widget.noticia.tipoDeNota;
     _limiteTiempoMin = _normalizarLimite(widget.noticia.limiteTiempoMinutos);
+
+    _clienteId = widget.noticia.clienteId;
+    _clienteNombre =
+        (widget.noticia.cliente ?? '').trim().isEmpty ? null : widget.noticia.cliente;
+
+    if (_tieneClienteAsignado && _domCtrl.text.trim().isNotEmpty) {
+      _usarDomicilioCliente = true;
+    }
+
+    if (_clienteId != null) {
+      _cargandoClienteDetalle = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _cargarClienteDetalle(_clienteId!);
+      });
+    }
   }
 
   @override
   void dispose() {
     _tituloCtrl.dispose();
     _descCtrl.dispose();
+    _domCtrl.dispose();
+    _buscarClienteCtrl.dispose();
     super.dispose();
   }
 
@@ -505,6 +546,116 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     return r ?? false;
   }
 
+  String _norm(String s) => s
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .replaceAll(RegExp(r'[.,#]'), '');
+
+  Future<void> _cargarClienteDetalle(int id) async {
+    setState(() => _cargandoClienteDetalle = true);
+    try {
+      final det = await ApiService.getClienteDetalle(clienteId: id);
+      if (!mounted) return;
+
+      final domNota = _domCtrl.text.trim();
+      final domCli = (det.domicilio ?? '').trim();
+
+      bool shouldUse = false;
+      if (domNota.isNotEmpty && domCli.isNotEmpty) {
+        final a = _norm(domNota);
+        final b = _norm(domCli);
+        shouldUse = (a == b) || a.contains(b) || b.contains(a);
+      }
+
+      setState(() {
+        _clienteSeleccionado = det;
+        _cargandoClienteDetalle = false;
+        _usarDomicilioCliente = shouldUse;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _cargandoClienteDetalle = false);
+
+      if (_domCtrl.text.trim().isNotEmpty) {
+        setState(() => _usarDomicilioCliente = true);
+      }
+    }
+  }
+
+  Future<void> _buscarClientes(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() => _resultadosClientes = []);
+      return;
+    }
+    setState(() => _buscandoClientes = true);
+    try {
+      final resultados = await ApiService.getClientes(q: query.trim());
+      if (!mounted) return;
+      setState(() => _resultadosClientes = resultados);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al buscar clientes: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _buscandoClientes = false);
+    }
+  }
+
+  Future<void> _seleccionarCliente(Cliente c) async {
+    setState(() {
+      _clienteId = c.id;
+      _clienteNombre = c.nombre;
+      _clienteSeleccionado = null;
+      _mostrarBuscadorCliente = false;
+      _cargandoClienteDetalle = true;
+    });
+
+    try {
+      final det = await ApiService.getClienteDetalle(clienteId: c.id);
+      if (!mounted) return;
+
+      setState(() {
+        _clienteSeleccionado = det;
+        _cargandoClienteDetalle = false;
+      });
+
+      final dom = (det.domicilio ?? '').trim();
+      if (dom.isNotEmpty) {
+        setState(() {
+          _usarDomicilioCliente = true;
+          _domCtrl.text = dom;
+        });
+      } else {
+        setState(() {
+          _usarDomicilioCliente = false;
+          _domCtrl.clear();
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _cargandoClienteDetalle = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo cargar domicilio del cliente: $e')),
+      );
+    }
+  }
+
+  void _quitarCliente() {
+    setState(() {
+      _clienteId = null;
+      _clienteNombre = null;
+      _clienteSeleccionado = null;
+
+      _mostrarBuscadorCliente = false;
+      _buscarClienteCtrl.clear();
+      _resultadosClientes = [];
+      _usarDomicilioCliente = false;
+      _domCtrl.clear();
+    });
+  }
+
   bool _huboCambioFecha() {
     final old = widget.noticia.fechaCita;
     final cur = _fechaCita;
@@ -520,6 +671,24 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     final desc = _descCtrl.text.trim();
     final limiteMin = _limiteTiempoMin;
 
+    // --------- Cliente/Domicilio (Admin) ---------
+    final int? oldClienteId = widget.noticia.clienteId;
+    final int? newClienteId = _clienteId;
+
+    final bool setCliente = _esAdmin && (newClienteId != oldClienteId);
+
+    final bool clienteQuitado =
+        _esAdmin && (oldClienteId != null) && (newClienteId == null);
+
+    final String oldDom = (widget.noticia.domicilio ?? '').trim();
+    final String newDom = _domCtrl.text.trim();
+
+    final bool setDomicilio =
+        _esAdmin && (clienteQuitado || newDom != oldDom);
+
+    final String? domSend = clienteQuitado ? '' : newDom;
+
+    // --------- Validaciones ---------
     if (_esAdmin && titulo.isEmpty) {
       setState(() => _error = 'El título no puede estar vacío.');
       return;
@@ -537,8 +706,8 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     }
 
     if (!_esAdmin && !_puedeEditarFecha && _huboCambioFecha()) {
-      setState(() =>
-          _error = 'Límite alcanzado: ya no puedes cambiar la fecha de cita.');
+      setState(
+          () => _error = 'Límite alcanzado: ya no puedes cambiar la fecha de cita.');
       return;
     }
 
@@ -551,13 +720,15 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
         : null;
 
     final int? limiteSend =
-      (limiteMin != widget.noticia.limiteTiempoMinutos) ? limiteMin : null;
+        (limiteMin != widget.noticia.limiteTiempoMinutos) ? limiteMin : null;
 
     final nadaQueGuardar = (tituloSend == null) &&
         (descSend == null) &&
         (fechaSend == null) &&
         (tipoSend == null) &&
-        (limiteSend == null);
+        (limiteSend == null) &&
+        !setCliente &&
+        !setDomicilio;
 
     if (nadaQueGuardar) {
       setState(() => _error = 'No tienes cambios para guardar.');
@@ -597,6 +768,10 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
         fechaCita: fechaSend,
         tipoDeNota: tipoSend,
         limiteTiempoMinutos: limiteSend,
+        clienteId: newClienteId,
+        setCliente: setCliente,
+        domicilio: domSend,
+        setDomicilio: setDomicilio,
       );
 
       if (!mounted) return;
@@ -634,9 +809,8 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
 
     final anterior = widget.noticia.fechaCitaAnterior;
     final actual = widget.noticia.fechaCita;
-    final mostrarAnterior = anterior != null &&
-        actual != null &&
-        anterior.toIso8601String() != actual.toIso8601String();
+    final mostrarAnterior =
+        anterior != null && actual != null && anterior.toIso8601String() != actual.toIso8601String();
 
     final cambios = widget.noticia.fechaCitaCambios;
 
@@ -738,8 +912,8 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
             const SizedBox(height: 6),
             Text(
               _esAdmin
-                  ? '• Puedes editar título, descripción y fecha.\n'
-                  : '• Solo se puede capturar descripción una vez (Si se encuentra vacía).\n'
+                  ? '• Puedes editar título, descripción, cliente/domicilio y fecha.\n'
+                  : '• Solo se puede capturar descripción una vez (si está vacía).\n'
                     '• Fecha de cita: máximo 2 cambios.\n',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface.withOpacity(0.8),
@@ -757,9 +931,11 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
 
     final anterior = widget.noticia.fechaCitaAnterior;
     final actual = widget.noticia.fechaCita;
-    final bool mostrarAnterior = anterior != null &&
-        actual != null &&
-        anterior.toIso8601String() != actual.toIso8601String();
+    final bool mostrarAnterior =
+        anterior != null && actual != null && anterior.toIso8601String() != actual.toIso8601String();
+
+    final bool domicilioBloqueado =
+      _usarDomicilioCliente || (_tieneClienteAsignado && _cargandoClienteDetalle);
 
     final cambios = widget.noticia.fechaCitaCambios;
 
@@ -778,8 +954,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                 const SizedBox(width: 8),
                 Text(
                   _esAdmin ? 'Modo Admin' : 'Modo Reportero',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ],
             ),
@@ -809,9 +984,167 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
               enabled: _puedeEditarTitulo,
               decoration: InputDecoration(
                 labelText: 'Título',
-                helperText: _puedeEditarTitulo
-                    ? 'Puedes editar el título.'
-                    : 'Solo Admin puede editar el título.',
+                helperText:
+                    _puedeEditarTitulo ? 'Puedes editar el título.' : 'Solo Admin puede editar el título.',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // ---------- Cliente ----------
+            Row(
+              children: [
+                const Icon(Icons.person_outline),
+                const SizedBox(width: 8),
+                Text(
+                  'Cliente (opcional)',
+                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Cliente: ${_clienteNombre ?? 'Ninguno'}',
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ),
+
+            if (_esAdmin) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (!_tieneClienteAsignado)
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.person_search),
+                      label: Text(_mostrarBuscadorCliente ? 'Ocultar buscador' : 'Buscar cliente'),
+                      onPressed: () => setState(() {
+                        _mostrarBuscadorCliente = !_mostrarBuscadorCliente;
+                      }),
+                    )
+                  else ...[
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.person_off),
+                      label: const Text('Quitar asignación'),
+                      onPressed: _quitarCliente,
+                    ),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.person_search),
+                      label: Text(_mostrarBuscadorCliente ? 'Ocultar buscador' : 'Cambiar cliente'),
+                      onPressed: () => setState(() {
+                        _mostrarBuscadorCliente = !_mostrarBuscadorCliente;
+                      }),
+                    ),
+                  ],
+                ],
+              ),
+
+              if (_mostrarBuscadorCliente) ...[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _buscarClienteCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Buscar cliente por nombre',
+                    prefixIcon: const Icon(Icons.search),
+                    border: const OutlineInputBorder(),
+                    suffixIcon: _buscarClienteCtrl.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              setState(() {
+                                _buscarClienteCtrl.clear();
+                                _resultadosClientes = [];
+                              });
+                            },
+                          )
+                        : null,
+                  ),
+                  onChanged: (v) {
+                    setState(() {});
+                    _buscarClientes(v);
+                  },
+                ),
+                const SizedBox(height: 10),
+                if (_buscandoClientes)
+                  const Center(child: CircularProgressIndicator())
+                else if (_resultadosClientes.isEmpty)
+                  const Text('Sin resultados')
+                else
+                  SizedBox(
+                    height: 220,
+                    child: _maybeScrollbar(
+                      child: ListView.builder(
+                        itemCount: _resultadosClientes.length,
+                        itemBuilder: (_, i) {
+                          final c = _resultadosClientes[i];
+                          return ListTile(
+                            leading: const Icon(Icons.person),
+                            title: Text(c.nombre),
+                            onTap: () => _seleccionarCliente(c),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+              ],
+            ],
+
+            if (_clienteId != null) ...[
+              const SizedBox(height: 10),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('¿Agregar domicilio del cliente a la noticia?'),
+                subtitle: Text(
+                  _cargandoClienteDetalle
+                      ? 'Cargando domicilio...'
+                      : 'Domicilio del cliente: ${_domicilioCliente.isEmpty ? '—' : _domicilioCliente}',
+                ),
+                value: _usarDomicilioCliente,
+                onChanged: (!_esAdmin || _cargandoClienteDetalle)
+                  ? null
+                  : (v) {
+                      if (v && !_clienteTieneDomicilio) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('El cliente no tiene domicilio registrado')),
+                        );
+                        return;
+                      }
+                      setState(() {
+                        _usarDomicilioCliente = v;
+                        if (v) {
+                          _domCtrl.text = _domicilioCliente;
+                        } else {
+                          _domCtrl.clear();
+                        }
+                      });
+                    },
+              ),
+            ],
+
+            const SizedBox(height: 12),
+
+            // ---------- Domicilio ----------
+            TextField(
+              controller: _domCtrl,
+              enabled: _esAdmin && !domicilioBloqueado,
+              maxLines: 2,
+              decoration: InputDecoration(
+                labelText: 'Domicilio',
+                helperText: _clienteId == null
+                    ? 'Puedes capturar domicilio manual.'
+                    : (domicilioBloqueado
+                        ? 'Bloqueado: usando domicilio del cliente.'
+                        : 'Escribe domicilio manual (toggle apagado limpia y habilita).'),
                 border: const OutlineInputBorder(),
               ),
             ),
@@ -854,6 +1187,8 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
               },
             ),
 
+            const SizedBox(height: 12),
+
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
@@ -872,9 +1207,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    _fechaCita != null
-                        ? _fmtFechaHora(_fechaCita!)
-                        : 'Sin fecha de cita',
+                    _fechaCita != null ? _fmtFechaHora(_fechaCita!) : 'Sin fecha de cita',
                     style: theme.textTheme.bodyMedium,
                   ),
 

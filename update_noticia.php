@@ -15,10 +15,7 @@ function normalize_mysql_datetime($v) {
     if ($s === '') return null;
 
     $s = str_replace('T', ' ', $s);
-
-    if (strlen($s) >= 19) {
-        $s = substr($s, 0, 19);
-    }
+    if (strlen($s) >= 19) $s = substr($s, 0, 19);
 
     $dt = DateTime::createFromFormat('Y-m-d H:i:s', $s);
     if (!$dt) return null;
@@ -27,7 +24,7 @@ function normalize_mysql_datetime($v) {
 }
 
 $noticiaId = isset($_POST['noticia_id']) ? intval($_POST['noticia_id']) : 0;
-$role      = isset($_POST['role']) ? trim($_POST['role']) : 'reportero';
+$role      = isset($_POST['role']) ? trim((string)$_POST['role']) : 'reportero';
 
 $titulo      = array_key_exists('noticia', $_POST) ? trim((string)$_POST['noticia']) : null;
 $descripcion = array_key_exists('descripcion', $_POST) ? trim((string)$_POST['descripcion']) : null;
@@ -48,16 +45,51 @@ if ($tipoDeNota !== null) {
     }
 }
 
-$hasFechaCita = array_key_exists('fecha_cita', $_POST);
-$fechaNueva = $hasFechaCita ? normalize_mysql_datetime($_POST['fecha_cita']) : null;
+$hasClienteId = array_key_exists('cliente_id', $_POST);
+$clienteIdReq = $hasClienteId ? trim((string)$_POST['cliente_id']) : null;
 
-$ultimaMod = normalize_mysql_datetime($_POST['ultima_mod'] ?? null);
-if ($ultimaMod === null) {
-    $ultimaMod = date('Y-m-d H:i:s');
+$clienteIdParsed = null;
+if ($hasClienteId) {
+    if ($clienteIdReq === '' || $clienteIdReq === '0') {
+        $clienteIdParsed = null;
+    } else {
+        $tmp = (int)$clienteIdReq;
+        $clienteIdParsed = ($tmp > 0) ? $tmp : null;
+    }
 }
 
+$hasDomicilio = array_key_exists('domicilio', $_POST);
+$domicilioReq = $hasDomicilio ? trim((string)$_POST['domicilio']) : null;
+$domicilioParsed = $hasDomicilio ? (($domicilioReq === '') ? null : $domicilioReq) : null;
+
+if (($hasClienteId || $hasDomicilio) && $role !== 'admin') {
+    echo json_encode(['success' => false, 'message' => 'No tienes permiso para cambiar cliente/domicilio']);
+    exit;
+}
+
+if ($hasClienteId && $clienteIdParsed !== null) {
+    try {
+        $chk = $pdo->prepare("SELECT 1 FROM clientes WHERE id = ? LIMIT 1");
+        $chk->execute([$clienteIdParsed]);
+        if (!$chk->fetchColumn()) {
+            echo json_encode(['success' => false, 'message' => 'cliente_id no existe']);
+            exit;
+        }
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Error validando cliente_id', 'error' => $e->getMessage()]);
+        exit;
+    }
+}
+
+$hasFechaCita = array_key_exists('fecha_cita', $_POST);
+$fechaNueva   = $hasFechaCita ? normalize_mysql_datetime($_POST['fecha_cita']) : null;
+
+$ultimaMod = normalize_mysql_datetime($_POST['ultima_mod'] ?? null);
+if ($ultimaMod === null) $ultimaMod = date('Y-m-d H:i:s');
+
 $hasRutaIniciada = array_key_exists('ruta_iniciada', $_POST);
-$rutaIniciadaReq = $hasRutaIniciada ? intval($_POST['ruta_iniciada']) : null;
+$rutaIniciadaReq = $hasRutaIniciada ? intval((string)$_POST['ruta_iniciada']) : null;
 
 $hasTiempoNota = array_key_exists('tiempo_en_nota', $_POST);
 $tiempoNotaReq = $hasTiempoNota ? intval((string)$_POST['tiempo_en_nota']) : null;
@@ -84,19 +116,36 @@ if ($noticiaId <= 0) {
 try {
     $stmt = $pdo->prepare("
         SELECT
-            noticia,
-            tipo_de_nota,
-            descripcion,
-            fecha_cita,
-            fecha_cita_anterior,
-            fecha_cita_cambios,
-            ruta_iniciada,
-            ruta_iniciada_at,
-            hora_llegada,
-            tiempo_en_nota,
-            limite_tiempo_minutos
-        FROM noticias
-        WHERE id = ?
+            n.id,
+            n.noticia,
+            COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
+            n.descripcion,
+            n.cliente_id,
+            n.domicilio,
+            n.ubicacion_en_mapa,
+            n.reportero_id,
+            n.fecha_pago,
+            n.fecha_cita,
+            n.fecha_cita_anterior,
+            n.fecha_cita_cambios,
+            n.latitud,
+            n.longitud,
+            n.hora_llegada,
+            n.llegada_latitud,
+            n.llegada_longitud,
+            n.pendiente,
+            n.ultima_mod,
+            n.ruta_iniciada,
+            n.ruta_iniciada_at,
+            n.tiempo_en_nota,
+            n.limite_tiempo_minutos,
+            r.nombre AS reportero,
+            c.nombre AS cliente,
+            c.whatsapp AS cliente_whatsapp
+        FROM noticias n
+        LEFT JOIN reporteros r ON n.reportero_id = r.id
+        LEFT JOIN clientes  c ON n.cliente_id  = c.id
+        WHERE n.id = ?
         LIMIT 1
     ");
     $stmt->execute([$noticiaId]);
@@ -113,9 +162,13 @@ try {
     $oldDesc  = $actual['descripcion'];
     $oldFecha = $actual['fecha_cita'];
     $cambios  = (int)($actual['fecha_cita_cambios'] ?? 0);
+
     $rutaIniciadaActual = (int)($actual['ruta_iniciada'] ?? 0);
-    $oldTipo = $actual['tipo_de_nota'] ?? 'Nota';
+    $oldTipo   = $actual['tipo_de_nota'] ?? 'Nota';
     $oldLimite = (int)($actual['limite_tiempo_minutos'] ?? 60);
+
+    $oldClienteId = isset($actual['cliente_id']) ? (int)$actual['cliente_id'] : 0;
+    $oldDomTxt    = trim((string)($actual['domicilio'] ?? ''));
 
     $oldFechaStr = ($oldFecha ?? '');
     $newFechaStr = ($fechaNueva ?? '');
@@ -126,6 +179,27 @@ try {
 
     // ========================= ADMIN =========================
     if ($role === 'admin') {
+        // ----- cliente_id / domicilio -----
+        if ($hasClienteId) {
+        if ($clienteIdParsed === null) {
+            $updates[] = "cliente_id = NULL";
+            $updates[] = "domicilio = NULL";
+        } else {
+            if ($clienteIdParsed !== $oldClienteId) {
+            $updates[] = "cliente_id = :cliente_id";
+            $params[':cliente_id'] = $clienteIdParsed;
+            }
+        }
+        }
+
+        if ($hasDomicilio && !($hasClienteId && $clienteIdParsed === null)) {
+            $newDomTxt = trim((string)($domicilioParsed ?? ''));
+            if ($newDomTxt !== $oldDomTxt) {
+                $updates[] = "domicilio = :domicilio";
+                $params[':domicilio'] = $domicilioParsed;
+            }
+        }
+
         if ($titulo !== null && $titulo !== '') {
             $updates[] = "noticia = :noticia";
             $params[':noticia'] = $titulo;
@@ -168,8 +242,7 @@ try {
                 echo json_encode(['success' => false, 'message' => 'La descripción ya fue capturada y no se puede modificar']);
                 exit;
             }
-
-            if (trim($descripcion) === '') {
+            if (trim((string)$descripcion) === '') {
                 echo json_encode(['success' => false, 'message' => 'La descripción no puede quedar vacía']);
                 exit;
             }
@@ -246,13 +319,18 @@ try {
     $wantsTiempoNota   = $hasTiempoNota;
 
     if (empty($updates)) {
-        if ($wantsRutaIniciada && $rutaIniciadaActual === 1) {
+        if (($wantsRutaIniciada && $rutaIniciadaActual === 1) ||
+            ($wantsTiempoNota && $tiempoNotaActual !== null && trim((string)$tiempoNotaActual) !== '' && intval($tiempoNotaActual) === intval($tiempoNotaReq))) {
+
             $stmt2 = $pdo->prepare("
                 SELECT
                     n.id,
                     n.noticia,
                     COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
                     n.descripcion,
+                    n.cliente_id,
+                    c.nombre AS cliente,
+                    c.whatsapp AS cliente_whatsapp,
                     n.domicilio,
                     n.ubicacion_en_mapa,
                     n.reportero_id,
@@ -274,6 +352,7 @@ try {
                     r.nombre AS reportero
                 FROM noticias n
                 LEFT JOIN reporteros r ON n.reportero_id = r.id
+                LEFT JOIN clientes  c ON n.cliente_id  = c.id
                 WHERE n.id = ?
                 LIMIT 1
             ");
@@ -282,52 +361,8 @@ try {
 
             echo json_encode([
                 'success' => true,
-                'message' => 'Ruta ya estaba iniciada',
-                'data' => $row
-            ]);
-            exit;
-        }
-
-        if ($wantsTiempoNota && $tiempoNotaActual !== null && trim((string)$tiempoNotaActual) !== ''
-            && intval($tiempoNotaActual) === intval($tiempoNotaReq)) {
-
-            $stmt2 = $pdo->prepare("
-                SELECT
-                    n.id,
-                    n.noticia,
-                    COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
-                    n.descripcion,
-                    n.domicilio,
-                    n.ubicacion_en_mapa,
-                    n.reportero_id,
-                    n.fecha_pago,
-                    n.fecha_cita,
-                    n.fecha_cita_anterior,
-                    n.fecha_cita_cambios,
-                    n.latitud,
-                    n.longitud,
-                    n.hora_llegada,
-                    n.llegada_latitud,
-                    n.llegada_longitud,
-                    n.pendiente,
-                    n.ultima_mod,
-                    n.ruta_iniciada,
-                    n.ruta_iniciada_at,
-                    n.tiempo_en_nota,
-                    n.limite_tiempo_minutos,
-                    r.nombre AS reportero
-                FROM noticias n
-                LEFT JOIN reporteros r ON n.reportero_id = r.id
-                WHERE n.id = ?
-                LIMIT 1
-            ");
-            $stmt2->execute([$noticiaId]);
-            $row = $stmt2->fetch(PDO::FETCH_ASSOC);
-
-            echo json_encode([
-                'success' => true,
-                'message' => 'Tiempo en nota ya estaba registrado',
-                'data' => $row
+                'message' => 'Sin cambios (idempotente)',
+                'data' => $row,
             ]);
             exit;
         }
@@ -343,12 +378,15 @@ try {
     $stmtUp = $pdo->prepare($sql);
     $stmtUp->execute($params);
 
-    $stmt2 = $pdo->prepare("
+    $stmt3 = $pdo->prepare("
         SELECT
             n.id,
             n.noticia,
             COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
             n.descripcion,
+            n.cliente_id,
+            c.nombre AS cliente,
+            c.whatsapp AS cliente_whatsapp,
             n.domicilio,
             n.ubicacion_en_mapa,
             n.reportero_id,
@@ -366,14 +404,16 @@ try {
             n.ruta_iniciada,
             n.ruta_iniciada_at,
             n.tiempo_en_nota,
+            n.limite_tiempo_minutos,
             r.nombre AS reportero
         FROM noticias n
         LEFT JOIN reporteros r ON n.reportero_id = r.id
+        LEFT JOIN clientes  c ON n.cliente_id  = c.id
         WHERE n.id = ?
         LIMIT 1
     ");
-    $stmt2->execute([$noticiaId]);
-    $row = $stmt2->fetch(PDO::FETCH_ASSOC);
+    $stmt3->execute([$noticiaId]);
+    $row = $stmt3->fetch(PDO::FETCH_ASSOC);
 
     echo json_encode(['success' => true, 'data' => $row]);
     exit;
