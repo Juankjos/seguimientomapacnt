@@ -12,6 +12,14 @@ $nombre = trim($_POST['nombre'] ?? '');
 $whatsapp = trim($_POST['whatsapp'] ?? '');
 $domicilio = trim($_POST['domicilio'] ?? '');
 $password = trim($_POST['password'] ?? '');
+$correo = trim($_POST['correo'] ?? '');
+
+if ($correo !== null) {
+    if (!filter_var($correo, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'message' => 'Correo inválido']);
+        exit;
+    }
+}
 
 if ($nombre === '') {
     echo json_encode(['success' => false, 'message' => 'El nombre es requerido']);
@@ -24,17 +32,19 @@ if ($password === '' || strlen($password) < 6) {
 
 $whatsapp = ($whatsapp === '') ? null : $whatsapp;
 $domicilio = ($domicilio === '') ? null : $domicilio;
+$correo = ($correo === '') ? null : $correo;
 
 try {
     $hash = password_hash($password, PASSWORD_BCRYPT);
     $stmt = $pdo->prepare("
-        INSERT INTO clientes (nombre, whatsapp, domicilio, password)
-        VALUES (:nombre, :whatsapp, :domicilio, :password)
+        INSERT INTO clientes (nombre, whatsapp, domicilio, correo, password)
+        VALUES (:nombre, :whatsapp, :domicilio, :correo, :password)
     ");
     $stmt->execute([
         ':nombre' => $nombre,
         ':whatsapp' => $whatsapp,
         ':domicilio' => $domicilio,
+        ':correo' => $correo,
         ':password' => $hash,
     ]);
 
@@ -47,6 +57,7 @@ try {
             'nombre' => $nombre,
             'whatsapp' => $whatsapp,
             'domicilio' => $domicilio,
+            'correo' => $correo,
         ],
     ]);
 } catch (Exception $e) {

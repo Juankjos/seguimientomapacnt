@@ -4,12 +4,14 @@ class Cliente {
   final String nombre;
   final String? whatsapp;
   final String? domicilio;
+  final String? correo;
 
   const Cliente({
     required this.id,
     required this.nombre,
     this.whatsapp,
     this.domicilio,
+    this.correo,
   });
 
   factory Cliente.fromJson(Map<String, dynamic> json) {
@@ -22,6 +24,9 @@ class Cliente {
       domicilio: (json['domicilio']?.toString().trim().isEmpty ?? true)
           ? null
           : json['domicilio'].toString(),
+      correo: (json['correo']?.toString().trim().isEmpty ?? true)
+          ? null
+          : json['correo'].toString(),
     );
   }
 
@@ -29,12 +34,14 @@ class Cliente {
     String? nombre,
     String? whatsapp,
     String? domicilio,
+    String? correo,
   }) {
     return Cliente(
       id: id,
       nombre: nombre ?? this.nombre,
       whatsapp: whatsapp ?? this.whatsapp,
       domicilio: domicilio ?? this.domicilio,
+      correo: correo ?? this.correo,
     );
   }
 }

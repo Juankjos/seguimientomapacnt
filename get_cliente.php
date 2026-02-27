@@ -9,7 +9,7 @@ if ($id <= 0) {
   exit;
 }
 
-$stmt = $pdo->prepare("SELECT id, nombre, whatsapp, domicilio FROM clientes WHERE id = ? LIMIT 1");
+$stmt = $pdo->prepare("SELECT id, nombre, whatsapp, domicilio, correo FROM clientes WHERE id = ? LIMIT 1");
 $stmt->execute([$id]);
 $row = $stmt->fetch(PDO::FETCH_ASSOC);
 

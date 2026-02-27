@@ -901,6 +901,7 @@ class ApiService {
     required String nombre,
     String? whatsapp,
     String? domicilio,
+    String? correo,
     required String password,
   }) async {
     final url = Uri.parse('$baseUrl/create_cliente.php');
@@ -909,6 +910,7 @@ class ApiService {
       'nombre': nombre,
       'whatsapp': (whatsapp ?? '').trim(),
       'domicilio': (domicilio ?? '').trim(),
+      'correo': (correo ?? '').trim(),
       'password': password,
     });
 
@@ -932,6 +934,7 @@ class ApiService {
     required String nombre,
     String? whatsapp,
     String? domicilio,
+    String? correo,
   }) async {
     final url = Uri.parse('$baseUrl/update_cliente.php');
 
@@ -940,6 +943,7 @@ class ApiService {
       'nombre': nombre.trim(),
       'whatsapp': (whatsapp ?? '').trim(),
       'domicilio': (domicilio ?? '').trim(),
+      'correo': (correo ?? '').trim(),
     });
 
     if (res.statusCode != 200) {

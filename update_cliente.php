@@ -12,6 +12,15 @@ $id = isset($_POST['id']) ? intval($_POST['id']) : 0;
 $nombre = trim($_POST['nombre'] ?? '');
 $whatsapp = trim($_POST['whatsapp'] ?? '');
 $domicilio = trim($_POST['domicilio'] ?? '');
+$correo = trim($_POST['correo'] ?? '');
+$correo = ($correo === '') ? null : $correo;
+
+if ($correo !== null) {
+    if (!filter_var($correo, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'message' => 'Correo inválido']);
+        exit;
+    }
+}
 
 if ($id <= 0) {
     echo json_encode(['success' => false, 'message' => 'id inválido']);
@@ -44,7 +53,8 @@ try {
         UPDATE clientes
         SET nombre = :nombre,
             whatsapp = :whatsapp,
-            domicilio = :domicilio
+            domicilio = :domicilio,
+            correo = :correo
         WHERE id = :id
         LIMIT 1
     ");
@@ -53,9 +63,10 @@ try {
         ':nombre' => $nombre,
         ':whatsapp' => $whatsapp,
         ':domicilio' => $domicilio,
+        ':correo' => $correo,
     ]);
 
-    $stmt2 = $pdo->prepare("SELECT id, nombre, whatsapp, domicilio FROM clientes WHERE id = ? LIMIT 1");
+    $stmt2 = $pdo->prepare("SELECT id, nombre, whatsapp, domicilio, correo FROM clientes WHERE id = ? LIMIT 1");
     $stmt2->execute([$id]);
     $row = $stmt2->fetch(PDO::FETCH_ASSOC);
 

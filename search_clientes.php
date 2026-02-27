@@ -4,7 +4,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 $q = isset($_GET['q']) ? trim($_GET['q']) : '';
 
-$sql = "SELECT id, nombre, whatsapp, domicilio FROM clientes WHERE 1=1";
+$sql = "SELECT id, nombre, whatsapp, domicilio, correo FROM clientes WHERE 1=1";
 $params = [];
 
 if ($q !== '') {

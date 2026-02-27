@@ -97,6 +97,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   final _nombreCtrl = TextEditingController();
   final _telCtrl = TextEditingController();
   final _domCtrl = TextEditingController();
+  final _correoCtrl = TextEditingController();
 
   bool _cargando = false;
   bool _guardando = false;
@@ -148,6 +149,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
     _nombreCtrl.dispose();
     _telCtrl.dispose();
     _domCtrl.dispose();
+    _correoCtrl.dispose();
     super.dispose();
   }
 
@@ -178,6 +180,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
     _telCtrl.text = _formatPhoneDigits(parsed.digits);
 
     _domCtrl.text = (c.domicilio ?? '');
+    _correoCtrl.text = (c.correo ?? '');
   }
 
   Future<void> _refrescar() async {
@@ -231,6 +234,13 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
     return null;
   }
 
+  String? _validarCorreo(String? v) {
+    final s = (v ?? '').trim();
+    if (s.isEmpty) return null;
+    final ok = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(s);
+    return ok ? null : 'Correo inválido';
+  }
+
   Future<void> _guardar() async {
     if (_guardando) return;
     if (!_formKey.currentState!.validate()) return;
@@ -239,6 +249,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
     final telDigits = _telCtrl.text.replaceAll(RegExp(r'\D'), '');
     final whatsapp = telDigits.isEmpty ? null : '$_lada$telDigits';
     final domicilio = _domCtrl.text.trim().isEmpty ? null : _domCtrl.text.trim();
+    final correo = _correoCtrl.text.trim().isEmpty ? null : _correoCtrl.text.trim();
 
     setState(() {
       _guardando = true;
@@ -251,6 +262,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
         nombre: nombre,
         whatsapp: whatsapp,
         domicilio: domicilio,
+        correo: correo,
       );
 
       if (!mounted) return;
@@ -302,6 +314,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   Widget build(BuildContext context) {
     final rawWhatsapp = (_cliente.whatsapp ?? '').trim();
     final domicilioDisplay = (_cliente.domicilio ?? '').trim();
+    final correoDisplay = (_cliente.correo ?? '').trim();
 
     final parsed = _parseWhatsapp(rawWhatsapp);
     final whatsappPretty = rawWhatsapp.isEmpty
@@ -402,6 +415,20 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
 
                       const SizedBox(height: 14),
                       TextFormField(
+                        controller: _correoCtrl,
+                        enabled: !_guardando,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Correo (opcional)',
+                          border: OutlineInputBorder(),
+                          hintText: 'ejemplo@gmail.com',
+                        ),
+                        validator: _validarCorreo,
+                        textInputAction: TextInputAction.next,
+                      ),
+
+                      const SizedBox(height: 14),
+                      TextFormField(
                         controller: _domCtrl,
                         enabled: !_guardando,
                         decoration: const InputDecoration(
@@ -439,6 +466,18 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
                                 tooltip: 'Copiar',
                                 icon: const Icon(Icons.copy),
                                 onPressed: () => _copiar('${parsed.lada}${parsed.digits}'),
+                              ),
+                      ),
+                      ListTile(
+                        title: const Text('Correo Actual',
+                            style: TextStyle(fontWeight: FontWeight.w800)),
+                        subtitle: Text(correoDisplay.isEmpty ? '—' : correoDisplay),
+                        trailing: correoDisplay.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Copiar',
+                                icon: const Icon(Icons.copy),
+                                onPressed: () => _copiar(correoDisplay),
                               ),
                       ),
                       ListTile(

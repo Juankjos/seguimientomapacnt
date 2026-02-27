@@ -275,6 +275,7 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
   final _domCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _pass2Ctrl = TextEditingController();
+  final _correoCtrl = TextEditingController();
 
   bool _creando = false;
   String? _error;
@@ -286,7 +287,15 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
     _domCtrl.dispose();
     _passCtrl.dispose();
     _pass2Ctrl.dispose();
+    _correoCtrl.dispose();
     super.dispose();
+  }
+
+  String? _validarCorreo(String? v) {
+    final s = (v ?? '').trim();
+    if (s.isEmpty) return null;
+    final ok = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(s);
+    return ok ? null : 'Correo inválido';
   }
 
   Future<void> _crear() async {
@@ -298,6 +307,7 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
     final domicilio = _domCtrl.text.trim();
     final pass = _passCtrl.text.trim();
     final pass2 = _pass2Ctrl.text.trim();
+    final correo = _correoCtrl.text.trim();
 
     if (pass != pass2) {
       setState(() => _error = 'Las contraseñas no coinciden');
@@ -314,6 +324,7 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
         nombre: nombre,
         whatsapp: whatsapp.isEmpty ? null : whatsapp,
         domicilio: domicilio.isEmpty ? null : domicilio,
+        correo: correo.isEmpty ? null : correo,
         password: pass,
       );
 
@@ -334,6 +345,7 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
     final viewInsetsBottom = MediaQuery.of(context).viewInsets.bottom;
     final h = MediaQuery.sizeOf(context).height;
     final w = MediaQuery.sizeOf(context).width;
+    final correo = _correoCtrl.text.trim();
 
     final isWideWeb = kIsWeb && w >= 980;
 
@@ -405,6 +417,19 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
                         ),
                         textInputAction: TextInputAction.next,
                         maxLines: 2,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _correoCtrl,
+                        enabled: !_creando,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Correo (opcional)',
+                          border: OutlineInputBorder(),
+                          hintText: 'ejemplo@dominio.com',
+                        ),
+                        validator: _validarCorreo,
+                        textInputAction: TextInputAction.next,
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
