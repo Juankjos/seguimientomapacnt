@@ -26,7 +26,7 @@ class ReporteroBusqueda {
 class ApiService {
 
   static const String baseUrl = 'https://nube.tvctepa.com/CNT';
-  static const String wsBaseUrl = 'ws://192.168.0.6'; //'ws://45.238.188.51:2246';
+  static const String wsBaseUrl = 'ws://192.168.2.68:3001'; //'ws://45.238.188.51:2246';
   static String wsToken = '';
   static String _mysqlDateTime(DateTime dt) => DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
   static bool _toBool(dynamic x) {
@@ -119,6 +119,30 @@ class ApiService {
     } else {
       throw Exception('Error en el servidor (${response.statusCode})');
     }
+  }
+
+  // 🔹 Noticias por cliente (historial en ventana de clientes)
+  static Future<List<Noticia>> getNoticiasPorCliente({required int clienteId}) async {
+    if (clienteId <= 0) throw Exception('clienteId inválido: $clienteId');
+
+    final uri = Uri.parse('$baseUrl/get_noticias_por_cliente.php')
+        .replace(queryParameters: {'cliente_id': clienteId.toString()});
+
+    final res = await http.get(uri);
+    if (res.statusCode != 200) {
+      throw Exception('Error en servidor (${res.statusCode}): ${res.body}');
+    }
+
+    final data = json.decode(res.body);
+    if (data is Map && data['success'] == true) {
+      final list = (data['data'] as List?) ?? [];
+      return list
+          .whereType<Map>()
+          .map((m) => Noticia.fromJson(m.map((k, v) => MapEntry(k.toString(), v))))
+          .toList();
+    }
+
+    throw Exception((data is Map ? data['message'] : null) ?? 'No se pudieron cargar noticias del cliente');
   }
 
   // 🔹 Crear noticia (admin)

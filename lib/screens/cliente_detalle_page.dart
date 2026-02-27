@@ -1,9 +1,12 @@
 // lib/screens/cliente_detalle_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 import '../models/cliente.dart';
+import '../models/noticia.dart';
 import '../services/api_service.dart';
+import 'noticia_detalle_page.dart';
 
 String _formatPhoneDigits(String digits) {
   if (digits.isEmpty) return '';
@@ -99,8 +102,10 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   bool _guardando = false;
   String? _error;
 
-  // ===== Ladas (solo América) =====
-  // Puedes agregar más sin problema.
+  List<Noticia> _noticiasCliente = [];
+  bool _cargandoNoticias = false;
+  String? _errorNoticias;
+
   static const _ladasAmerica = <({String label, String code})>[
     (label: 'México', code: '+52'),
     (label: 'Estados Unidos', code: '+1'),
@@ -127,14 +132,15 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
     (label: 'Brasil', code: '+55'),
   ];
 
-  String _lada = '+52'; // default MX
+  String _lada = '+52';
 
   @override
   void initState() {
     super.initState();
     _cliente = widget.cliente;
     _hidratarFormDesdeCliente(_cliente);
-    _refrescar(); // opcional
+    _cargarNoticiasCliente();
+    _refrescar();
   }
 
   @override
@@ -265,6 +271,29 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
       setState(() {
         _guardando = false;
         _error = e.toString();
+      });
+    }
+  }
+
+  Future<void> _cargarNoticiasCliente() async {
+    setState(() {
+      _cargandoNoticias = true;
+      _errorNoticias = null;
+    });
+
+    try {
+      final list = await ApiService.getNoticiasPorCliente(clienteId: _cliente.id);
+      if (!mounted) return;
+
+      setState(() {
+        _noticiasCliente = list;
+        _cargandoNoticias = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorNoticias = e.toString();
+        _cargandoNoticias = false;
       });
     }
   }
@@ -424,6 +453,97 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
                                 onPressed: () => _copiar(domicilioDisplay),
                               ),
                       ),
+
+                      const SizedBox(height: 18),
+                      const Divider(),
+
+                      ListTile(
+                        title: const Text(
+                          'Noticias del cliente',
+                          style: TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        trailing: IconButton(
+                          tooltip: 'Actualizar noticias',
+                          icon: const Icon(Icons.refresh),
+                          onPressed: _cargandoNoticias ? null : _cargarNoticiasCliente,
+                        ),
+                      ),
+
+                      if (_cargandoNoticias)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else if (_errorNoticias != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(_errorNoticias!, style: const TextStyle(color: Colors.red)),
+                        )
+                      else ...[
+                        Builder(builder: (context) {
+                          final agendadas = _noticiasCliente.where((n) => (n.pendiente ?? true) == true).toList();
+                          final terminadas = _noticiasCliente.where((n) => (n.pendiente ?? true) == false).toList();
+
+                          Widget lista(List<Noticia> items) {
+                            if (items.isEmpty) {
+                              return const Padding(
+                                padding: EdgeInsets.only(left: 16, bottom: 10),
+                                child: Text('Sin registros'),
+                              );
+                            }
+                            return ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: items.length,
+                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              itemBuilder: (_, i) {
+                                final n = items[i];
+                                final fecha = n.fechaCita;
+                                final fechaTxt = (fecha != null)
+                                    ? DateFormat('dd/MM/yyyy hh:mm a', 'es_MX').format(fecha)
+                                    : 'Sin fecha';
+                                final rep = (n.reportero ?? '').trim().isEmpty
+                                    ? 'Sin reportero'
+                                    : n.reportero!.trim();
+                                return ListTile(
+                                  leading: const Icon(Icons.article_outlined),
+                                  title: Text(n.noticia),
+                                  subtitle: Text('$fechaTxt • $rep'),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => NoticiaDetallePage(
+                                          noticia: n,
+                                          role: 'admin',
+                                          soloLectura: true,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            );
+                          }
+
+                          return Column(
+                            children: [
+                              ExpansionTile(
+                                initiallyExpanded: true,
+                                title: Text('Agendadas (${agendadas.length})',
+                                    style: const TextStyle(fontWeight: FontWeight.w800)),
+                                children: [lista(agendadas)],
+                              ),
+                              ExpansionTile(
+                                title: Text('Terminadas (${terminadas.length})',
+                                    style: const TextStyle(fontWeight: FontWeight.w800)),
+                                children: [lista(terminadas)],
+                              ),
+                            ],
+                          );
+                        }),
+                      ],
                     ],
                   ),
                 ),
