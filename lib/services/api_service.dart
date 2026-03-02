@@ -37,6 +37,22 @@ class ApiService {
     return s == '1' || s == 'true' || s == 'yes' || s == 'si';
   }
 
+  // 🔹 Ayuda con Headers para Login
+  static Map<String, String> _authHeaders() {
+    if (wsToken.trim().isEmpty) {
+      throw Exception('No autorizado (ws_token vacío)');
+    }
+    return {'Authorization': 'Bearer $wsToken'};
+  }
+
+  // 🔹 Ayuda con tokens en peticiones
+  static Map<String, String> _withToken(Map<String, String> body) {
+    if (wsToken.trim().isEmpty) {
+      throw Exception('No autorizado (ws_token vacío)');
+    }
+    return {...body, 'ws_token': wsToken};
+  }
+
   // 🔹 Login
   static Future<Map<String, dynamic>> login(
       String nombre, String password) async {
@@ -52,6 +68,9 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final Map<String, dynamic> data = json.decode(response.body);
+      if (data['success'] == true) {
+        ApiService.wsToken = (data['ws_token'] ?? '').toString();
+      }
       return data;
     } else {
       throw Exception('Error en la petición de login');
@@ -162,8 +181,12 @@ class ApiService {
     if (fechaCita != null) {
       fechaCitaStr = fechaCita.toIso8601String().substring(0, 19).replaceFirst('T', ' ');
     }
+    if (wsToken.trim().isEmpty) {
+      throw Exception('No autorizado (ws_token vacío)');
+    }
 
     final body = {
+      'ws_token': wsToken,
       'noticia': noticia,
       'tipo_de_nota': tipoDeNota, 
       'descripcion': descripcion ?? '',
@@ -174,7 +197,11 @@ class ApiService {
       'limite_tiempo_minutos': limiteTiempoMinutos.toString(),
     };
 
-    final response = await http.post(url, body: body);
+    final response = await http.post(
+      url,
+      body: body,
+      headers: {'Authorization': 'Bearer $wsToken'},
+    );
 
     if (response.statusCode == 200) {
       final Map<String, dynamic> data = json.decode(response.body);
@@ -485,12 +512,14 @@ class ApiService {
   }) async {
     final url = Uri.parse('$baseUrl/update_noticia.php');
 
-    final response = await http.post(url, body: {
+    final response = await http.post(url,body: _withToken({
       'noticia_id': noticiaId.toString(),
       'role': role,
       'ruta_iniciada': '1',
       'ultima_mod': _mysqlDateTime(DateTime.now()),
-    });
+      }),
+      headers: _authHeaders(),
+    );
 
     if (response.statusCode != 200) {
       throw Exception('Error en servidor (${response.statusCode})');
@@ -514,14 +543,20 @@ class ApiService {
     final ahora = DateTime.now();
     final horaLlegadaStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(ahora);
 
+    if (wsToken.trim().isEmpty) {
+      throw Exception('No autorizado (ws_token vacío)');
+    }
+
     final response = await http.post(
       url,
-      body: {
+      body: _withToken({
+        'ws_token': wsToken,
         'noticia_id': noticiaId.toString(),
         'latitud': latitud.toString(),
         'longitud': longitud.toString(),
         'hora_llegada': horaLlegadaStr,
-      },
+      }),
+      headers: _authHeaders(),
     );
 
     if (response.statusCode == 200) {
@@ -671,7 +706,18 @@ class ApiService {
     if (tipoDeNota != null) body['tipo_de_nota'] = tipoDeNota;
     if (limiteTiempoMinutos != null) { body['limite_tiempo_minutos'] = limiteTiempoMinutos.toString(); }
 
-    final response = await http.post(url, body: body);
+    if (wsToken.trim().isEmpty) {
+      throw Exception('No autorizado (ws_token vacío)');
+    }
+
+    final response = await http.post(
+      url,
+      body: {
+        ...body,
+        'ws_token': wsToken,
+      },
+      headers: {'Authorization': 'Bearer $wsToken'},
+    );
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
@@ -727,7 +773,15 @@ class ApiService {
       body['ubicacion_en_mapa'] = ubicacionEnMapa.trim();
     }
 
-    final response = await http.post(url, body: body);
+    final response = await http.post(url, body: _withToken({
+        'noticia_id': noticiaId.toString(),
+        'latitud': latitud.toString(),
+        'longitud': longitud.toString(),
+        'ultima_mod': _mysqlDateTime(DateTime.now()),
+        if (ubicacionEnMapa != null && ubicacionEnMapa.trim().isNotEmpty)
+          'ubicacion_en_mapa': ubicacionEnMapa.trim(),
+      }),
+    headers: _authHeaders(),);
 
     if (response.statusCode == 200) {
       final Map<String, dynamic> data = json.decode(response.body);

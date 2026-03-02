@@ -1,7 +1,6 @@
 <?php
 // --------- CORS ---------
 header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Credentials: true");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept, Authorization");
 header("Access-Control-Max-Age: 86400");
@@ -34,6 +33,19 @@ $pass    = getenv('DB_PASS');
 $charset = getenv('DB_CHARSET') ?: 'utf8mb4';
 
 $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset={$charset}";
+
+$mailCfg = [
+    'host' => getenv('SMTP_HOST'),
+    'port' => (int)(getenv('SMTP_PORT')),
+    'username' => getenv('SMTP_USER'),
+    'password' => getenv('SMTP_PASS'),
+    'from_email' => getenv('SMTP_FROM_EMAIL') ?: (getenv('SMTP_USER') ),
+    'from_name' => getenv('SMTP_FROM_NAME'),
+];
+
+if ($mailCfg['password'] === '') {
+    error_log("⚠️ SMTP_PASS vacío: correo deshabilitado hasta configurar .env");
+}
 
 try {
     $options = [

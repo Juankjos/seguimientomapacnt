@@ -1,5 +1,9 @@
 <?php
-require 'config.php';
+declare(strict_types=1);
+
+require __DIR__ . '/config.php';
+require __DIR__ . '/require_auth.php';
+require __DIR__ . '/mailer.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -23,8 +27,39 @@ function normalize_mysql_datetime($v) {
     return $dt->format('Y-m-d H:i:s');
 }
 
+function fmt_dt_mx(?string $mysql): string {
+    if ($mysql === null || trim($mysql) === '') return 'Sin cita programada';
+    try {
+        $dt = new DateTime($mysql, new DateTimeZone('America/Mexico_City'));
+        return $dt->format('d/m/Y H:i') . ' (hora local)';
+    } catch (Throwable $e) {
+        return $mysql;
+    }
+}
+
+// -------------------- INPUT (JSON o FORM) --------------------
+$raw  = file_get_contents('php://input');
+$json = json_decode($raw ?: '', true);
+$in = (is_array($json) && json_last_error() === JSON_ERROR_NONE) ? $json : $_POST;
+
+// Para reutilizar tu lógica basada en $_POST sin reescribir todo:
+if (is_array($in)) {
+    $_POST = $in;
+}
+
+// -------------------- AUTH (NO confiar en role del cliente) --------------------
+$user = require_auth($pdo, is_array($in) ? $in : []);
+$role = (string)($user['role'] ?? 'reportero');
+if (!in_array($role, ['admin', 'reportero'], true)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Rol inválido']);
+    exit;
+}
+
+$debugMail = (isset($_GET['debug_mail']) && $_GET['debug_mail'] === '1');
+
+// -------------------- INPUTS --------------------
 $noticiaId = isset($_POST['noticia_id']) ? intval($_POST['noticia_id']) : 0;
-$role      = isset($_POST['role']) ? trim((string)$_POST['role']) : 'reportero';
 
 $titulo      = array_key_exists('noticia', $_POST) ? trim((string)$_POST['noticia']) : null;
 $descripcion = array_key_exists('descripcion', $_POST) ? trim((string)$_POST['descripcion']) : null;
@@ -75,7 +110,7 @@ if ($hasClienteId && $clienteIdParsed !== null) {
             echo json_encode(['success' => false, 'message' => 'cliente_id no existe']);
             exit;
         }
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         http_response_code(500);
         echo json_encode(['success' => false, 'message' => 'Error validando cliente_id', 'error' => $e->getMessage()]);
         exit;
@@ -176,47 +211,66 @@ try {
 
     $horaLlegadaActual = $actual['hora_llegada'];
     $tiempoNotaActual  = $actual['tiempo_en_nota'];
+    $startedRouteNow = false;
+
+    $changedTitulo = false;
+    $changedDesc = false;
+    $changedTipo = false;
+    $changedFecha = false;
+    $changedCliente = false;
+    $changedDomicilio = false;
 
     // ========================= ADMIN =========================
     if ($role === 'admin') {
         // ----- cliente_id / domicilio -----
         if ($hasClienteId) {
-        if ($clienteIdParsed === null) {
-            $updates[] = "cliente_id = NULL";
-            $updates[] = "domicilio = NULL";
-        } else {
-            if ($clienteIdParsed !== $oldClienteId) {
-            $updates[] = "cliente_id = :cliente_id";
-            $params[':cliente_id'] = $clienteIdParsed;
+            if ($clienteIdParsed === null) {
+                if ($oldClienteId !== 0 || $oldDomTxt !== '') {
+                    $changedCliente = true;
+                    $changedDomicilio = true;
+                }
+                $updates[] = "cliente_id = NULL";
+                $updates[] = "domicilio = NULL";
+            } else {
+                if ($clienteIdParsed !== $oldClienteId) {
+                    $changedCliente = true;
+                    $updates[] = "cliente_id = :cliente_id";
+                    $params[':cliente_id'] = $clienteIdParsed;
+                }
             }
-        }
         }
 
         if ($hasDomicilio && !($hasClienteId && $clienteIdParsed === null)) {
             $newDomTxt = trim((string)($domicilioParsed ?? ''));
             if ($newDomTxt !== $oldDomTxt) {
+                $changedDomicilio = true;
                 $updates[] = "domicilio = :domicilio";
                 $params[':domicilio'] = $domicilioParsed;
             }
         }
 
         if ($titulo !== null && $titulo !== '') {
+            $changedTitulo = true;
             $updates[] = "noticia = :noticia";
             $params[':noticia'] = $titulo;
         }
 
         if ($descripcion !== null) {
+            $changedDesc = true;
             $updates[] = "descripcion = :descripcion";
             $params[':descripcion'] = ($descripcion === '') ? null : $descripcion;
         }
 
         if ($tipoDeNota !== null && $tipoDeNota !== $oldTipo) {
+            $changedTipo = true;
             $updates[] = "tipo_de_nota = :tipo_de_nota";
             $params[':tipo_de_nota'] = $tipoDeNota;
         }
 
         if ($hasFechaCita) {
             if ($cambiaFecha) {
+                $changedFecha = true;
+
                 $updates[] = "fecha_cita_anterior = :fecha_anterior";
                 $params[':fecha_anterior'] = $oldFecha;
 
@@ -247,12 +301,14 @@ try {
                 exit;
             }
 
+            $changedDesc = true;
             $updates[] = "descripcion = :descripcion";
             $params[':descripcion'] = $descripcion;
         }
 
         // Reportero SÍ puede cambiar tipo_de_nota
         if ($tipoDeNota !== null && $tipoDeNota !== $oldTipo) {
+            $changedTipo = true;
             $updates[] = "tipo_de_nota = :tipo_de_nota";
             $params[':tipo_de_nota'] = $tipoDeNota;
         }
@@ -263,6 +319,8 @@ try {
                     echo json_encode(['success' => false, 'message' => 'Límite alcanzado: ya no puedes cambiar la fecha de cita']);
                     exit;
                 }
+
+                $changedFecha = true;
 
                 if ($oldFecha !== null && $oldFecha !== '') {
                     $updates[] = "fecha_cita_anterior = :fecha_anterior";
@@ -292,6 +350,7 @@ try {
     if ($hasRutaIniciada && $rutaIniciadaReq === 1 && $rutaIniciadaActual === 0) {
         $updates[] = "ruta_iniciada = 1";
         $updates[] = "ruta_iniciada_at = COALESCE(ruta_iniciada_at, NOW())";
+        $startedRouteNow = true; 
     }
 
     // ========================= TIEMPO EN NOTA =========================
@@ -359,11 +418,12 @@ try {
             $stmt2->execute([$noticiaId]);
             $row = $stmt2->fetch(PDO::FETCH_ASSOC);
 
-            echo json_encode([
+            $out = [
                 'success' => true,
                 'message' => 'Sin cambios (idempotente)',
                 'data' => $row,
-            ]);
+            ];
+            echo json_encode($out);
             exit;
         }
 
@@ -374,10 +434,12 @@ try {
     $updates[] = "ultima_mod = :ultima_mod";
     $params[':ultima_mod'] = $ultimaMod;
 
+    // -------------------- UPDATE --------------------
     $sql = "UPDATE noticias SET " . implode(", ", $updates) . " WHERE id = :id LIMIT 1";
     $stmtUp = $pdo->prepare($sql);
     $stmtUp->execute($params);
 
+    // -------------------- TRAE ROW FINAL --------------------
     $stmt3 = $pdo->prepare("
         SELECT
             n.id,
@@ -415,9 +477,124 @@ try {
     $stmt3->execute([$noticiaId]);
     $row = $stmt3->fetch(PDO::FETCH_ASSOC);
 
-    echo json_encode(['success' => true, 'data' => $row]);
+    // -------------------- MAIL (según evento) --------------------
+    $mailStatus = 'skipped';
+    $mailError  = null;
+    $mailTo     = null;
+
+    // OJO: aquí decides cuándo sí notificar al cliente.
+    // Si no quieres spam, yo limitaría a: cambio de fecha, inicio de trayecto, llegada.
+    // Por ahora: lo que ya tienes + inicio de trayecto.
+    $shouldMailUpdate = ($changedTitulo || $changedDesc || $changedTipo || $changedFecha || $changedCliente || $changedDomicilio);
+    $shouldMailRoute  = $startedRouteNow;
+
+    try {
+        if (!($shouldMailUpdate || $shouldMailRoute)) {
+            $mailStatus = 'skipped_no_relevant_change';
+        } else {
+            $finalClienteId = (!empty($row['cliente_id'])) ? (int)$row['cliente_id'] : null;
+
+            if ($finalClienteId === null) {
+                $mailStatus = 'skipped_no_cliente';
+            } else {
+                $stmtC = $pdo->prepare("SELECT nombre, correo FROM clientes WHERE id = ? LIMIT 1");
+                $stmtC->execute([$finalClienteId]);
+                $c = $stmtC->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                $nombreCliente = trim((string)($c['nombre'] ?? ''));
+                $correoCliente = trim((string)($c['correo'] ?? ''));
+                $mailTo = $correoCliente;
+
+                if ($correoCliente === '') {
+                    $mailStatus = 'skipped_empty_email';
+                } elseif (!filter_var($correoCliente, FILTER_VALIDATE_EMAIL)) {
+                    $mailStatus = 'skipped_invalid_email';
+                } elseif (!is_array($mailCfg) || trim((string)($mailCfg['password'] ?? '')) === '') {
+                    $mailStatus = 'skipped_smtp_not_configured';
+                } else {
+                    // Datos para el correo
+                    $fechaTxt = fmt_dt_mx($row['fecha_cita'] ?? null);
+                    $tituloTxt = (string)($row['noticia'] ?? 'Noticia');
+                    $domTxt = trim((string)($row['domicilio'] ?? ''));
+                    $domTxt = ($domTxt !== '') ? $domTxt : 'Sin domicilio registrado';
+                    $repTxt = trim((string)($row['reportero'] ?? ''));
+
+                    // PRIORIDAD: si inició trayecto, manda ese correo (no el genérico)
+                    if ($shouldMailRoute) {
+                        $subject = 'Tu reportero ya va en camino';
+                        $body =
+                            "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
+                            "Tu reportero ya va en camino.\n\n" .
+                            "Asunto: {$tituloTxt}\n" .
+                            "Cita: {$fechaTxt}\n" .
+                            "Domicilio: {$domTxt}\n" .
+                            ($repTxt !== '' ? "Reportero: {$repTxt}\n" : "") .
+                            "Estatus: En trayecto\n\n" .
+                            "Soporte TVC Tepa";
+
+                        smtp_send_mail($mailCfg, $correoCliente, $nombreCliente, $subject, $body);
+                        $mailStatus = 'sent_route_started';
+
+                    } else {
+                        // Correo de actualización (tu flujo original, pero corrigiendo el texto)
+                        $cambiosTxt = [];
+
+                        // Comparaciones reales (solo si venían en request / aplican)
+                        $oldFechaCita = trim((string)($actual['fecha_cita'] ?? ''));
+                        $newFechaCita = trim((string)($row['fecha_cita'] ?? ''));
+                        if ($hasFechaCita && $oldFechaCita !== $newFechaCita) {
+                            $cambiosTxt[] = "• Se actualizó la fecha de cita: {$fechaTxt}";
+                        }
+
+                        $oldDom = trim((string)($actual['domicilio'] ?? ''));
+                        $newDom = trim((string)($row['domicilio'] ?? ''));
+                        if ($hasDomicilio && $oldDom !== $newDom) {
+                            $cambiosTxt[] = "• Se actualizó el domicilio: " . (($newDom !== '') ? $newDom : 'Sin domicilio');
+                        }
+
+                        $oldTipoLocal = trim((string)($actual['tipo_de_nota'] ?? ''));
+                        $newTipoLocal = trim((string)($row['tipo_de_nota'] ?? ''));
+                        if ($tipoDeNota !== null && $oldTipoLocal !== $newTipoLocal) {
+                            $cambiosTxt[] = "• Se actualizó el tipo de nota: " . (($newTipoLocal !== '') ? $newTipoLocal : 'Sin tipo');
+                        }
+
+                        $changesBlock = '';
+                        if (!empty($cambiosTxt)) {
+                            $changesBlock = "Cambios:\n" . implode("\n", $cambiosTxt) . "\n\n";
+                        }
+
+                        $subject = 'Actualización de tu cita / noticia';
+                        $body =
+                            "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
+                            "Se actualizó la información relacionada a tu solicitud.\n\n" .
+                            "Asunto: {$tituloTxt}\n" .
+                            "Cita: {$fechaTxt}\n\n" .
+                            $changesBlock .
+                            "Soporte TVC Tepa";
+
+                        smtp_send_mail($mailCfg, $correoCliente, $nombreCliente, $subject, $body);
+                        $mailStatus = 'sent_update';
+                    }
+                }
+            }
+        }
+    } catch (Throwable $e) {
+        $mailStatus = 'error';
+        $mailError  = $e->getMessage();
+        error_log("MAIL update_noticia error noticia_id={$noticiaId}: " . $mailError);
+    }
+
+    $out = ['success' => true, 'data' => $row];
+    if ($debugMail) {
+        $out['mail_status'] = $mailStatus;
+        $out['mail_to'] = $mailTo;
+        $out['mail_error'] = $mailError;
+    }
+
+    echo json_encode($out);
     exit;
-} catch (Exception $e) {
+
+} catch (Throwable $e) {
     http_response_code(500);
     echo json_encode([
         'success' => false,

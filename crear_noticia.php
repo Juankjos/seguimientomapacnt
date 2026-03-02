@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-ini_set('display_errors', '0');   // NO imprimir errores en salida
+ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/php-error.log');
 error_reporting(E_ALL);
@@ -9,6 +9,8 @@ error_reporting(E_ALL);
 header('Content-Type: application/json; charset=utf-8');
 
 require __DIR__ . '/config.php';
+require __DIR__ . '/require_auth.php';
+require __DIR__ . '/mailer.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
   http_response_code(405);
@@ -16,51 +18,70 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
   exit;
 }
 
-// ✅ debug flag por querystring
-$debug = isset($_GET['debug_fcm']) && $_GET['debug_fcm'] === '1';
-
-// ✅ Acepta JSON o x-www-form-urlencoded
 $raw  = file_get_contents('php://input');
 $json = json_decode($raw ?: '', true);
-
 $in = (is_array($json) && json_last_error() === JSON_ERROR_NONE) ? $json : $_POST;
+
+$user = require_auth($pdo, is_array($in) ? $in : []);
+
+$roleServer = (string)($user['role'] ?? 'reportero');
+
+if (!in_array($roleServer, ['admin', 'reportero'], true)) {
+  http_response_code(403);
+  echo json_encode(['success' => false, 'message' => 'Rol inválido']);
+  exit;
+}
+
+$debugFcm  = (isset($_GET['debug_fcm']) && $_GET['debug_fcm'] === '1');
+$debugMail = (isset($_GET['debug_mail']) && $_GET['debug_mail'] === '1');
 
 // Helpers
 $noticia     = isset($in['noticia']) ? trim((string)$in['noticia']) : '';
 $descripcion = isset($in['descripcion']) ? trim((string)$in['descripcion']) : '';
 $domicilio   = isset($in['domicilio']) ? trim((string)$in['domicilio']) : '';
 $fechaCita   = isset($in['fecha_cita']) ? trim((string)$in['fecha_cita']) : '';
-$tipoDeNota = isset($in['tipo_de_nota']) ? trim((string)$in['tipo_de_nota']) : 'Nota';
-$role = isset($in['role']) ? trim((string)$in['role']) : 'reportero';
+$tipoDeNota  = isset($in['tipo_de_nota']) ? trim((string)$in['tipo_de_nota']) : 'Nota';
 
 $limiteTiempoMinutos = 60;
 if (isset($in['limite_tiempo_minutos']) && $in['limite_tiempo_minutos'] !== '') {
   $limiteTiempoMinutos = (int)$in['limite_tiempo_minutos'];
 }
-
 if ($limiteTiempoMinutos < 60) {
   echo json_encode(['success' => false, 'message' => 'limite_tiempo_minutos debe ser mínimo 60']);
   exit;
 }
-
 if ($limiteTiempoMinutos > 65535) {
   echo json_encode(['success' => false, 'message' => 'limite_tiempo_minutos excede el máximo permitido']);
   exit;
 }
 
 if ($tipoDeNota === '') $tipoDeNota = 'Nota';
-
 $allowedTipos = ['Nota', 'Entrevista'];
 if (!in_array($tipoDeNota, $allowedTipos, true)) {
   echo json_encode(['success' => false, 'message' => 'tipo_de_nota inválido (usa Nota o Entrevista)']);
   exit;
 }
 
-// reportero_id opcional (null si no viene o viene vacío/0)
+if ($noticia === '') {
+  echo json_encode(['success' => false, 'message' => 'El campo noticia es obligatorio']);
+  exit;
+}
+
 $reporteroId = null;
 if (isset($in['reportero_id']) && $in['reportero_id'] !== '' && $in['reportero_id'] !== null) {
   $tmp = (int)$in['reportero_id'];
   if ($tmp > 0) $reporteroId = $tmp;
+}
+
+if ($roleServer !== 'admin') {
+  $selfId = (int)($user['id'] ?? 0);
+
+  if ($reporteroId !== null && $reporteroId !== $selfId) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'No puedes asignar noticias a otro reportero']);
+    exit;
+  }
+  if ($reporteroId === null) $reporteroId = $selfId;
 }
 
 $clienteId = null;
@@ -78,27 +99,13 @@ if ($clienteId !== null) {
   }
 }
 
-// Validación principal
-if ($noticia === '') {
-  echo json_encode(['success' => false, 'message' => 'El campo noticia es obligatorio']);
-  exit;
-}
-
-// Normaliza valores opcionales
 $descripcionValue = ($descripcion !== '') ? $descripcion : null;
 $domicilioValue   = ($domicilio !== '') ? $domicilio : null;
 
-// ✅ Normaliza fecha (acepta "2025-12-29T18:10:00" o "2025-12-29 18:10:00")
 $fechaCitaValue = null;
 if ($fechaCita !== '') {
   $fechaCita = str_replace('T', ' ', $fechaCita);
-
-  // intenta: Y-m-d H:i:s
-  $dt = DateTime::createFromFormat('Y-m-d H:i:s', $fechaCita);
-  if (!$dt) {
-    // intenta: Y-m-d H:i
-    $dt = DateTime::createFromFormat('Y-m-d H:i', $fechaCita);
-  }
+  $dt = DateTime::createFromFormat('Y-m-d H:i:s', $fechaCita) ?: DateTime::createFromFormat('Y-m-d H:i', $fechaCita);
 
   if (!$dt) {
     echo json_encode([
@@ -107,7 +114,6 @@ if ($fechaCita !== '') {
     ]);
     exit;
   }
-
   $fechaCitaValue = $dt->format('Y-m-d H:i:s');
 }
 
@@ -134,22 +140,16 @@ try {
 
   $newId = (int)$pdo->lastInsertId();
 
-  // ----------- Notificación FCM (si existe fcm.php; no rompe si falla) -----------
   $fcmResult = null;
   $fcmError  = null;
   $topic     = null;
 
   try {
     $fcmPath = __DIR__ . '/fcm.php';
-    if (!file_exists($fcmPath)) {
-      throw new Exception("FCM: no existe fcm.php en {$fcmPath}");
-    }
-
+    if (!file_exists($fcmPath)) throw new Exception("FCM: no existe fcm.php");
     require_once $fcmPath;
 
-    $topic = ($reporteroId === null)
-      ? 'rol_reportero'
-      : ('reportero_' . $reporteroId);
+    $topic = ($reporteroId === null) ? 'rol_reportero' : ('reportero_' . $reporteroId);
 
     $fcmResult = fcm_send_topic([
       'topic' => $topic,
@@ -160,41 +160,95 @@ try {
         'noticia_id' => (string)$newId,
       ],
     ]);
-
-    error_log("FCM send topic={$topic} result=" . json_encode($fcmResult));
   } catch (Throwable $e) {
     $fcmError = $e->getMessage();
     error_log("FCM error: " . $fcmError);
   }
 
-  // ✅ Debug mode: devuelve también el resultado de FCM
-  if ($debug) {
+  $mailStatus = 'skipped';
+  $mailError  = null;
+  $mailTo     = null;
+
+  try {
+    if ($clienteId !== null) {
+      $stmtC = $pdo->prepare("SELECT nombre, correo FROM clientes WHERE id = ? LIMIT 1");
+      $stmtC->execute([$clienteId]);
+      $c = $stmtC->fetch(PDO::FETCH_ASSOC);
+
+      $nombreCliente = trim((string)($c['nombre'] ?? ''));
+      $correoCliente = trim((string)($c['correo'] ?? ''));
+      $mailTo = $correoCliente;
+      $fechaCitaTxt = 'Sin cita programada';
+
+      if (!empty($fechaCitaValue)) {
+        $dtCita = new DateTime($fechaCitaValue, new DateTimeZone('America/Mexico_City'));
+        if (class_exists('IntlDateFormatter')) {
+          $fmt = new IntlDateFormatter(
+            'es_MX',
+            IntlDateFormatter::NONE,
+            IntlDateFormatter::NONE,
+            'America/Mexico_City',
+            IntlDateFormatter::GREGORIAN,
+            "dd 'de' MMMM 'de' yyyy 'A las' h:mm a"
+          );
+          $fechaCitaTxt = $fmt->format($dtCita);
+        } else {
+          $meses = [
+            1=>'ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'
+          ];
+          $m = (int)$dtCita->format('n');
+          $fechaCitaTxt = $dtCita->format('d') . '/' . ($meses[$m] ?? $dtCita->format('m')) . '/' . $dtCita->format('Y h:i A');
+        }
+      }
+      if ($correoCliente === '') {
+        $mailStatus = 'skipped_empty_email';
+      } elseif (!filter_var($correoCliente, FILTER_VALIDATE_EMAIL)) {
+        $mailStatus = 'skipped_invalid_email';
+      } elseif (!is_array($mailCfg) || trim((string)($mailCfg['password'] ?? '')) === '') {
+        $mailStatus = 'skipped_smtp_not_configured';
+        error_log("MAIL skipped: SMTP_PASS vacío (noticia_id={$newId})");
+      } else {
+        $subject = 'Prueba';
+        $body =
+          "¡Hola," . ($nombreCliente !== '' ? " {$nombreCliente}!" : "!") . "\n\n" .
+          "Tu cita quedó registrada.\n\n" .
+          "Asunto: {$noticia}\n" .
+          "Fecha: {$fechaCitaTxt} (Hora local)\n\n" .
+          "¡Gracias por su preferencia!\nSoporte TVC Tepa";
+
+        smtp_send_mail($mailCfg, $correoCliente, $nombreCliente, $subject, $body);
+        $mailStatus = 'sent';
+      }
+    }
+  } catch (Throwable $e) {
+    $mailStatus = 'error';
+    $mailError  = $e->getMessage();
+    error_log("MAIL error noticia_id={$newId} cliente_id={$clienteId}: " . $mailError);
+  }
+
+  if ($debugFcm || $debugMail) {
     echo json_encode([
       'success' => true,
-      'message' => 'Noticia creada + debug FCM',
+      'message' => 'Noticia creada (debug)',
       'id'      => $newId,
-      'topic'   => $topic,
-      'fcm'     => $fcmResult,   // {code, resp, err}
-      'fcm_error' => $fcmError,  // string o null
+
+      'topic'     => $topic,
+      'fcm'       => $fcmResult,
+      'fcm_error' => $fcmError,
+
+      'mail_status' => $mailStatus,
+      'mail_to'     => $mailTo,
+      'mail_error'  => $mailError,
     ]);
     exit;
   }
 
-  // Respuesta normal
-  echo json_encode([
-    'success' => true,
-    'message' => 'Noticia creada correctamente',
-    'id'      => $newId,
-  ]);
+  echo json_encode(['success' => true, 'message' => 'Noticia creada correctamente', 'id' => $newId]);
   exit;
 
 } catch (Throwable $e) {
   http_response_code(500);
   error_log("crear_noticia.php error: " . $e->getMessage());
-
-  echo json_encode([
-    'success' => false,
-    'message' => 'Error al crear noticia',
-  ]);
+  echo json_encode(['success' => false, 'message' => 'Error al crear noticia']);
   exit;
 }
