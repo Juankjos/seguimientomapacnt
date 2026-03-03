@@ -540,17 +540,16 @@ class ApiService {
   }) async {
     final url = Uri.parse('$baseUrl/update_llegada_noticia.php');
 
-    final ahora = DateTime.now();
-    final horaLlegadaStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(ahora);
-
     if (wsToken.trim().isEmpty) {
       throw Exception('No autorizado (ws_token vacío)');
     }
 
-    final response = await http.post(
+    final ahora = DateTime.now();
+    final horaLlegadaStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(ahora);
+
+    final resp = await http.post(
       url,
       body: _withToken({
-        'ws_token': wsToken,
         'noticia_id': noticiaId.toString(),
         'latitud': latitud.toString(),
         'longitud': longitud.toString(),
@@ -559,14 +558,14 @@ class ApiService {
       headers: _authHeaders(),
     );
 
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> data = json.decode(response.body);
-      if (data['success'] != true) {
-        throw Exception(data['message'] ?? 'Error al registrar llegada');
-      }
-    } else {
-      throw Exception('Error en el servidor al registrar llegada (${response.statusCode})');
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
     }
+
+    final data = json.decode(resp.body);
+    if (data is Map && data['success'] == true) return;
+
+    throw Exception((data is Map ? data['message'] : null) ?? 'Error al registrar llegada');
   }
 
   // 🔹 Eliminar visualmente las noticias, se conservan en DB
@@ -737,12 +736,21 @@ class ApiService {
     required int segundos,
   }) async {
     final url = Uri.parse('$baseUrl/update_noticia.php');
-    final response = await http.post(url, body: {
-      'noticia_id': noticiaId.toString(),
-      'role': role,
-      'tiempo_en_nota': segundos.toString(),
-      'ultima_mod': _mysqlDateTime(DateTime.now()),
-    });
+
+    if (wsToken.trim().isEmpty) {
+      throw Exception('No autorizado (ws_token vacío)');
+    }
+
+    final response = await http.post(
+      url,
+      body: _withToken({
+        'noticia_id': noticiaId.toString(),
+        'role': role,
+        'tiempo_en_nota': segundos.toString(),
+        'ultima_mod': _mysqlDateTime(DateTime.now()),
+      }),
+      headers: _authHeaders(),
+    );
     if (response.statusCode != 200) {
       throw Exception('Error en servidor (${response.statusCode}): ${response.body}');
     }

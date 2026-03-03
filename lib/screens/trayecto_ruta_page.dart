@@ -433,6 +433,9 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
         const SnackBar(content: Text('Trayecto finalizado y llegada registrada.')),
       );
 
+      _posicionSub?.cancel();
+      _posicionSub = null;
+
       Navigator.pop(context, {
         'llegadaLatitud': pos.latitude,
         'llegadaLongitud': pos.longitude,

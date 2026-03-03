@@ -891,28 +891,37 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                           }
                         : (routeGate.allowed
                             ? () async {
-                                // 1) marcar inicio solo si es primera vez
+                                // 1) Si no estaba iniciada, márcala primero
                                 if (!rutaYaIniciada) {
                                   try {
                                     final updated = await ApiService.marcarRutaIniciada(
                                       noticiaId: _noticia.id,
                                       role: widget.role,
                                     );
+
+                                    // Merge defensivo (por si el API no manda todo)
+                                    final merged = updated.copyWith(
+                                      latitud: updated.latitud ?? _noticia.latitud,
+                                      longitud: updated.longitud ?? _noticia.longitud,
+                                      ubicacionEnMapa: updated.ubicacionEnMapa ?? _noticia.ubicacionEnMapa,
+                                      cliente: updated.cliente ?? _noticia.cliente,
+                                      clienteWhatsapp: updated.clienteWhatsapp ?? _noticia.clienteWhatsapp,
+                                      domicilio: updated.domicilio ?? _noticia.domicilio,
+                                    );
+
                                     if (!mounted) return;
-                                    setState(() => _noticia = updated);
+                                    setState(() => _noticia = merged);
                                   } catch (e) {
                                     if (!mounted) return;
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                          content:
-                                              Text('No se pudo iniciar ruta: $e')),
+                                      SnackBar(content: Text('No se pudo iniciar ruta: $e')),
                                     );
                                     return;
                                   }
                                 }
 
-                                // 2) abrir trayecto
-                                final result = await Navigator.push(
+                                // 2) Abrir trayecto UNA sola vez
+                                final result = await Navigator.push<Map<String, dynamic>>(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => TrayectoRutaPage(
@@ -926,21 +935,15 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                                 if (!mounted) return;
                                 if (result == null) return;
 
-                                DateTime _parseMysqlDateTime(String? v) {
-                                  if (v == null || v.trim().isEmpty) {
-                                    return DateTime.now();
-                                  }
+                                DateTime parseMysql(String? v) {
+                                  if (v == null || v.trim().isEmpty) return DateTime.now();
                                   final s = v.trim().replaceFirst(' ', 'T');
                                   return DateTime.tryParse(s) ?? DateTime.now();
                                 }
 
-                                final Map<String, dynamic> r =
-                                    Map<String, dynamic>.from(result as Map);
-
-                                final lat = (r['llegadaLatitud'] as num?)?.toDouble();
-                                final lon = (r['llegadaLongitud'] as num?)?.toDouble();
-                                final horaStr = r['horaLlegada']?.toString();
-                                final hora = _parseMysqlDateTime(horaStr);
+                                final lat = (result['llegadaLatitud'] as num?)?.toDouble();
+                                final lon = (result['llegadaLongitud'] as num?)?.toDouble();
+                                final hora = parseMysql(result['horaLlegada']?.toString());
 
                                 if (lat != null && lon != null) {
                                   setState(() {

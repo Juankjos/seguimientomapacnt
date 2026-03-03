@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+ini_set('error_log', __DIR__ . '/php-error.log');
+error_reporting(E_ALL);
+
 require __DIR__ . '/config.php';
 require __DIR__ . '/require_auth.php';
 require __DIR__ . '/mailer.php';
@@ -8,33 +13,48 @@ require __DIR__ . '/mailer.php';
 header('Content-Type: application/json; charset=utf-8');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['success' => false, 'message' => 'Método no permitido']);
-    exit;
+  http_response_code(405);
+  echo json_encode(['success' => false, 'message' => 'Método no permitido']);
+  exit;
 }
 
-function normalize_mysql_datetime($v) {
-    if ($v === null) return null;
-    $s = trim((string)$v);
-    if ($s === '') return null;
+function normalize_mysql_datetime($v): ?string {
+  if ($v === null) return null;
+  $s = trim((string)$v);
+  if ($s === '') return null;
 
-    $s = str_replace('T', ' ', $s);
-    if (strlen($s) >= 19) $s = substr($s, 0, 19);
+  $s = str_replace('T', ' ', $s);
+  if (strlen($s) >= 19) $s = substr($s, 0, 19);
 
-    $dt = DateTime::createFromFormat('Y-m-d H:i:s', $s);
-    if (!$dt) return null;
+  $dt = DateTime::createFromFormat('Y-m-d H:i:s', $s) ?: DateTime::createFromFormat('Y-m-d H:i', $s);
+  if (!$dt) return null;
 
-    return $dt->format('Y-m-d H:i:s');
+  return $dt->format('Y-m-d H:i:s');
 }
 
-function fmt_dt_mx(?string $mysql): string {
-    if ($mysql === null || trim($mysql) === '') return 'Sin cita programada';
-    try {
-        $dt = new DateTime($mysql, new DateTimeZone('America/Mexico_City'));
-        return $dt->format('d/m/Y H:i') . ' (hora local)';
-    } catch (Throwable $e) {
-        return $mysql;
+function fmt_dt_mx_long(?string $mysql): string {
+  if ($mysql === null || trim($mysql) === '') return 'Sin cita programada';
+
+  try {
+    $dt = new DateTime($mysql, new DateTimeZone('America/Mexico_City'));
+
+    if (class_exists('IntlDateFormatter')) {
+      $fmt = new IntlDateFormatter(
+        'es_MX',
+        IntlDateFormatter::FULL,
+        IntlDateFormatter::SHORT,
+        'America/Mexico_City',
+        IntlDateFormatter::GREGORIAN,
+        "EEEE d 'de' MMMM 'de' yyyy 'a las' h:mm a"
+      );
+      $out = $fmt->format($dt);
+      return $out ? (string)$out : $dt->format('d/m/Y H:i');
     }
+
+    return $dt->format('d/m/Y H:i') . ' (hora local)';
+  } catch (Throwable $e) {
+    return $mysql;
+  }
 }
 
 // -------------------- INPUT (JSON o FORM) --------------------
@@ -42,42 +62,45 @@ $raw  = file_get_contents('php://input');
 $json = json_decode($raw ?: '', true);
 $in = (is_array($json) && json_last_error() === JSON_ERROR_NONE) ? $json : $_POST;
 
-// Para reutilizar tu lógica basada en $_POST sin reescribir todo:
+// Para reutilizar lógica basada en $_POST:
 if (is_array($in)) {
-    $_POST = $in;
+  $_POST = $in;
 }
 
-// -------------------- AUTH (NO confiar en role del cliente) --------------------
+// -------------------- AUTH --------------------
 $user = require_auth($pdo, is_array($in) ? $in : []);
 $role = (string)($user['role'] ?? 'reportero');
+$userId = (int)($user['id'] ?? 0);
+
 if (!in_array($role, ['admin', 'reportero'], true)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Rol inválido']);
-    exit;
+  http_response_code(403);
+  echo json_encode(['success' => false, 'message' => 'Rol inválido']);
+  exit;
 }
 
 $debugMail = (isset($_GET['debug_mail']) && $_GET['debug_mail'] === '1');
 
 // -------------------- INPUTS --------------------
-$noticiaId = isset($_POST['noticia_id']) ? intval($_POST['noticia_id']) : 0;
+$noticiaId = isset($_POST['noticia_id']) ? (int)$_POST['noticia_id'] : 0;
+if ($noticiaId <= 0) {
+  echo json_encode(['success' => false, 'message' => 'noticia_id inválido']);
+  exit;
+}
 
 $titulo      = array_key_exists('noticia', $_POST) ? trim((string)$_POST['noticia']) : null;
 $descripcion = array_key_exists('descripcion', $_POST) ? trim((string)$_POST['descripcion']) : null;
 
-$tipoDeNota = array_key_exists('tipo_de_nota', $_POST)
-    ? trim((string)$_POST['tipo_de_nota'])
-    : null;
-
+$tipoDeNota = array_key_exists('tipo_de_nota', $_POST) ? trim((string)$_POST['tipo_de_nota']) : null;
 if ($tipoDeNota !== null) {
-    if ($tipoDeNota === '') {
-        $tipoDeNota = null;
-    } else {
-        $allowed = ['Nota', 'Entrevista'];
-        if (!in_array($tipoDeNota, $allowed, true)) {
-            echo json_encode(['success' => false, 'message' => 'tipo_de_nota inválido']);
-            exit;
-        }
+  if ($tipoDeNota === '') {
+    $tipoDeNota = null;
+  } else {
+    $allowed = ['Nota', 'Entrevista'];
+    if (!in_array($tipoDeNota, $allowed, true)) {
+      echo json_encode(['success' => false, 'message' => 'tipo_de_nota inválido']);
+      exit;
     }
+  }
 }
 
 $hasClienteId = array_key_exists('cliente_id', $_POST);
@@ -85,12 +108,12 @@ $clienteIdReq = $hasClienteId ? trim((string)$_POST['cliente_id']) : null;
 
 $clienteIdParsed = null;
 if ($hasClienteId) {
-    if ($clienteIdReq === '' || $clienteIdReq === '0') {
-        $clienteIdParsed = null;
-    } else {
-        $tmp = (int)$clienteIdReq;
-        $clienteIdParsed = ($tmp > 0) ? $tmp : null;
-    }
+  if ($clienteIdReq === '' || $clienteIdReq === '0') {
+    $clienteIdParsed = null;
+  } else {
+    $tmp = (int)$clienteIdReq;
+    $clienteIdParsed = ($tmp > 0) ? $tmp : null;
+  }
 }
 
 $hasDomicilio = array_key_exists('domicilio', $_POST);
@@ -98,23 +121,8 @@ $domicilioReq = $hasDomicilio ? trim((string)$_POST['domicilio']) : null;
 $domicilioParsed = $hasDomicilio ? (($domicilioReq === '') ? null : $domicilioReq) : null;
 
 if (($hasClienteId || $hasDomicilio) && $role !== 'admin') {
-    echo json_encode(['success' => false, 'message' => 'No tienes permiso para cambiar cliente/domicilio']);
-    exit;
-}
-
-if ($hasClienteId && $clienteIdParsed !== null) {
-    try {
-        $chk = $pdo->prepare("SELECT 1 FROM clientes WHERE id = ? LIMIT 1");
-        $chk->execute([$clienteIdParsed]);
-        if (!$chk->fetchColumn()) {
-            echo json_encode(['success' => false, 'message' => 'cliente_id no existe']);
-            exit;
-        }
-    } catch (Throwable $e) {
-        http_response_code(500);
-        echo json_encode(['success' => false, 'message' => 'Error validando cliente_id', 'error' => $e->getMessage()]);
-        exit;
-    }
+  echo json_encode(['success' => false, 'message' => 'No tienes permiso para cambiar cliente/domicilio']);
+  exit;
 }
 
 $hasFechaCita = array_key_exists('fecha_cita', $_POST);
@@ -124,322 +132,303 @@ $ultimaMod = normalize_mysql_datetime($_POST['ultima_mod'] ?? null);
 if ($ultimaMod === null) $ultimaMod = date('Y-m-d H:i:s');
 
 $hasRutaIniciada = array_key_exists('ruta_iniciada', $_POST);
-$rutaIniciadaReq = $hasRutaIniciada ? intval((string)$_POST['ruta_iniciada']) : null;
+$rutaIniciadaReq = $hasRutaIniciada ? (int)$_POST['ruta_iniciada'] : null;
 
 $hasTiempoNota = array_key_exists('tiempo_en_nota', $_POST);
-$tiempoNotaReq = $hasTiempoNota ? intval((string)$_POST['tiempo_en_nota']) : null;
+$tiempoNotaReq = $hasTiempoNota ? (int)$_POST['tiempo_en_nota'] : null;
 
 $hasLimiteTiempo = array_key_exists('limite_tiempo_minutos', $_POST);
-$limiteTiempoReq = $hasLimiteTiempo ? intval((string)$_POST['limite_tiempo_minutos']) : null;
+$limiteTiempoReq = $hasLimiteTiempo ? (int)$_POST['limite_tiempo_minutos'] : null;
 
 if ($hasLimiteTiempo) {
-    if ($limiteTiempoReq === null || $limiteTiempoReq < 60) {
-        echo json_encode(['success' => false, 'message' => 'limite_tiempo_minutos debe ser mínimo 60']);
-        exit;
-    }
-    if ($limiteTiempoReq > 65535) {
-        echo json_encode(['success' => false, 'message' => 'limite_tiempo_minutos excede el máximo permitido']);
-        exit;
-    }
-}
-
-if ($noticiaId <= 0) {
-    echo json_encode(['success' => false, 'message' => 'noticia_id inválido']);
+  if ($limiteTiempoReq < 60) {
+    echo json_encode(['success' => false, 'message' => 'limite_tiempo_minutos debe ser mínimo 60']);
     exit;
+  }
+  if ($limiteTiempoReq > 65535) {
+    echo json_encode(['success' => false, 'message' => 'limite_tiempo_minutos excede el máximo permitido']);
+    exit;
+  }
 }
 
 try {
+  // ---- TRANSACTION para evitar correos dobles / carreras ----
+  $pdo->beginTransaction();
+
+  // Lock row
     $stmt = $pdo->prepare("
         SELECT
-            n.id,
-            n.noticia,
-            COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
-            n.descripcion,
-            n.cliente_id,
-            n.domicilio,
-            n.ubicacion_en_mapa,
-            n.reportero_id,
-            n.fecha_pago,
-            n.fecha_cita,
-            n.fecha_cita_anterior,
-            n.fecha_cita_cambios,
-            n.latitud,
-            n.longitud,
-            n.hora_llegada,
-            n.llegada_latitud,
-            n.llegada_longitud,
-            n.pendiente,
-            n.ultima_mod,
-            n.ruta_iniciada,
-            n.ruta_iniciada_at,
-            n.tiempo_en_nota,
-            n.limite_tiempo_minutos,
-            r.nombre AS reportero,
-            c.nombre AS cliente,
-            c.whatsapp AS cliente_whatsapp
-        FROM noticias n
-        LEFT JOIN reporteros r ON n.reportero_id = r.id
-        LEFT JOIN clientes  c ON n.cliente_id  = c.id
-        WHERE n.id = ?
-        LIMIT 1
+                n.id,
+                n.noticia,
+                COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
+                n.descripcion,
+                n.cliente_id,
+                c.nombre   AS cliente,
+                c.whatsapp AS cliente_whatsapp,
+                n.domicilio,
+                n.ubicacion_en_mapa,
+                n.reportero_id,
+                r.nombre AS reportero,
+                n.fecha_pago,
+                n.fecha_cita,
+                n.fecha_cita_anterior,
+                n.fecha_cita_cambios,
+                n.latitud,
+                n.longitud,
+                n.hora_llegada,
+                n.llegada_latitud,
+                n.llegada_longitud,
+                n.pendiente,
+                n.ultima_mod,
+                n.ruta_iniciada,
+                n.ruta_iniciada_at,
+                n.tiempo_en_nota,
+                n.limite_tiempo_minutos
+            FROM noticias n
+            LEFT JOIN reporteros r ON n.reportero_id = r.id
+            LEFT JOIN clientes  c ON n.cliente_id  = c.id
+            WHERE n.id = ?
+            LIMIT 1
+            FOR UPDATE
     ");
     $stmt->execute([$noticiaId]);
     $actual = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$actual) {
+        $pdo->rollBack();
         echo json_encode(['success' => false, 'message' => 'Noticia no encontrada']);
         exit;
     }
 
-    $updates = [];
-    $params  = [':id' => $noticiaId];
+  // Seguridad: reportero solo su propia noticia
+  $repIdNoticia = (int)($actual['reportero_id'] ?? 0);
+  if ($role === 'reportero' && $repIdNoticia > 0 && $repIdNoticia !== $userId) {
+    $pdo->rollBack();
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'No puedes modificar una noticia que no te pertenece']);
+    exit;
+  }
 
-    $oldDesc  = $actual['descripcion'];
-    $oldFecha = $actual['fecha_cita'];
-    $cambios  = (int)($actual['fecha_cita_cambios'] ?? 0);
+  // Old values (para reglas y correos)
+  $oldDesc  = $actual['descripcion'];
+  $oldFecha = (string)($actual['fecha_cita'] ?? '');
+  $cambios  = (int)($actual['fecha_cita_cambios'] ?? 0);
 
-    $rutaIniciadaActual = (int)($actual['ruta_iniciada'] ?? 0);
-    $oldTipo   = $actual['tipo_de_nota'] ?? 'Nota';
-    $oldLimite = (int)($actual['limite_tiempo_minutos'] ?? 60);
+  $rutaIniciadaActual = (int)($actual['ruta_iniciada'] ?? 0);
+  $oldTipo   = (string)($actual['tipo_de_nota'] ?? 'Nota');
+  $oldLimite = (int)($actual['limite_tiempo_minutos'] ?? 60);
 
-    $oldClienteId = isset($actual['cliente_id']) ? (int)$actual['cliente_id'] : 0;
-    $oldDomTxt    = trim((string)($actual['domicilio'] ?? ''));
+  $oldClienteId = !empty($actual['cliente_id']) ? (int)$actual['cliente_id'] : 0;
+  $oldDomTxt    = trim((string)($actual['domicilio'] ?? ''));
 
-    $oldFechaStr = ($oldFecha ?? '');
-    $newFechaStr = ($fechaNueva ?? '');
-    $cambiaFecha = $hasFechaCita && ($oldFechaStr !== $newFechaStr);
+  $horaLlegadaActual = $actual['hora_llegada'];
+  $tiempoNotaActual  = $actual['tiempo_en_nota'];
 
-    $horaLlegadaActual = $actual['hora_llegada'];
-    $tiempoNotaActual  = $actual['tiempo_en_nota'];
-    $startedRouteNow = false;
+  // Flags política (solo estos disparan correo)
+  $changedFechaReal = ($hasFechaCita && $oldFecha !== (string)($fechaNueva ?? ''));
+  $changedDomReal = false;
+  if ($hasDomicilio) {
+    $changedDomReal = ($oldDomTxt !== trim((string)($domicilioParsed ?? '')));
+  }
 
-    $changedTitulo = false;
-    $changedDesc = false;
-    $changedTipo = false;
-    $changedFecha = false;
-    $changedCliente = false;
-    $changedDomicilio = false;
+  // Para ruta
+  $wantsStartRoute = ($hasRutaIniciada && $rutaIniciadaReq === 1);
+  $startedRouteNow = ($wantsStartRoute && $rutaIniciadaActual === 0);
 
-    // ========================= ADMIN =========================
-    if ($role === 'admin') {
-        // ----- cliente_id / domicilio -----
-        if ($hasClienteId) {
-            if ($clienteIdParsed === null) {
-                if ($oldClienteId !== 0 || $oldDomTxt !== '') {
-                    $changedCliente = true;
-                    $changedDomicilio = true;
-                }
-                $updates[] = "cliente_id = NULL";
-                $updates[] = "domicilio = NULL";
-            } else {
-                if ($clienteIdParsed !== $oldClienteId) {
-                    $changedCliente = true;
-                    $updates[] = "cliente_id = :cliente_id";
-                    $params[':cliente_id'] = $clienteIdParsed;
-                }
-            }
+  // Build updates
+  $updates = [];
+  $params  = [':id' => $noticiaId];
+
+  // ========================= ADMIN =========================
+  if ($role === 'admin') {
+    if ($hasClienteId) {
+      if ($clienteIdParsed === null) {
+        $updates[] = "cliente_id = NULL";
+        $updates[] = "domicilio = NULL";
+      } else {
+        if ($clienteIdParsed !== $oldClienteId) {
+          $updates[] = "cliente_id = :cliente_id";
+          $params[':cliente_id'] = $clienteIdParsed;
         }
-
-        if ($hasDomicilio && !($hasClienteId && $clienteIdParsed === null)) {
-            $newDomTxt = trim((string)($domicilioParsed ?? ''));
-            if ($newDomTxt !== $oldDomTxt) {
-                $changedDomicilio = true;
-                $updates[] = "domicilio = :domicilio";
-                $params[':domicilio'] = $domicilioParsed;
-            }
-        }
-
-        if ($titulo !== null && $titulo !== '') {
-            $changedTitulo = true;
-            $updates[] = "noticia = :noticia";
-            $params[':noticia'] = $titulo;
-        }
-
-        if ($descripcion !== null) {
-            $changedDesc = true;
-            $updates[] = "descripcion = :descripcion";
-            $params[':descripcion'] = ($descripcion === '') ? null : $descripcion;
-        }
-
-        if ($tipoDeNota !== null && $tipoDeNota !== $oldTipo) {
-            $changedTipo = true;
-            $updates[] = "tipo_de_nota = :tipo_de_nota";
-            $params[':tipo_de_nota'] = $tipoDeNota;
-        }
-
-        if ($hasFechaCita) {
-            if ($cambiaFecha) {
-                $changedFecha = true;
-
-                $updates[] = "fecha_cita_anterior = :fecha_anterior";
-                $params[':fecha_anterior'] = $oldFecha;
-
-                $updates[] = "notificacion_cita_30m_enviada = 0";
-                $updates[] = "notificacion_cita_30m_at = NULL";
-            }
-
-            $updates[] = "fecha_cita = :fecha_cita";
-            $params[':fecha_cita'] = $fechaNueva;
-        }
+      }
     }
 
-    // ========================= REPORTERO =========================
-    else {
-        if ($titulo !== null && $titulo !== '') {
-            echo json_encode(['success' => false, 'message' => 'No tienes permiso para cambiar el título']);
-            exit;
-        }
-
-        if ($descripcion !== null) {
-            $descVacia = ($oldDesc === null || trim((string)$oldDesc) === '');
-            if (!$descVacia) {
-                echo json_encode(['success' => false, 'message' => 'La descripción ya fue capturada y no se puede modificar']);
-                exit;
-            }
-            if (trim((string)$descripcion) === '') {
-                echo json_encode(['success' => false, 'message' => 'La descripción no puede quedar vacía']);
-                exit;
-            }
-
-            $changedDesc = true;
-            $updates[] = "descripcion = :descripcion";
-            $params[':descripcion'] = $descripcion;
-        }
-
-        // Reportero SÍ puede cambiar tipo_de_nota
-        if ($tipoDeNota !== null && $tipoDeNota !== $oldTipo) {
-            $changedTipo = true;
-            $updates[] = "tipo_de_nota = :tipo_de_nota";
-            $params[':tipo_de_nota'] = $tipoDeNota;
-        }
-
-        if ($hasFechaCita) {
-            if ($cambiaFecha) {
-                if ($cambios >= 2) {
-                    echo json_encode(['success' => false, 'message' => 'Límite alcanzado: ya no puedes cambiar la fecha de cita']);
-                    exit;
-                }
-
-                $changedFecha = true;
-
-                if ($oldFecha !== null && $oldFecha !== '') {
-                    $updates[] = "fecha_cita_anterior = :fecha_anterior";
-                    $params[':fecha_anterior'] = $oldFecha;
-                }
-
-                $updates[] = "fecha_cita_cambios = COALESCE(fecha_cita_cambios, 0) + 1";
-
-                $updates[] = "notificacion_cita_30m_enviada = 0";
-                $updates[] = "notificacion_cita_30m_at = NULL";
-            }
-
-            $updates[] = "fecha_cita = :fecha_cita";
-            $params[':fecha_cita'] = $fechaNueva;
-        }
+    if ($hasDomicilio && !($hasClienteId && $clienteIdParsed === null)) {
+      $newDomTxt = trim((string)($domicilioParsed ?? ''));
+      if ($newDomTxt !== $oldDomTxt) {
+        $updates[] = "domicilio = :domicilio";
+        $params[':domicilio'] = $domicilioParsed;
+      }
     }
 
-    // ========================= LIMITE TIEMPO =========================
-    if ($hasLimiteTiempo) {
-        if ($limiteTiempoReq !== $oldLimite) {
-            $updates[] = "limite_tiempo_minutos = :limite_tiempo_minutos";
-            $params[':limite_tiempo_minutos'] = $limiteTiempoReq;
-        }
+    if ($titulo !== null && $titulo !== '') {
+      $updates[] = "noticia = :noticia";
+      $params[':noticia'] = $titulo;
     }
 
-    // ========================= RUTA INICIADA =========================
-    if ($hasRutaIniciada && $rutaIniciadaReq === 1 && $rutaIniciadaActual === 0) {
-        $updates[] = "ruta_iniciada = 1";
-        $updates[] = "ruta_iniciada_at = COALESCE(ruta_iniciada_at, NOW())";
-        $startedRouteNow = true; 
+    if ($descripcion !== null) {
+      $updates[] = "descripcion = :descripcion";
+      $params[':descripcion'] = ($descripcion === '') ? null : $descripcion;
     }
 
-    // ========================= TIEMPO EN NOTA =========================
-    if ($hasTiempoNota) {
-        if ($horaLlegadaActual === null || trim((string)$horaLlegadaActual) === '') {
-            echo json_encode(['success' => false, 'message' => 'Aún no se ha finalizado la ruta para cronometrar nota']);
-            exit;
-        }
-        if ($tiempoNotaReq === null || $tiempoNotaReq <= 0) {
-            echo json_encode(['success' => false, 'message' => 'tiempo_en_nota inválido']);
-            exit;
-        }
-        if ($tiempoNotaActual !== null && trim((string)$tiempoNotaActual) !== '') {
-            if (intval($tiempoNotaActual) !== intval($tiempoNotaReq)) {
-                echo json_encode(['success' => false, 'message' => 'El tiempo en nota ya fue registrado']);
-                exit;
-            }
-        } else {
-            $updates[] = "tiempo_en_nota = :tiempo_en_nota";
-            $params[':tiempo_en_nota'] = $tiempoNotaReq;
-        }
+    if ($tipoDeNota !== null && $tipoDeNota !== $oldTipo) {
+      $updates[] = "tipo_de_nota = :tipo_de_nota";
+      $params[':tipo_de_nota'] = $tipoDeNota;
     }
 
-    $wantsRutaIniciada = ($hasRutaIniciada && $rutaIniciadaReq === 1);
-    $wantsTiempoNota   = $hasTiempoNota;
+    if ($hasFechaCita) {
+      if ($changedFechaReal) {
+        $updates[] = "fecha_cita_anterior = :fecha_anterior";
+        $params[':fecha_anterior'] = ($actual['fecha_cita'] ?? null);
 
-    if (empty($updates)) {
-        if (($wantsRutaIniciada && $rutaIniciadaActual === 1) ||
-            ($wantsTiempoNota && $tiempoNotaActual !== null && trim((string)$tiempoNotaActual) !== '' && intval($tiempoNotaActual) === intval($tiempoNotaReq))) {
+        $updates[] = "notificacion_cita_30m_enviada = 0";
+        $updates[] = "notificacion_cita_30m_at = NULL";
+      }
 
-            $stmt2 = $pdo->prepare("
-                SELECT
-                    n.id,
-                    n.noticia,
-                    COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
-                    n.descripcion,
-                    n.cliente_id,
-                    c.nombre AS cliente,
-                    c.whatsapp AS cliente_whatsapp,
-                    n.domicilio,
-                    n.ubicacion_en_mapa,
-                    n.reportero_id,
-                    n.fecha_pago,
-                    n.fecha_cita,
-                    n.fecha_cita_anterior,
-                    n.fecha_cita_cambios,
-                    n.latitud,
-                    n.longitud,
-                    n.hora_llegada,
-                    n.llegada_latitud,
-                    n.llegada_longitud,
-                    n.pendiente,
-                    n.ultima_mod,
-                    n.ruta_iniciada,
-                    n.ruta_iniciada_at,
-                    n.tiempo_en_nota,
-                    n.limite_tiempo_minutos,
-                    r.nombre AS reportero
-                FROM noticias n
-                LEFT JOIN reporteros r ON n.reportero_id = r.id
-                LEFT JOIN clientes  c ON n.cliente_id  = c.id
-                WHERE n.id = ?
-                LIMIT 1
-            ");
-            $stmt2->execute([$noticiaId]);
-            $row = $stmt2->fetch(PDO::FETCH_ASSOC);
+      $updates[] = "fecha_cita = :fecha_cita";
+      $params[':fecha_cita'] = $fechaNueva;
+    }
+  }
 
-            $out = [
-                'success' => true,
-                'message' => 'Sin cambios (idempotente)',
-                'data' => $row,
-            ];
-            echo json_encode($out);
-            exit;
-        }
+  // ========================= REPORTERO =========================
+  else {
+    if ($titulo !== null && $titulo !== '') {
+      $pdo->rollBack();
+      echo json_encode(['success' => false, 'message' => 'No tienes permiso para cambiar el título']);
+      exit;
+    }
 
-        echo json_encode(['success' => false, 'message' => 'No hay cambios para guardar']);
+    if ($descripcion !== null) {
+      $descVacia = ($oldDesc === null || trim((string)$oldDesc) === '');
+      if (!$descVacia) {
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'La descripción ya fue capturada y no se puede modificar']);
         exit;
+      }
+      if (trim((string)$descripcion) === '') {
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'La descripción no puede quedar vacía']);
+        exit;
+      }
+
+      $updates[] = "descripcion = :descripcion";
+      $params[':descripcion'] = $descripcion;
     }
 
-    $updates[] = "ultima_mod = :ultima_mod";
-    $params[':ultima_mod'] = $ultimaMod;
+    if ($tipoDeNota !== null && $tipoDeNota !== $oldTipo) {
+      $updates[] = "tipo_de_nota = :tipo_de_nota";
+      $params[':tipo_de_nota'] = $tipoDeNota;
+    }
 
-    // -------------------- UPDATE --------------------
-    $sql = "UPDATE noticias SET " . implode(", ", $updates) . " WHERE id = :id LIMIT 1";
-    $stmtUp = $pdo->prepare($sql);
-    $stmtUp->execute($params);
+    if ($hasFechaCita) {
+      if ($changedFechaReal) {
+        if ($cambios >= 2) {
+          $pdo->rollBack();
+          echo json_encode(['success' => false, 'message' => 'Límite alcanzado: ya no puedes cambiar la fecha de cita']);
+          exit;
+        }
 
-    // -------------------- TRAE ROW FINAL --------------------
+        if (!empty($actual['fecha_cita'])) {
+          $updates[] = "fecha_cita_anterior = :fecha_anterior";
+          $params[':fecha_anterior'] = ($actual['fecha_cita'] ?? null);
+        }
+
+        $updates[] = "fecha_cita_cambios = COALESCE(fecha_cita_cambios, 0) + 1";
+        $updates[] = "notificacion_cita_30m_enviada = 0";
+        $updates[] = "notificacion_cita_30m_at = NULL";
+      }
+
+      $updates[] = "fecha_cita = :fecha_cita";
+      $params[':fecha_cita'] = $fechaNueva;
+    }
+  }
+
+  // ========================= LIMITE TIEMPO =========================
+  if ($hasLimiteTiempo && $limiteTiempoReq !== $oldLimite) {
+    $updates[] = "limite_tiempo_minutos = :limite_tiempo_minutos";
+    $params[':limite_tiempo_minutos'] = $limiteTiempoReq;
+  }
+
+  // ========================= RUTA INICIADA =========================
+  if ($startedRouteNow) {
+    $updates[] = "ruta_iniciada = 1";
+    $updates[] = "ruta_iniciada_at = COALESCE(ruta_iniciada_at, NOW())";
+  }
+
+  // ========================= TIEMPO EN NOTA =========================
+  if ($hasTiempoNota) {
+    if ($horaLlegadaActual === null || trim((string)$horaLlegadaActual) === '') {
+      $pdo->rollBack();
+      echo json_encode(['success' => false, 'message' => 'Aún no se ha finalizado la ruta para cronometrar nota']);
+      exit;
+    }
+    if ($tiempoNotaReq <= 0) {
+      $pdo->rollBack();
+      echo json_encode(['success' => false, 'message' => 'tiempo_en_nota inválido']);
+      exit;
+    }
+
+    if ($tiempoNotaActual !== null && trim((string)$tiempoNotaActual) !== '') {
+      if ((int)$tiempoNotaActual !== (int)$tiempoNotaReq) {
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'El tiempo en nota ya fue registrado']);
+        exit;
+      }
+      // Idempotente
+    } else {
+      $updates[] = "tiempo_en_nota = :tiempo_en_nota";
+      $params[':tiempo_en_nota'] = $tiempoNotaReq;
+    }
+  }
+
+  $wantsTiempoNota = $hasTiempoNota;
+
+  // Si no hay updates: idempotencia / no cambios
+  if (empty($updates)) {
+    // idempotencia controlada
+    if (($wantsStartRoute && $rutaIniciadaActual === 1) ||
+        ($wantsTiempoNota && $tiempoNotaActual !== null && trim((string)$tiempoNotaActual) !== '' && (int)$tiempoNotaActual === (int)$tiempoNotaReq)) {
+
+      // Trae row para devolver
+      $stmt2 = $pdo->prepare("
+        SELECT
+          n.id, n.noticia, COALESCE(n.tipo_de_nota,'Nota') AS tipo_de_nota,
+          n.descripcion, n.cliente_id, n.domicilio, n.reportero_id, n.fecha_cita,
+          n.pendiente, n.ultima_mod, n.ruta_iniciada, n.ruta_iniciada_at,
+          n.tiempo_en_nota, n.limite_tiempo_minutos,
+          r.nombre AS reportero
+        FROM noticias n
+        LEFT JOIN reporteros r ON n.reportero_id = r.id
+        WHERE n.id = ?
+        LIMIT 1
+      ");
+      $stmt2->execute([$noticiaId]);
+      $row = $stmt2->fetch(PDO::FETCH_ASSOC);
+
+      $pdo->commit();
+
+      echo json_encode([
+        'success' => true,
+        'message' => 'Sin cambios (idempotente)',
+        'data' => $row,
+      ]);
+      exit;
+    }
+
+    $pdo->rollBack();
+    echo json_encode(['success' => false, 'message' => 'No hay cambios para guardar']);
+    exit;
+  }
+
+  // Ultima mod
+  $updates[] = "ultima_mod = :ultima_mod";
+  $params[':ultima_mod'] = $ultimaMod;
+
+  // Ejecuta UPDATE
+  $sqlUp = "UPDATE noticias SET " . implode(", ", $updates) . " WHERE id = :id LIMIT 1";
+  $stmtUp = $pdo->prepare($sqlUp);
+  $stmtUp->execute($params);
+
     $stmt3 = $pdo->prepare("
         SELECT
             n.id,
@@ -447,11 +436,12 @@ try {
             COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
             n.descripcion,
             n.cliente_id,
-            c.nombre AS cliente,
+            c.nombre   AS cliente,
             c.whatsapp AS cliente_whatsapp,
             n.domicilio,
             n.ubicacion_en_mapa,
             n.reportero_id,
+            r.nombre AS reportero,
             n.fecha_pago,
             n.fecha_cita,
             n.fecha_cita_anterior,
@@ -466,140 +456,128 @@ try {
             n.ruta_iniciada,
             n.ruta_iniciada_at,
             n.tiempo_en_nota,
-            n.limite_tiempo_minutos,
-            r.nombre AS reportero
+            n.limite_tiempo_minutos
         FROM noticias n
         LEFT JOIN reporteros r ON n.reportero_id = r.id
         LEFT JOIN clientes  c ON n.cliente_id  = c.id
         WHERE n.id = ?
         LIMIT 1
     ");
-    $stmt3->execute([$noticiaId]);
-    $row = $stmt3->fetch(PDO::FETCH_ASSOC);
+  $stmt3->execute([$noticiaId]);
+  $row = $stmt3->fetch(PDO::FETCH_ASSOC);
 
-    // -------------------- MAIL (según evento) --------------------
-    $mailStatus = 'skipped';
-    $mailError  = null;
-    $mailTo     = null;
+  $pdo->commit();
 
-    // OJO: aquí decides cuándo sí notificar al cliente.
-    // Si no quieres spam, yo limitaría a: cambio de fecha, inicio de trayecto, llegada.
-    // Por ahora: lo que ya tienes + inicio de trayecto.
-    $shouldMailUpdate = ($changedTitulo || $changedDesc || $changedTipo || $changedFecha || $changedCliente || $changedDomicilio);
-    $shouldMailRoute  = $startedRouteNow;
+  // -------------------- MAIL (POLÍTICA) --------------------
+  $mailStatus = 'skipped';
+  $mailError  = null;
+  $mailTo     = null;
 
-    try {
-        if (!($shouldMailUpdate || $shouldMailRoute)) {
-            $mailStatus = 'skipped_no_relevant_change';
-        } else {
-            $finalClienteId = (!empty($row['cliente_id'])) ? (int)$row['cliente_id'] : null;
+  // Determina tipo de correo (prioridad)
+  $mailType = null; // route_started | rescheduled | domicilio_changed
+  if ($startedRouteNow) $mailType = 'route_started';
+  else if ($changedFechaReal) $mailType = 'rescheduled';
+  else if ($changedDomReal) $mailType = 'domicilio_changed';
 
-            if ($finalClienteId === null) {
-                $mailStatus = 'skipped_no_cliente';
-            } else {
-                $stmtC = $pdo->prepare("SELECT nombre, correo FROM clientes WHERE id = ? LIMIT 1");
-                $stmtC->execute([$finalClienteId]);
-                $c = $stmtC->fetch(PDO::FETCH_ASSOC) ?: [];
+  try {
+    $finalClienteId = !empty($row['cliente_id']) ? (int)$row['cliente_id'] : null;
 
-                $nombreCliente = trim((string)($c['nombre'] ?? ''));
-                $correoCliente = trim((string)($c['correo'] ?? ''));
-                $mailTo = $correoCliente;
+    if ($mailType === null) {
+      $mailStatus = 'skipped_no_event';
+    } elseif ($finalClienteId === null) {
+      $mailStatus = 'skipped_no_cliente';
+    } else {
+      $stmtC = $pdo->prepare("SELECT nombre, correo FROM clientes WHERE id = ? LIMIT 1");
+      $stmtC->execute([$finalClienteId]);
+      $c = $stmtC->fetch(PDO::FETCH_ASSOC) ?: [];
 
-                if ($correoCliente === '') {
-                    $mailStatus = 'skipped_empty_email';
-                } elseif (!filter_var($correoCliente, FILTER_VALIDATE_EMAIL)) {
-                    $mailStatus = 'skipped_invalid_email';
-                } elseif (!is_array($mailCfg) || trim((string)($mailCfg['password'] ?? '')) === '') {
-                    $mailStatus = 'skipped_smtp_not_configured';
-                } else {
-                    // Datos para el correo
-                    $fechaTxt = fmt_dt_mx($row['fecha_cita'] ?? null);
-                    $tituloTxt = (string)($row['noticia'] ?? 'Noticia');
-                    $domTxt = trim((string)($row['domicilio'] ?? ''));
-                    $domTxt = ($domTxt !== '') ? $domTxt : 'Sin domicilio registrado';
-                    $repTxt = trim((string)($row['reportero'] ?? ''));
+      $nombreCliente = trim((string)($c['nombre'] ?? ''));
+      $correoCliente = trim((string)($c['correo'] ?? ''));
+      $mailTo = $correoCliente;
 
-                    // PRIORIDAD: si inició trayecto, manda ese correo (no el genérico)
-                    if ($shouldMailRoute) {
-                        $subject = 'Tu reportero ya va en camino';
-                        $body =
-                            "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
-                            "Tu reportero ya va en camino.\n\n" .
-                            "Asunto: {$tituloTxt}\n" .
-                            "Cita: {$fechaTxt}\n" .
-                            "Domicilio: {$domTxt}\n" .
-                            ($repTxt !== '' ? "Reportero: {$repTxt}\n" : "") .
-                            "Estatus: En trayecto\n\n" .
-                            "Soporte TVC Tepa";
+      if ($correoCliente === '') {
+        $mailStatus = 'skipped_empty_email';
+      } elseif (!filter_var($correoCliente, FILTER_VALIDATE_EMAIL)) {
+        $mailStatus = 'skipped_invalid_email';
+      } elseif (!is_array($mailCfg) || trim((string)($mailCfg['password'] ?? '')) === '') {
+        $mailStatus = 'skipped_smtp_not_configured';
+      } else {
+        $tituloNoticia = (string)($row['noticia'] ?? 'Noticia');
+        $domTxt = trim((string)($row['domicilio'] ?? ''));
+        $domTxt = ($domTxt !== '') ? $domTxt : 'Sin domicilio';
+        $citaNuevaTxt = fmt_dt_mx_long($row['fecha_cita'] ?? null);
 
-                        smtp_send_mail($mailCfg, $correoCliente, $nombreCliente, $subject, $body);
-                        $mailStatus = 'sent_route_started';
+        $subject = '';
+        $body = '';
 
-                    } else {
-                        // Correo de actualización (tu flujo original, pero corrigiendo el texto)
-                        $cambiosTxt = [];
+        if ($mailType === 'route_started') {
+          $subject = 'Tu reportero ya va en camino';
+          $body =
+            "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
+            "Tu reportero ya va en camino.\n\n" .
+            "Asunto: {$tituloNoticia}\n" .
+            "Cita: {$citaNuevaTxt}\n" .
+            "Domicilio: {$domTxt}\n" .
+            "Estatus: En trayecto\n\n" .
+            "Soporte TVC Tepa";
+        } elseif ($mailType === 'rescheduled') {
+          $citaOldTxt = fmt_dt_mx_long($actual['fecha_cita'] ?? null);
 
-                        // Comparaciones reales (solo si venían en request / aplican)
-                        $oldFechaCita = trim((string)($actual['fecha_cita'] ?? ''));
-                        $newFechaCita = trim((string)($row['fecha_cita'] ?? ''));
-                        if ($hasFechaCita && $oldFechaCita !== $newFechaCita) {
-                            $cambiosTxt[] = "• Se actualizó la fecha de cita: {$fechaTxt}";
-                        }
+          $subject = 'Tu cita fue actualizada';
+          $body =
+            "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
+            "Tu cita fue actualizada.\n\n" .
+            "Asunto: {$tituloNoticia}\n" .
+            "Antes: {$citaOldTxt}\n" .
+            "Ahora: {$citaNuevaTxt}\n" .
+            "Domicilio: {$domTxt}\n\n" .
+            "Soporte TVC Tepa";
+        } else { // domicilio_changed
+          $domOld = trim((string)($actual['domicilio'] ?? ''));
+          $domOld = ($domOld !== '') ? $domOld : 'Sin domicilio';
 
-                        $oldDom = trim((string)($actual['domicilio'] ?? ''));
-                        $newDom = trim((string)($row['domicilio'] ?? ''));
-                        if ($hasDomicilio && $oldDom !== $newDom) {
-                            $cambiosTxt[] = "• Se actualizó el domicilio: " . (($newDom !== '') ? $newDom : 'Sin domicilio');
-                        }
-
-                        $oldTipoLocal = trim((string)($actual['tipo_de_nota'] ?? ''));
-                        $newTipoLocal = trim((string)($row['tipo_de_nota'] ?? ''));
-                        if ($tipoDeNota !== null && $oldTipoLocal !== $newTipoLocal) {
-                            $cambiosTxt[] = "• Se actualizó el tipo de nota: " . (($newTipoLocal !== '') ? $newTipoLocal : 'Sin tipo');
-                        }
-
-                        $changesBlock = '';
-                        if (!empty($cambiosTxt)) {
-                            $changesBlock = "Cambios:\n" . implode("\n", $cambiosTxt) . "\n\n";
-                        }
-
-                        $subject = 'Actualización de tu cita / noticia';
-                        $body =
-                            "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
-                            "Se actualizó la información relacionada a tu solicitud.\n\n" .
-                            "Asunto: {$tituloTxt}\n" .
-                            "Cita: {$fechaTxt}\n\n" .
-                            $changesBlock .
-                            "Soporte TVC Tepa";
-
-                        smtp_send_mail($mailCfg, $correoCliente, $nombreCliente, $subject, $body);
-                        $mailStatus = 'sent_update';
-                    }
-                }
-            }
+          $subject = 'Se actualizó el domicilio de tu cita';
+          $body =
+            "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
+            "Se actualizó el domicilio de tu cita.\n\n" .
+            "Asunto: {$tituloNoticia}\n" .
+            "Cita: {$citaNuevaTxt}\n" .
+            "Antes: {$domOld}\n" .
+            "Ahora: {$domTxt}\n\n" .
+            "Soporte TVC Tepa";
         }
-    } catch (Throwable $e) {
-        $mailStatus = 'error';
-        $mailError  = $e->getMessage();
-        error_log("MAIL update_noticia error noticia_id={$noticiaId}: " . $mailError);
-    }
 
-    $out = ['success' => true, 'data' => $row];
-    if ($debugMail) {
-        $out['mail_status'] = $mailStatus;
-        $out['mail_to'] = $mailTo;
-        $out['mail_error'] = $mailError;
+        smtp_send_mail($mailCfg, $correoCliente, $nombreCliente, $subject, $body);
+        $mailStatus = 'sent';
+      }
     }
+  } catch (Throwable $e) {
+    $mailStatus = 'error';
+    $mailError  = $e->getMessage();
+    error_log("MAIL update_noticia error noticia_id={$noticiaId}: " . $mailError);
+  }
 
-    echo json_encode($out);
-    exit;
+  $out = ['success' => true, 'data' => $row];
+  if ($debugMail) {
+    $out['mail_status'] = $mailStatus;
+    $out['mail_to'] = $mailTo;
+    $out['mail_error'] = $mailError;
+    $out['mail_type'] = $mailType;
+  }
+
+  echo json_encode($out);
+  exit;
 
 } catch (Throwable $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Error al actualizar',
-        'error' => $e->getMessage()
-    ]);
-    exit;
+  if ($pdo->inTransaction()) {
+    try { $pdo->rollBack(); } catch (Throwable $_) {}
+  }
+
+  http_response_code(500);
+  echo json_encode([
+    'success' => false,
+    'message' => 'Error al actualizar',
+    'error' => $e->getMessage(),
+  ]);
+  exit;
 }
