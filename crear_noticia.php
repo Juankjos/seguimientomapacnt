@@ -208,15 +208,27 @@ try {
         $mailStatus = 'skipped_smtp_not_configured';
         error_log("MAIL skipped: SMTP_PASS vacío (noticia_id={$newId})");
       } else {
-        $subject = 'Prueba';
-        $body =
+        $subject = 'Has Agendado tu Cita - Televisión Por Cable Tepa';
+        $bodyText =
           "¡Hola," . ($nombreCliente !== '' ? " {$nombreCliente}!" : "!") . "\n\n" .
-          "Tu cita quedó registrada.\n\n" .
+          "¡Tu cita ha sido agendada exitosamente!\n\n" .
           "Asunto: {$noticia}\n" .
           "Fecha: {$fechaCitaTxt} (Hora local)\n\n" .
-          "¡Gracias por su preferencia!\nSoporte TVC Tepa";
-
-        smtp_send_mail($mailCfg, $correoCliente, $nombreCliente, $subject, $body);
+          "Gracias por su preferencia.\nTelevisión Por Cable Tepa.";
+        $bodyHtml = email_template_html([
+          'brand' => 'Televisión Por Cable Tepa',
+          'title' => 'Cita agendada',
+          'preheader' => 'Tu cita quedó registrada. Revisa fecha y detalles.',
+          'greeting' => 'Hola' . ($nombreCliente !== '' ? " {$nombreCliente}" : ''),
+          'intro' => 'Tu cita ha sido agendada. Te compartimos los detalles:',
+          'details' => [
+            ['Asunto', $noticia],
+            ['Fecha', $fechaCitaTxt . ' (hora local)'],
+            ['Estatus', 'Agendada'],
+          ],
+          'footer' => 'Televisión Por Cable Tepa',
+        ]);
+        smtp_send_mail($mailCfg, $correoCliente, $nombreCliente, $subject, $bodyText, $bodyHtml);
         $mailStatus = 'sent';
       }
     }

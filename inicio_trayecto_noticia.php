@@ -143,16 +143,31 @@ try {
           $fechaTxt = $dt->format('d/m/Y H:i') . ' (hora local)';
         }
 
-        $subject = 'Tu reportero ya va en camino';
-        $body =
+        $subject = 'Tu reportero ya está en camino - Televisión Por Cable Tepa';
+
+        $bodyText =
           "Hola" . ($clienteNombre !== '' ? " {$clienteNombre}" : "") . ",\n\n" .
-          "Tu reportero ya va en camino.\n\n" .
+          "Tu reportero ya está en camino.\n\n" .
           "Asunto: {$tituloNoticia}\n" .
           "Cita: {$fechaTxt}\n" .
           "Estatus: En trayecto\n\n" .
-          "Soporte TVC Tepa";
+          "Televisión Por Cable Tepa";
 
-        smtp_send_mail($mailCfg, $clienteCorreo, $clienteNombre, $subject, $body);
+        $bodyHtml = email_template_html([
+          'brand' => 'Televisión Por Cable Tepa',
+          'title' => 'Reportero en camino',
+          'preheader' => 'El reportero ya va en camino. Revisa los detalles de tu cita.',
+          'greeting' => 'Hola' . ($clienteNombre !== '' ? " {$clienteNombre}" : ''),
+          'intro' => 'Tu reportero ya está en camino. Recuerda estar en el lugar y hora acordada.',
+          'details' => [
+            ['Asunto', $tituloNoticia],
+            ['Cita', $fechaTxt],
+            ['Estatus', 'En trayecto'],
+          ],
+          'footer' => 'Televisión Por Cable Tepa',
+        ]);
+
+        smtp_send_mail($mailCfg, $clienteCorreo, $clienteNombre, $subject, $bodyText, $bodyHtml);
         $mailStatus = 'sent';
       }
     }

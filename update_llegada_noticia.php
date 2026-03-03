@@ -164,9 +164,7 @@ try {
   $mailTo     = null;
 
   try {
-    if ($yaTeniaLlegada) {
-      $mailStatus = 'skipped_already_arrived';
-    } elseif ($clienteId === null) {
+    if ($clienteId === null) {
       $mailStatus = 'skipped_no_cliente';
     } else {
       $stmtC = $pdo->prepare("SELECT nombre, correo FROM clientes WHERE id = ? LIMIT 1");
@@ -185,21 +183,41 @@ try {
         $mailStatus = 'skipped_smtp_not_configured';
       } else {
         $citaTxt = fmt_dt_mx_long($fechaCitaDb);
+        $horaLlegadaTxt = fmt_dt_mx_long($horaLlegada); // ya viene YYYY-mm-dd HH:ii:ss
 
-        $subject = 'El reportero llegó a tu cita';
-        $body =
+        $subject = 'El reportero llegó a tu cita - Televisión Por Cable Tepa';
+
+        $bodyText =
           "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
           "El reportero ha llegado al destino.\n\n" .
           "Asunto: {$tituloNoticia}\n" .
           "Cita: {$citaTxt}\n" .
-          "Hora de llegada: {$horaLlegada}\n\n" .
-          "Soporte TVC Tepa";
+          "Hora de llegada: {$horaLlegadaTxt}\n\n" .
+          "Televisión Por Cable Tepa";
 
-        smtp_send_mail($mailCfg, $correoCliente, $nombreCliente, $subject, $body);
+        $details = [
+          ['Asunto', $tituloNoticia],
+          ['Cita', $citaTxt],
+          ['Hora de llegada', $horaLlegadaTxt],
+        ];
+        if ($nombreRep !== '') $details[] = ['Reportero', $nombreRep];
+        $details[] = ['Estatus', 'En destino'];
+
+        $bodyHtml = email_template_html([
+          'brand' => 'Televisión Por Cable Tepa',
+          'title' => 'Llegada al destino',
+          'preheader' => 'El reportero llegó al destino. Revisa los detalles de tu cita.',
+          'greeting' => 'Hola' . ($nombreCliente !== '' ? " {$nombreCliente}" : ''),
+          'intro' => 'El reportero ha llegado al destino. Te compartimos los detalles:',
+          'details' => $details,
+          'footer' => 'Televisión Por Cable Tepa',
+        ]);
+
+        smtp_send_mail($mailCfg, $correoCliente, $nombreCliente, $subject, $bodyText, $bodyHtml);
         $mailStatus = 'sent';
       }
     }
-  } catch (Throwable $e) {
+  }  catch (Throwable $e) {
     $mailStatus = 'error';
     $mailError  = $e->getMessage();
     error_log("MAIL llegada error noticia_id={$noticiaId}: " . $mailError);

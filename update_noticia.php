@@ -506,50 +506,112 @@ try {
         $domTxt = trim((string)($row['domicilio'] ?? ''));
         $domTxt = ($domTxt !== '') ? $domTxt : 'Sin domicilio';
         $citaNuevaTxt = fmt_dt_mx_long($row['fecha_cita'] ?? null);
+        $reporteroTxt = trim((string)($row['reportero'] ?? ''));
 
-        $subject = '';
-        $body = '';
+        $subject   = '';
+        $bodyText  = '';
+        $bodyHtml  = '';
 
+        
         if ($mailType === 'route_started') {
-          $subject = 'Tu reportero ya va en camino';
-          $body =
+            $subject  = 'Tu reportero ya está en camino - Televisión Por Cable Tepa';
+
+            $bodyText =
             "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
-            "Tu reportero ya va en camino.\n\n" .
+            "Tu reportero ya está en camino. Recuerda estar en el lugar y hora acordada.\n\n" .
             "Asunto: {$tituloNoticia}\n" .
             "Cita: {$citaNuevaTxt}\n" .
             "Domicilio: {$domTxt}\n" .
+            ($reporteroTxt !== '' ? "Reportero: {$reporteroTxt}\n" : "") .
             "Estatus: En trayecto\n\n" .
-            "Soporte TVC Tepa";
-        } elseif ($mailType === 'rescheduled') {
-          $citaOldTxt = fmt_dt_mx_long($actual['fecha_cita'] ?? null);
+            "Televisión Por Cable Tepa";
 
-          $subject = 'Tu cita fue actualizada';
-          $body =
+            $details = [
+            ['Asunto', $tituloNoticia],
+            ['Cita', $citaNuevaTxt],
+            ['Domicilio', $domTxt],
+            ];
+            if ($reporteroTxt !== '') $details[] = ['Reportero', $reporteroTxt];
+            $details[] = ['Estatus', 'En trayecto'];
+
+            $bodyHtml = email_template_html([
+            'brand' => 'Televisión Por Cable Tepa',
+            'title' => 'Reporte en camino',
+            'preheader' => 'El reportero ya va en camino. Revisa los detalles de tu cita.',
+            'greeting' => 'Hola' . ($nombreCliente !== '' ? " {$nombreCliente}" : ''),
+            'intro' => 'Tu reportero ya está en camino. Recuerda estar en el lugar y hora acordada.',
+            'details' => $details,
+            'footer' => 'Televisión Por Cable Tepa',
+            ]);
+
+        } elseif ($mailType === 'rescheduled') {
+            $citaOldTxt = fmt_dt_mx_long($actual['fecha_cita'] ?? null);
+            $subject = 'Tu cita fue actualizada - Televisión Por Cable Tepa';
+
+            $bodyText =
             "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
             "Tu cita fue actualizada.\n\n" .
             "Asunto: {$tituloNoticia}\n" .
             "Antes: {$citaOldTxt}\n" .
             "Ahora: {$citaNuevaTxt}\n" .
             "Domicilio: {$domTxt}\n\n" .
-            "Soporte TVC Tepa";
-        } else { // domicilio_changed
-          $domOld = trim((string)($actual['domicilio'] ?? ''));
-          $domOld = ($domOld !== '') ? $domOld : 'Sin domicilio';
+            "Televisión Por Cable Tepa";
 
-          $subject = 'Se actualizó el domicilio de tu cita';
-          $body =
+            $details = [
+            ['Asunto', $tituloNoticia],
+            ['Antes', $citaOldTxt],
+            ['Ahora', $citaNuevaTxt],
+            ['Domicilio', $domTxt],
+            ['Estatus', 'Reprogramada'],
+            ];
+
+            $bodyHtml = email_template_html([
+            'brand' => 'Televisión Por Cable Tepa',
+            'title' => 'Cita actualizada',
+            'preheader' => 'Se actualizó la fecha de tu cita.',
+            'greeting' => 'Hola' . ($nombreCliente !== '' ? " {$nombreCliente}" : ''),
+            'intro' => 'Se actualizó la fecha de tu cita. Te compartimos el cambio:',
+            'details' => $details,
+            'footer' => 'Televisión Por Cable Tepa',
+            ]);
+
+        } else { // domicilio_changed
+            $domOld = trim((string)($actual['domicilio'] ?? ''));
+            $domOld = ($domOld !== '') ? $domOld : 'Sin domicilio';
+
+            $subject = 'Se actualizó el domicilio de tu cita - Televisión Por Cable Tepa';
+
+            $bodyText =
             "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
             "Se actualizó el domicilio de tu cita.\n\n" .
             "Asunto: {$tituloNoticia}\n" .
             "Cita: {$citaNuevaTxt}\n" .
             "Antes: {$domOld}\n" .
             "Ahora: {$domTxt}\n\n" .
-            "Soporte TVC Tepa";
+            "Televisión Por Cable Tepa";
+
+            $details = [
+            ['Asunto', $tituloNoticia],
+            ['Cita', $citaNuevaTxt],
+            ['Domicilio anterior', $domOld],
+            ['Domicilio nuevo', $domTxt],
+            ['Estatus', 'Actualización de domicilio'],
+            ];
+
+            $bodyHtml = email_template_html([
+            'brand' => 'Televisión Por Cable Tepa',
+            'title' => 'Domicilio actualizado',
+            'preheader' => 'Se actualizó el domicilio de tu cita.',
+            'greeting' => 'Hola' . ($nombreCliente !== '' ? " {$nombreCliente}" : ''),
+            'intro' => 'Se actualizó el domicilio de tu cita. Revisa los datos:',
+            'details' => $details,
+            'footer' => 'Televisión Por Cable Tepa',
+            ]);
         }
 
-        smtp_send_mail($mailCfg, $correoCliente, $nombreCliente, $subject, $body);
+        smtp_send_mail($mailCfg, $correoCliente, $nombreCliente, $subject, $bodyText, $bodyHtml);
         $mailStatus = 'sent';
-      }
+        }
     }
   } catch (Throwable $e) {
     $mailStatus = 'error';
