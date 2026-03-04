@@ -10,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $nombre = isset($_POST['nombre']) ? trim($_POST['nombre']) : '';
-$password = isset($_POST['password']) ? trim($_POST['password']) : '';
+$passwordRaw = isset($_POST['password']) ? (string)$_POST['password'] : '';
 $role = isset($_POST['role']) ? trim($_POST['role']) : 'reportero';
 
 $puedeCrearNoticias = 0;
@@ -19,12 +19,12 @@ if (array_key_exists('puede_crear_noticias', $_POST)) {
     $puedeCrearNoticias = ($v === '1' || $v === 'true') ? 1 : 0;
 }
 
-if ($nombre === '' || $password === '') {
+if ($nombre === '' || $passwordRaw === '') {
     echo json_encode(['success' => false, 'message' => 'Nombre y contraseña son requeridos']);
     exit;
 }
 
-if (strlen($password) < 6) {
+if (strlen($passwordRaw) < 6) {
     echo json_encode(['success' => false, 'message' => 'La contraseña debe tener al menos 6 caracteres']);
     exit;
 }
@@ -32,6 +32,13 @@ if (strlen($password) < 6) {
 if ($role === '') $role = 'reportero';
 if (!in_array($role, ['reportero', 'admin'], true)) {
     echo json_encode(['success' => false, 'message' => 'Role inválido']);
+    exit;
+}
+
+$passwordHash = password_hash($passwordRaw, PASSWORD_DEFAULT);
+if ($passwordHash === false) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'No se pudo hashear la contraseña']);
     exit;
 }
 
@@ -47,7 +54,7 @@ try {
         INSERT INTO reporteros (nombre, password, role, puede_crear_noticias)
         VALUES (?, ?, ?, ?)
     ");
-    $stmt->execute([$nombre, $password, $role, $puedeCrearNoticias]);
+    $stmt->execute([$nombre, $passwordHash, $role, $puedeCrearNoticias]);
 
     $newId = (int)$pdo->lastInsertId();
 

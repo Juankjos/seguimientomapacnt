@@ -9,10 +9,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$nombre   = isset($_POST['nombre']) ? trim($_POST['nombre']) : '';
-$password = isset($_POST['password']) ? trim($_POST['password']) : '';
+$nombre = isset($_POST['nombre']) ? trim($_POST['nombre']) : '';
+$passwordRaw = isset($_POST['password']) ? (string)$_POST['password'] : ''; // NO trim
 
-if ($nombre === '' || $password === '') {
+if ($nombre === '' || $passwordRaw === '') {
     echo json_encode(['success' => false, 'message' => 'Nombre y contraseña son requeridos']);
     exit;
 }
@@ -27,29 +27,57 @@ $stmt = $pdo->prepare('
 $stmt->execute([$nombre]);
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if (!$user) {
-    echo json_encode(['success' => false, 'message' => 'Usuario no encontrado']);
+$authFail = function() {
+    echo json_encode(['success' => false, 'message' => 'Credenciales inválidas']);
     exit;
+};
+
+if (!$user || !isset($user['password'])) {
+    $authFail();
 }
 
-// 2) Validar contraseña (PLANO - no recomendado)
-if ($password !== $user['password']) {
-    echo json_encode(['success' => false, 'message' => 'Contraseña incorrecta']);
-    exit;
+$stored = (string)$user['password'];
+
+// 2) Validar contraseña + migración progresiva
+$info = password_get_info($stored);
+$isHashed = ($info['algo'] !== 0);
+
+$ok = false;
+
+if ($isHashed) {
+    $ok = password_verify($passwordRaw, $stored);
+
+    if ($ok && password_needs_rehash($stored, PASSWORD_DEFAULT)) {
+        $newHash = password_hash($passwordRaw, PASSWORD_DEFAULT);
+        if ($newHash !== false) {
+            $upd = $pdo->prepare("UPDATE reporteros SET password = ? WHERE id = ? LIMIT 1");
+            $upd->execute([$newHash, (int)$user['id']]);
+        }
+    }
+} else {
+    $ok = hash_equals($stored, $passwordRaw);
+
+    if ($ok) {
+        $newHash = password_hash($passwordRaw, PASSWORD_DEFAULT);
+        if ($newHash === false) {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'message' => 'Error interno']);
+            exit;
+        }
+        $upd = $pdo->prepare("UPDATE reporteros SET password = ? WHERE id = ? LIMIT 1");
+        $upd->execute([$newHash, (int)$user['id']]);
+    }
 }
 
-/*
-// password_hash en la BD:
-// if (!password_verify($password, $user['password'])) {
-//     echo json_encode(['success' => false, 'message' => 'Contraseña incorrecta']);
-//     exit;
-// }
-*/
+if (!$ok) {
+    $authFail();
+}
 
+// 3) Token de sesión
 $token = bin2hex(random_bytes(32));
-$exp = date('Y-m-d H:i:s', time() + (8 * 3600)); // ✅ 8h
+$exp = date('Y-m-d H:i:s', time() + (8 * 3600));
 
-$stmtTok = $pdo->prepare("UPDATE reporteros SET ws_token = ?, ws_token_exp = ? WHERE id = ?");
+$stmtTok = $pdo->prepare("UPDATE reporteros SET ws_token = ?, ws_token_exp = ? WHERE id = ? LIMIT 1");
 $stmtTok->execute([$token, $exp, (int)$user['id']]);
 
 echo json_encode([

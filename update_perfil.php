@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $reporteroId = isset($_POST['reportero_id']) ? intval($_POST['reportero_id']) : 0;
 $nombre      = isset($_POST['nombre']) ? trim($_POST['nombre']) : null;
-$password    = isset($_POST['password']) ? trim($_POST['password']) : null;
+$passwordRaw = array_key_exists('password', $_POST) ? (string)$_POST['password'] : null; // NO trim
 $role        = isset($_POST['role']) ? trim($_POST['role']) : null;
 
 $puedeCrearNoticias = null;
@@ -26,21 +26,21 @@ if ($reporteroId <= 0) {
     exit;
 }
 
-$nombre   = ($nombre !== null && $nombre !== '') ? $nombre : null;
-$password = ($password !== null && $password !== '') ? $password : null;
-$role     = ($role !== null && $role !== '') ? $role : null;
+$nombre = ($nombre !== null && $nombre !== '') ? $nombre : null;
+$passwordRaw = ($passwordRaw !== null && $passwordRaw !== '') ? $passwordRaw : null;
+$role = ($role !== null && $role !== '') ? $role : null;
 
 if ($role !== null && !in_array($role, ['reportero', 'admin'], true)) {
     echo json_encode(['success' => false, 'message' => 'Role inválido']);
     exit;
 }
 
-if ($password !== null && strlen($password) < 6) {
+if ($passwordRaw !== null && strlen($passwordRaw) < 6) {
     echo json_encode(['success' => false, 'message' => 'La contraseña debe tener al menos 6 caracteres']);
     exit;
 }
 
-if ($nombre === null && $password === null && $role === null && $puedeCrearNoticias === null) {
+if ($nombre === null && $passwordRaw === null && $role === null && $puedeCrearNoticias === null) {
     echo json_encode(['success' => false, 'message' => 'No hay cambios para guardar']);
     exit;
 }
@@ -54,9 +54,15 @@ try {
         $params[':nombre'] = $nombre;
     }
 
-    if ($password !== null) {
+    if ($passwordRaw !== null) {
+        $passwordHash = password_hash($passwordRaw, PASSWORD_DEFAULT);
+        if ($passwordHash === false) {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'message' => 'No se pudo hashear la contraseña']);
+            exit;
+        }
         $updates[] = "password = :password";
-        $params[':password'] = $password;
+        $params[':password'] = $passwordHash;
     }
 
     if ($role !== null) {
