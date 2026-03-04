@@ -476,30 +476,18 @@ class _AgendaPageState extends State<AgendaPage> {
   }
 
   Future<void> _abrirCrearAvisoDialog() async {
-    final theme = Theme.of(context);
+  final parentCtx = context;              // ✅ para SnackBars (Scaffold)
+  final theme = Theme.of(parentCtx);
 
-    final tituloCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    DateTime? vigencia;
+  final tituloCtrl = TextEditingController();
+  final descCtrl = TextEditingController();
+  DateTime? vigencia;
 
-    final fmt = DateFormat('dd/MM/yyyy');
+  final fmt = DateFormat('dd/MM/yyyy');
 
-    Future<void> pickVigencia(StateSetter setStateDialog) async {
-      final now = DateTime.now();
-      final picked = await showDatePicker(
-        context: context,
-        initialDate: vigencia ?? now,
-        firstDate: DateTime(now.year, now.month, now.day),
-        lastDate: DateTime(now.year + 3, 12, 31),
-        helpText: 'Selecciona vigencia',
-        cancelText: 'Cancelar',
-        confirmText: 'Aceptar',
-      );
-      if (picked != null) setStateDialog(() => vigencia = picked);
-    }
-
+  try {
     await showDialog(
-      context: context,
+      context: parentCtx,
       barrierDismissible: false,
       builder: (dialogCtx) {
         bool saving = false;
@@ -518,6 +506,23 @@ class _AgendaPageState extends State<AgendaPage> {
         final double descHeight = isWide ? 220 : 200;
 
         final scrollCtrl = ScrollController();
+
+        Future<void> pickVigencia(StateSetter setStateDialog) async {
+          final now = DateTime.now();
+          final picked = await showDatePicker(
+            context: dialogCtx, // ✅ NO uses el context padre aquí
+            initialDate: vigencia ?? now,
+            firstDate: DateTime(now.year, now.month, now.day),
+            lastDate: DateTime(now.year + 3, 12, 31),
+            helpText: 'Selecciona vigencia',
+            cancelText: 'Cancelar',
+            confirmText: 'Aceptar',
+          );
+
+          if (picked == null) return;
+          if (!dialogCtx.mounted) return; // ✅ evita context muerto
+          setStateDialog(() => vigencia = picked);
+        }
 
         return StatefulBuilder(
           builder: (context, setStateDialog) {
@@ -596,7 +601,9 @@ class _AgendaPageState extends State<AgendaPage> {
 
               actions: [
                 TextButton(
-                  onPressed: saving ? null : () => Navigator.pop(context),
+                  onPressed: saving
+                      ? null
+                      : () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
                   child: const Text('Cancelar'),
                 ),
                 FilledButton(
@@ -606,26 +613,28 @@ class _AgendaPageState extends State<AgendaPage> {
                           final titulo = tituloCtrl.text.trim();
                           final desc = descCtrl.text.trim();
 
+                          // ✅ SnackBars SIEMPRE con parentCtx, no con context del diálogo
                           if (titulo.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            ScaffoldMessenger.of(parentCtx).showSnackBar(
                               const SnackBar(content: Text('Escribe el título del aviso')),
                             );
                             return;
                           }
                           if (desc.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            ScaffoldMessenger.of(parentCtx).showSnackBar(
                               const SnackBar(content: Text('Escribe la descripción')),
                             );
                             return;
                           }
                           if (vigencia == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            ScaffoldMessenger.of(parentCtx).showSnackBar(
                               const SnackBar(content: Text('Selecciona la vigencia')),
                             );
                             return;
                           }
 
                           setStateDialog(() => saving = true);
+
                           try {
                             await ApiService.crearAviso(
                               titulo: titulo,
@@ -633,15 +642,19 @@ class _AgendaPageState extends State<AgendaPage> {
                               vigenciaDia: vigencia!,
                             );
 
-                            if (!mounted) return;
-                            Navigator.pop(context);
+                            if (!dialogCtx.mounted) return; // ✅
+                            Navigator.of(dialogCtx, rootNavigator: true).pop();
 
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(parentCtx).showSnackBar(
                               const SnackBar(content: Text('Aviso creado')),
                             );
                           } catch (e) {
-                            setStateDialog(() => saving = false);
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            if (dialogCtx.mounted) {
+                              setStateDialog(() => saving = false);
+                            }
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(parentCtx).showSnackBar(
                               SnackBar(content: Text('Error: $e')),
                             );
                           }
@@ -660,11 +673,11 @@ class _AgendaPageState extends State<AgendaPage> {
         );
       },
     );
-
-    tituloCtrl.dispose();
-    descCtrl.dispose();
+    } finally {
+      tituloCtrl.dispose();
+      descCtrl.dispose();
+    }
   }
-
   Future<void> _limpiarSesionLocal() async {
     try {
       final prefs = await SharedPreferences.getInstance();
