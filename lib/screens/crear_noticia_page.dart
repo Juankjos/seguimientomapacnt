@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart'; 
+import 'dart:async';
 
 import '../models/cliente.dart';
 import '../services/api_service.dart';
@@ -23,6 +24,36 @@ bool _usarHoraPorTexto(BuildContext context) {
   return defaultTargetPlatform == TargetPlatform.windows ||
       defaultTargetPlatform == TargetPlatform.macOS ||
       defaultTargetPlatform == TargetPlatform.linux;
+}
+
+class _MaxIntInputFormatter extends TextInputFormatter {
+  _MaxIntInputFormatter({required this.max, this.maxDigits = 2});
+
+  final int max;
+  final int maxDigits;
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final raw = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (raw.isEmpty) {
+      return const TextEditingValue(text: '', selection: TextSelection.collapsed(offset: 0));
+    }
+
+    final clampedLen = raw.length > maxDigits ? raw.substring(0, maxDigits) : raw;
+
+    final n = int.tryParse(clampedLen);
+    if (n == null) return oldValue;
+
+    if (n > max) return oldValue;
+
+    return TextEditingValue(
+      text: clampedLen,
+      selection: TextSelection.collapsed(offset: clampedLen.length),
+    );
+  }
 }
 
 class _HHmmTextInputFormatter extends TextInputFormatter {
@@ -48,6 +79,14 @@ class _HHmmTextInputFormatter extends TextInputFormatter {
       selection: TextSelection.collapsed(offset: out.length),
     );
   }
+}
+
+class _SetAmIntent extends Intent {
+  const _SetAmIntent();
+}
+
+class _SetPmIntent extends Intent {
+  const _SetPmIntent();
 }
 
 Widget _wrapWebWidth(Widget child) {
@@ -80,6 +119,7 @@ class CrearNoticiaPage extends StatefulWidget {
   @override
   State<CrearNoticiaPage> createState() => _CrearNoticiaPageState();
 }
+  enum _TimeSection { hour, minute, ampm }
 
 class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
   final _formKey = GlobalKey<FormState>();
@@ -212,6 +252,216 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
         return Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
+            child: sheet,
+          ),
+        );
+      },
+    );
+  }
+
+  Future<TimeOfDay?> _showSplitWheelTimePicker12h(
+    BuildContext context, {
+    required TimeOfDay initialTime,
+    int minuteInterval = 1,
+  }) async {
+    if (minuteInterval < 1) minuteInterval = 1;
+    if (60 % minuteInterval != 0) {
+      minuteInterval = 1;
+    }
+
+    bool isPm = initialTime.hour >= 12;
+    int hour12 = initialTime.hour % 12;
+    if (hour12 == 0) hour12 = 12;
+
+    int minute = initialTime.minute;
+    if (minuteInterval > 1) {
+      minute = (minute ~/ minuteInterval) * minuteInterval;
+    }
+
+    final hours = List<int>.generate(12, (i) => i + 1); // 1..12
+    final minutes = List<int>.generate(60 ~/ minuteInterval, (i) => i * minuteInterval);
+
+    int hourIndex = hours.indexOf(hour12);
+    if (hourIndex < 0) hourIndex = 0;
+
+    int minuteIndex = minutes.indexOf(minute);
+    if (minuteIndex < 0) minuteIndex = 0;
+
+    final hourCtrl = FixedExtentScrollController(initialItem: hourIndex);
+    final minuteCtrl = FixedExtentScrollController(initialItem: minuteIndex);
+    final ampmCtrl = FixedExtentScrollController(initialItem: isPm ? 1 : 0);
+
+    int selHour12 = hours[hourIndex];
+    int selMinute = minutes[minuteIndex];
+    bool selIsPm = isPm;
+
+    TimeOfDay toTimeOfDay24h() {
+      final int h24 = selIsPm
+          ? (selHour12 == 12 ? 12 : selHour12 + 12)
+          : (selHour12 == 12 ? 0 : selHour12);
+      return TimeOfDay(hour: h24, minute: selMinute);
+    }
+
+    const double sheetRadius = 18;
+    const double boxRadius = 14;
+    const double itemExtent = 36;
+    const double wheelHeight = 220;
+    const double boxWidth = 110;
+
+    return showModalBottomSheet<TimeOfDay>(
+      context: context,
+      isScrollControlled: false,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+
+        final sheet = StatefulBuilder(
+          builder: (ctx, setModalState) {
+            Widget wheelBox({required Widget child}) {
+              return SizedBox(
+                width: boxWidth,
+                height: wheelHeight,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(boxRadius),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: theme.dividerColor),
+                      borderRadius: BorderRadius.circular(boxRadius),
+                    ),
+                    child: child,
+                  ),
+                ),
+              );
+            }
+
+            TextStyle itemStyle(bool selected) => TextStyle(
+                  fontSize: selected ? 20 : 18,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                );
+
+            return SafeArea(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(sheetRadius)),
+                ),
+                padding: const EdgeInsets.only(top: 10, bottom: 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, null),
+                            child: const Text('Cancelar'),
+                          ),
+                          const Spacer(),
+                          Text(
+                            'Seleccionar hora',
+                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, toTimeOfDay24h()),
+                            child: const Text('Aceptar'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          wheelBox(
+                            child: CupertinoPicker(
+                              scrollController: hourCtrl,
+                              itemExtent: itemExtent,
+                              magnification: 1.08,
+                              useMagnifier: true,
+                              onSelectedItemChanged: (i) {
+                                setModalState(() => selHour12 = hours[i]);
+                              },
+                              children: [
+                                for (final h in hours)
+                                  Center(
+                                    child: Text(h.toString().padLeft(2, '0'), style: itemStyle(h == selHour12)),
+                                  ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(width: 10),
+                          Text(':', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
+                          const SizedBox(width: 10),
+
+                          wheelBox(
+                            child: CupertinoPicker(
+                              scrollController: minuteCtrl,
+                              itemExtent: itemExtent,
+                              magnification: 1.08,
+                              useMagnifier: true,
+                              onSelectedItemChanged: (i) {
+                                setModalState(() => selMinute = minutes[i]);
+                              },
+                              children: [
+                                for (final m in minutes)
+                                  Center(
+                                    child: Text(m.toString().padLeft(2, '0'), style: itemStyle(m == selMinute)),
+                                  ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(width: 14),
+
+                          wheelBox(
+                            child: CupertinoPicker(
+                              scrollController: ampmCtrl,
+                              itemExtent: itemExtent,
+                              magnification: 1.08,
+                              useMagnifier: true,
+                              onSelectedItemChanged: (i) {
+                                setModalState(() => selIsPm = (i == 1));
+                              },
+                              children: const [
+                                Center(child: Text('AM')),
+                                Center(child: Text('PM')),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        minuteInterval == 1
+                            ? 'Hora: 1–12, Minutos: 00–59'
+                            : 'Minutos en intervalos de $minuteInterval',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.7),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+
+        if (!kIsWeb) return sheet;
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 620),
             child: sheet,
           ),
         );
@@ -447,6 +697,723 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
     );
   }
 
+  Future<TimeOfDay?> _showHybridTimePicker12h(
+    BuildContext context, {
+    required TimeOfDay initialTime,
+    int minuteInterval = 1,
+  }) async {
+    if (minuteInterval < 1) minuteInterval = 1;
+    if (60 % minuteInterval != 0) minuteInterval = 1;
+
+    bool isPm = initialTime.hour >= 12;
+    int hour12 = initialTime.hour % 12;
+    if (hour12 == 0) hour12 = 12;
+
+    int minute = initialTime.minute;
+    if (minuteInterval > 1) minute = (minute ~/ minuteInterval) * minuteInterval;
+
+    final hours = List<int>.generate(12, (i) => i + 1); // 1..12
+    final minutes = List<int>.generate(60 ~/ minuteInterval, (i) => i * minuteInterval);
+
+    int hourIndex = hours.indexOf(hour12);
+    if (hourIndex < 0) hourIndex = 0;
+
+    int minuteIndex = minutes.indexOf(minute);
+    if (minuteIndex < 0) minuteIndex = 0;
+
+    final wheelHourCtrl = FixedExtentScrollController(initialItem: hourIndex);
+    final wheelMinCtrl = FixedExtentScrollController(initialItem: minuteIndex);
+    final wheelAmpmCtrl = FixedExtentScrollController(initialItem: isPm ? 1 : 0);
+
+    int selHour12 = hours[hourIndex];
+    int selMinute = minutes[minuteIndex];
+    bool selIsPm = isPm;
+
+    int mode = 0; // 0=ruletas, 1=escribir
+
+    bool _closing = false;
+
+    final hourTextCtrl =
+        TextEditingController(text: selHour12.toString().padLeft(2, '0'));
+    final minTextCtrl =
+        TextEditingController(text: selMinute.toString().padLeft(2, '0'));
+
+    String? errorText;
+
+    final hourWheelFocus = FocusNode(debugLabel: 'hourWheel');
+    final minWheelFocus = FocusNode(debugLabel: 'minWheel');
+    final ampmWheelFocus = FocusNode(debugLabel: 'ampmWheel');
+
+    _TimeSection activeSection = _TimeSection.hour;
+
+    String _buf = '';
+    _TimeSection? _bufSection;
+    Timer? _bufTimer;
+
+    int? _digitFromKey(LogicalKeyboardKey k) {
+      switch (k) {
+        case LogicalKeyboardKey.digit0:
+        case LogicalKeyboardKey.numpad0:
+          return 0;
+        case LogicalKeyboardKey.digit1:
+        case LogicalKeyboardKey.numpad1:
+          return 1;
+        case LogicalKeyboardKey.digit2:
+        case LogicalKeyboardKey.numpad2:
+          return 2;
+        case LogicalKeyboardKey.digit3:
+        case LogicalKeyboardKey.numpad3:
+          return 3;
+        case LogicalKeyboardKey.digit4:
+        case LogicalKeyboardKey.numpad4:
+          return 4;
+        case LogicalKeyboardKey.digit5:
+        case LogicalKeyboardKey.numpad5:
+          return 5;
+        case LogicalKeyboardKey.digit6:
+        case LogicalKeyboardKey.numpad6:
+          return 6;
+        case LogicalKeyboardKey.digit7:
+        case LogicalKeyboardKey.numpad7:
+          return 7;
+        case LogicalKeyboardKey.digit8:
+        case LogicalKeyboardKey.numpad8:
+          return 8;
+        case LogicalKeyboardKey.digit9:
+        case LogicalKeyboardKey.numpad9:
+          return 9;
+        default:
+          return null;
+      }
+    }
+
+    int _snapMinute(int v) {
+      if (minutes.contains(v)) return v;
+      final snapped = (v ~/ minuteInterval) * minuteInterval;
+      return minutes.contains(snapped) ? snapped : minutes.first;
+    }
+
+    void _syncTextFromSelected() {
+      hourTextCtrl.text = selHour12.toString().padLeft(2, '0');
+      minTextCtrl.text = selMinute.toString().padLeft(2, '0');
+    }
+
+    void _animateHourTo(int h12) {
+      final idx = hours.indexOf(h12);
+      if (idx >= 0) {
+        wheelHourCtrl.animateToItem(
+          idx,
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+        );
+      }
+    }
+
+    void _animateMinuteTo(int m) {
+      final idx = minutes.indexOf(m);
+      if (idx >= 0) {
+        wheelMinCtrl.animateToItem(
+          idx,
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+        );
+      }
+    }
+
+    void _animateAmPmTo(bool pm) {
+      wheelAmpmCtrl.animateToItem(
+        pm ? 1 : 0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+      );
+    }
+
+    TimeOfDay _toTimeOfDay24h(int h12, int m, bool pm) {
+      final h24 = pm ? (h12 == 12 ? 12 : h12 + 12) : (h12 == 12 ? 0 : h12);
+      return TimeOfDay(hour: h24, minute: m);
+    }
+
+    TimeOfDay? _tryParseTextMode() {
+      final h = int.tryParse(hourTextCtrl.text.trim());
+      final m = int.tryParse(minTextCtrl.text.trim());
+      if (h == null || m == null) return null;
+      if (h < 1 || h > 12) return null;
+      if (m < 0 || m > 59) return null;
+      if (minuteInterval > 1 && (m % minuteInterval != 0)) return null;
+      return _toTimeOfDay24h(h, m, selIsPm);
+    }
+
+    void _pushDigitForWheel(
+      _TimeSection section,
+      int digit,
+      void Function(void Function()) setModalState,
+    ) {
+      if (_closing) return;
+
+      if (_bufSection != section) {
+        _bufSection = section;
+        _buf = '';
+      }
+
+      _buf = (_buf + digit.toString());
+      if (_buf.length > 2) _buf = digit.toString();
+
+      _bufTimer?.cancel();
+      _bufTimer = Timer(const Duration(milliseconds: 700), () {
+        _buf = '';
+        _bufSection = null;
+      });
+
+      final val = int.tryParse(_buf);
+      if (val == null) return;
+
+      // Horas (con fallback tipo "56" => "6")
+      if (section == _TimeSection.hour) {
+        int candidate;
+
+        if (_buf.length == 1) {
+          if (val == 0) return;
+          candidate = val;
+        } else {
+          if (val >= 1 && val <= 12) {
+            candidate = val;
+          } else {
+            _buf = digit.toString();
+            _bufSection = section;
+            if (digit == 0) return;
+            candidate = digit;
+          }
+        }
+
+        if (candidate < 1 || candidate > 12) return;
+
+        setModalState(() {
+          selHour12 = candidate;
+          errorText = null;
+          _syncTextFromSelected();
+          _animateHourTo(selHour12);
+        });
+        return;
+      }
+
+      // Minutos
+      if (section == _TimeSection.minute) {
+        final m = val;
+        if (m < 0 || m > 59) return;
+
+        final snapped = _snapMinute(m);
+
+        setModalState(() {
+          selMinute = snapped;
+          errorText = null;
+          _syncTextFromSelected();
+          _animateMinuteTo(selMinute);
+        });
+      }
+    }
+
+    const double sheetRadius = 18;
+    const double boxRadius = 14;
+    const double itemExtent = 36;
+    const double wheelHeight = 220;
+    const double boxWidth = 110;
+
+    final result = await showModalBottomSheet<TimeOfDay>(
+      context: context,
+      isScrollControlled: false,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            void safeSetModalState(VoidCallback fn) {
+              if (_closing) return;
+              setModalState(fn);
+            }
+
+            void accept() {
+              if (mode == 0) {
+                _closing = true;
+                Navigator.pop(ctx, _toTimeOfDay24h(selHour12, selMinute, selIsPm));
+                return;
+              }
+
+              final t = _tryParseTextMode();
+              if (t == null) {
+                if (_closing) return;
+                safeSetModalState(() {
+                  errorText = minuteInterval == 1
+                      ? 'Hora inválida. Hora: 1–12 | Minutos: 00–59'
+                      : 'Minutos deben ser múltiplo de $minuteInterval';
+                });
+                return;
+              }
+
+              _closing = true;
+              Navigator.pop(ctx, t);
+            }
+
+            InputDecoration deco(String label) => InputDecoration(
+                  labelText: label,
+                  isDense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(boxRadius),
+                  ),
+                );
+
+            Widget wheelBox({
+              required FocusNode focusNode,
+              required _TimeSection section,
+              required Widget child,
+            }) {
+              bool isActive() => activeSection == section || focusNode.hasFocus;
+
+              return Focus(
+                focusNode: focusNode,
+                onFocusChange: (hasFocus) {
+                  if (_closing || !hasFocus) return;
+                  safeSetModalState(() {
+                    activeSection = section;
+                    errorText = null;
+                  });
+                },
+                onKeyEvent: (node, event) {
+                  if (_closing) return KeyEventResult.ignored;
+                  if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+                  if (HardwareKeyboard.instance.isControlPressed ||
+                      HardwareKeyboard.instance.isAltPressed ||
+                      HardwareKeyboard.instance.isMetaPressed) {
+                    return KeyEventResult.ignored;
+                  }
+
+                  final d = _digitFromKey(event.logicalKey);
+                  if (d != null &&
+                      (section == _TimeSection.hour ||
+                          section == _TimeSection.minute)) {
+                    _pushDigitForWheel(section, d, safeSetModalState);
+                    return KeyEventResult.handled;
+                  }
+
+                  return KeyEventResult.ignored;
+                },
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    if (_closing) return;
+                    safeSetModalState(() {
+                      activeSection = section;
+                      errorText = null;
+                    });
+                    focusNode.requestFocus();
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 120),
+                    curve: Curves.easeOut,
+                    width: boxWidth,
+                    height: wheelHeight,
+                    decoration: BoxDecoration(
+                      color: isActive()
+                          ? theme.colorScheme.primary.withOpacity(0.08)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(boxRadius),
+                      border: Border.all(
+                        color: isActive()
+                            ? theme.colorScheme.primary
+                            : theme.dividerColor,
+                        width: isActive() ? 2.2 : 1.0,
+                      ),
+                      boxShadow: isActive()
+                          ? [
+                              BoxShadow(
+                                color: theme.colorScheme.primary.withOpacity(0.10),
+                                blurRadius: 10,
+                                spreadRadius: 1,
+                              ),
+                            ]
+                          : const [],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: child,
+                  ),
+                ),
+              );
+            }
+
+            TextStyle itemStyle(bool selected) => TextStyle(
+                  fontSize: selected ? 20 : 18,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                );
+
+            Widget modeSwitch() {
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Ruletas'),
+                    selected: mode == 0,
+                    onSelected: (_) {
+                      if (_closing) return;
+                      safeSetModalState(() {
+                        mode = 0;
+                        errorText = null;
+                      });
+                      hourWheelFocus.requestFocus();
+                    },
+                  ),
+                  const SizedBox(width: 10),
+                  ChoiceChip(
+                    label: const Text('Escribir'),
+                    selected: mode == 1,
+                    onSelected: (_) {
+                      if (_closing) return;
+                      safeSetModalState(() {
+                        mode = 1;
+                        errorText = null;
+                        _syncTextFromSelected();
+                      });
+                    },
+                  ),
+                ],
+              );
+            }
+
+            final content = WillPopScope(
+              onWillPop: () async {
+                _closing = true;
+                return true;
+              },
+              child: SafeArea(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: theme.cardColor,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(sheetRadius),
+                    ),
+                  ),
+                  padding: const EdgeInsets.only(top: 10, bottom: 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Row(
+                          children: [
+                            TextButton(
+                              onPressed: () {
+                                _closing = true;
+                                Navigator.pop(ctx, null);
+                              },
+                              child: const Text('Cancelar'),
+                            ),
+                            const Spacer(),
+                            Text(
+                              'Seleccionar hora',
+                              style: theme.textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const Spacer(),
+                            TextButton(
+                              onPressed: accept,
+                              child: const Text('Aceptar'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      modeSwitch(),
+                      const SizedBox(height: 10),
+
+                      if (mode == 0) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              wheelBox(
+                                focusNode: hourWheelFocus,
+                                section: _TimeSection.hour,
+                                child: CupertinoPicker(
+                                  scrollController: wheelHourCtrl,
+                                  itemExtent: itemExtent,
+                                  magnification: 1.08,
+                                  useMagnifier: true,
+                                  onSelectedItemChanged: (i) {
+                                    if (_closing) return;
+                                    safeSetModalState(() {
+                                      selHour12 = hours[i];
+                                      errorText = null;
+                                      _syncTextFromSelected();
+                                    });
+                                  },
+                                  children: [
+                                    for (final h in hours)
+                                      Center(
+                                        child: Text(
+                                          h.toString().padLeft(2, '0'),
+                                          style: itemStyle(h == selHour12),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                ':',
+                                style: theme.textTheme.headlineSmall
+                                    ?.copyWith(fontWeight: FontWeight.w900),
+                              ),
+                              const SizedBox(width: 10),
+                              wheelBox(
+                                focusNode: minWheelFocus,
+                                section: _TimeSection.minute,
+                                child: CupertinoPicker(
+                                  scrollController: wheelMinCtrl,
+                                  itemExtent: itemExtent,
+                                  magnification: 1.08,
+                                  useMagnifier: true,
+                                  onSelectedItemChanged: (i) {
+                                    if (_closing) return;
+                                    safeSetModalState(() {
+                                      selMinute = minutes[i];
+                                      errorText = null;
+                                      _syncTextFromSelected();
+                                    });
+                                  },
+                                  children: [
+                                    for (final m in minutes)
+                                      Center(
+                                        child: Text(
+                                          m.toString().padLeft(2, '0'),
+                                          style: itemStyle(m == selMinute),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              wheelBox(
+                                focusNode: ampmWheelFocus,
+                                section: _TimeSection.ampm,
+                                child: CupertinoPicker(
+                                  scrollController: wheelAmpmCtrl,
+                                  itemExtent: itemExtent,
+                                  magnification: 1.08,
+                                  useMagnifier: true,
+                                  onSelectedItemChanged: (i) {
+                                    if (_closing) return;
+                                    safeSetModalState(() {
+                                      selIsPm = (i == 1);
+                                      errorText = null;
+                                    });
+                                  },
+                                  children: const [
+                                    Center(child: Text('AM')),
+                                    Center(child: Text('PM')),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Atajos: A=AM, P=PM. En hora/minuto, escribe 6→06 o 40→40.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withOpacity(0.7),
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ] else ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: boxWidth,
+                                child: TextField(
+                                  controller: hourTextCtrl,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(2),
+                                    _MaxIntInputFormatter(max: 12),
+                                  ],
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                      fontSize: 22, fontWeight: FontWeight.w800),
+                                  decoration: deco('Hora (1–12)'),
+                                  onChanged: (_) {
+                                    if (_closing) return;
+                                    safeSetModalState(() => errorText = null);
+                                  },
+                                  onEditingComplete: () {
+                                    if (hourTextCtrl.text.length == 1) {
+                                      hourTextCtrl.text =
+                                          hourTextCtrl.text.padLeft(2, '0');
+                                    }
+                                  },
+                                  onSubmitted: (_) => accept(),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                ':',
+                                style: theme.textTheme.headlineSmall
+                                    ?.copyWith(fontWeight: FontWeight.w900),
+                              ),
+                              const SizedBox(width: 10),
+                              SizedBox(
+                                width: boxWidth,
+                                child: TextField(
+                                  controller: minTextCtrl,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(2),
+                                    _MaxIntInputFormatter(max: 59),
+                                  ],
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                      fontSize: 22, fontWeight: FontWeight.w800),
+                                  decoration: deco(minuteInterval == 1
+                                      ? 'Min (00–59)'
+                                      : 'Min (×$minuteInterval)'),
+                                  onChanged: (_) {
+                                    if (_closing) return;
+                                    safeSetModalState(() => errorText = null);
+                                  },
+                                  onEditingComplete: () {
+                                    if (minTextCtrl.text.length == 1) {
+                                      minTextCtrl.text =
+                                          minTextCtrl.text.padLeft(2, '0');
+                                    }
+                                  },
+                                  onSubmitted: (_) => accept(),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              SizedBox(
+                                width: boxWidth,
+                                height: 56,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(boxRadius),
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: theme.dividerColor),
+                                      borderRadius: BorderRadius.circular(boxRadius),
+                                    ),
+                                    child: CupertinoPicker(
+                                      scrollController: wheelAmpmCtrl,
+                                      itemExtent: 36,
+                                      magnification: 1.08,
+                                      useMagnifier: true,
+                                      onSelectedItemChanged: (i) {
+                                        if (_closing) return;
+                                        safeSetModalState(() {
+                                          selIsPm = (i == 1);
+                                          errorText = null;
+                                        });
+                                      },
+                                      children: const [
+                                        Center(child: Text('AM')),
+                                        Center(child: Text('PM')),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Atajos: A=AM, P=PM.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withOpacity(0.7),
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+
+                      if (errorText != null) ...[
+                        const SizedBox(height: 10),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            errorText!,
+                            style: TextStyle(
+                              color: theme.colorScheme.error,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            );
+
+            return Shortcuts(
+              shortcuts: {
+                LogicalKeySet(LogicalKeyboardKey.keyA): const _SetAmIntent(),
+                LogicalKeySet(LogicalKeyboardKey.keyP): const _SetPmIntent(),
+              },
+              child: Actions(
+                actions: {
+                  _SetAmIntent: CallbackAction<_SetAmIntent>(
+                    onInvoke: (_) {
+                      if (_closing) return null;
+                      safeSetModalState(() {
+                        selIsPm = false;
+                        errorText = null;
+                      });
+                      _animateAmPmTo(false);
+                      return null;
+                    },
+                  ),
+                  _SetPmIntent: CallbackAction<_SetPmIntent>(
+                    onInvoke: (_) {
+                      if (_closing) return null;
+                      safeSetModalState(() {
+                        selIsPm = true;
+                        errorText = null;
+                      });
+                      _animateAmPmTo(true);
+                      return null;
+                    },
+                  ),
+                },
+                child: Focus(
+                  autofocus: true,
+                  child: content,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    // cleanup
+    _bufTimer?.cancel();
+    hourTextCtrl.dispose();
+    minTextCtrl.dispose();
+    hourWheelFocus.dispose();
+    minWheelFocus.dispose();
+    ampmWheelFocus.dispose();
+
+    return result;
+  }
+
   Future<void> _seleccionarCliente(Cliente c) async {
     setState(() {
       _clienteSeleccionado = c;
@@ -514,11 +1481,16 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
     }
   }
 
-  Future<void> _seleccionarHora() async {
+    Future<void> _seleccionarHora() async {
     final initial = _horaSeleccionada ?? TimeOfDay.now();
 
-    final picked = _usarHoraPorTexto(context)
-        ? await _showTextTimePicker(
+    final bool esDesktop = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.linux);
+
+    final picked = (kIsWeb || esDesktop)
+        ? await _showHybridTimePicker12h(
             context,
             initialTime: initial,
             minuteInterval: 1,
