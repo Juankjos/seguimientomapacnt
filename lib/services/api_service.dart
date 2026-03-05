@@ -487,9 +487,15 @@ class ApiService {
 
   // 🔹 Buscar reportero a una noticia
   static Future<List<ReporteroBusqueda>> buscarReporteros(String query) async {
-    final url = Uri.parse('$baseUrl/search_reporteros.php?q=${Uri.encodeQueryComponent(query)}');
+    final uri = Uri.parse('$baseUrl/search_reporteros.php').replace(
+      queryParameters: {
+        'q': query,
+        'role': 'reportero',
+      },
+    );
 
-    final response = await http.get(url);
+    final response = await http.get(uri);
+
     if (response.statusCode == 200) {
       final Map<String, dynamic> data = json.decode(response.body);
       if (data['success'] == true) {

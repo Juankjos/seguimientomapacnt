@@ -3,6 +3,7 @@ require 'config.php';
 header('Content-Type: application/json; charset=utf-8');
 
 $q = isset($_GET['q']) ? trim($_GET['q']) : '';
+$role = isset($_GET['role']) ? trim($_GET['role']) : '';
 
 $sql = "
     SELECT id, nombre, role, puede_crear_noticias
@@ -15,6 +16,17 @@ $params = [];
 if ($q !== '') {
     $sql .= " AND nombre LIKE :q";
     $params[':q'] = '%' . $q . '%';
+}
+
+if ($role !== '') {
+    if (!in_array($role, ['admin', 'reportero'], true)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'role inválido']);
+        exit;
+    }
+
+    $sql .= " AND role = :role";
+    $params[':role'] = $role;
 }
 
 $sql .= " ORDER BY nombre ASC LIMIT 50";
