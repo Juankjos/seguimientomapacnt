@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
 
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -411,12 +412,14 @@ class MyApp extends StatelessWidget {
           locale: const Locale('es', 'MX'),
           supportedLocales: const [
             Locale('es', 'MX'),
+            Locale('es'),
             Locale('en', ''),
           ],
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
+            quill.FlutterQuillLocalizations.delegate,
           ],
           builder: (context, child) {
             final wrapped = SessionTimeoutWatcher(

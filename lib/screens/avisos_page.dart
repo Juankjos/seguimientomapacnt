@@ -1,7 +1,8 @@
 // lib/screens/avisos_page.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-
+import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'dart:convert';
 import '../models/aviso.dart';
 import '../services/api_service.dart';
 
@@ -17,6 +18,69 @@ class AvisosPage extends StatefulWidget {
   @override
   State<AvisosPage> createState() => _AvisosPageState();
 }
+class _AvisoRichView extends StatefulWidget {
+  const _AvisoRichView({
+    required this.doc,
+    this.height = 260,
+  });
+
+  final quill.Document doc;
+  final double height;
+
+  @override
+  State<_AvisoRichView> createState() => _AvisoRichViewState();
+}
+
+class _AvisoRichViewState extends State<_AvisoRichView> {
+  late final quill.QuillController _c;
+  final FocusNode _focus = FocusNode();
+  final ScrollController _scroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _c = quill.QuillController(
+      document: widget.doc,
+      selection: const TextSelection.collapsed(offset: 0),
+    )..readOnly = true;
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    _scroll.dispose();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: widget.height,
+      width: double.maxFinite,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: Theme.of(context).dividerColor),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: quill.QuillEditor.basic(
+            controller: _c,
+            focusNode: _focus,
+            scrollController: _scroll,
+            config: const quill.QuillEditorConfig(
+              expands: true,
+              padding: EdgeInsets.zero,
+              autoFocus: false,
+              showCursor: false,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _AvisosPageState extends State<AvisosPage> {
   bool _loading = true;
@@ -25,7 +89,29 @@ class _AvisosPageState extends State<AvisosPage> {
 
   final _fmt = DateFormat('dd/MM/yyyy');
 
-  bool _autoOpened = false; // evita reabrir modal varias veces
+  bool _autoOpened = false;
+
+  quill.Document? _tryParseDeltaDoc(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return quill.Document.fromJson(decoded);
+      }
+    } catch (_) {
+    }
+    return null;
+  }
+
+  String _plainPreviewFromDescripcion(String raw) {
+    final doc = _tryParseDeltaDoc(raw);
+    final text = (doc == null) ? raw : doc.toPlainText();
+
+    return text
+        .replaceAll('\r', '')
+        .replaceAll('\n', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
 
   @override
   void initState() {
@@ -84,6 +170,8 @@ class _AvisosPageState extends State<AvisosPage> {
   }
 
   void _mostrarDetalle(Aviso a) {
+    final doc = _tryParseDeltaDoc(a.descripcion);
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -92,7 +180,11 @@ class _AvisosPageState extends State<AvisosPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(a.descripcion),
+              if (doc == null)
+                Text(a.descripcion)
+              else
+                _AvisoRichView(doc: doc),
+
               const SizedBox(height: 14),
               Text(
                 'Vigente hasta: ${_fmt.format(a.vigencia.toLocal())}',
@@ -153,6 +245,7 @@ class _AvisosPageState extends State<AvisosPage> {
           itemBuilder: (_, i) {
             final a = _avisos[i];
             final vig = _fmt.format(a.vigencia.toLocal());
+            final preview = _plainPreviewFromDescripcion(a.descripcion);
 
             return Card(
               elevation: 1.6,
@@ -170,8 +263,9 @@ class _AvisosPageState extends State<AvisosPage> {
                         style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
                       ),
                       const SizedBox(height: 8),
+                      
                       Text(
-                        a.descripcion,
+                        preview,
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(

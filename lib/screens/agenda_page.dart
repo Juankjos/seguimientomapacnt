@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'dart:convert';
 
 import '../auth_controller.dart';
 import '../models/noticia.dart';
@@ -476,11 +478,13 @@ class _AgendaPageState extends State<AgendaPage> {
   }
 
   Future<void> _abrirCrearAvisoDialog() async {
-  final parentCtx = context;              // ✅ para SnackBars (Scaffold)
+  final quill.QuillController avisoCtrl = quill.QuillController.basic();
+  final FocusNode avisoFocus = FocusNode();
+  final ScrollController avisoScroll = ScrollController();
+  final parentCtx = context;
   final theme = Theme.of(parentCtx);
 
   final tituloCtrl = TextEditingController();
-  final descCtrl = TextEditingController();
   DateTime? vigencia;
 
   final fmt = DateFormat('dd/MM/yyyy');
@@ -556,20 +560,72 @@ class _AgendaPageState extends State<AgendaPage> {
                         ),
                         const SizedBox(height: 12),
 
+                        IgnorePointer(
+                          ignoring: saving,
+                          child: quill.QuillSimpleToolbar(
+                            controller: avisoCtrl,
+                            config: const quill.QuillSimpleToolbarConfig(
+                              // ❌ nada de tamaños/fuentes/títulos
+                              showFontFamily: false,
+                              showFontSize: false,
+                              showHeaderStyle: false,
+                              showSmallButton: false,
+
+                              // (opcional) si tampoco quieres colores:
+                              showColorButton: false,
+                              showBackgroundColorButton: false,
+
+                              // ✅ estilos que sí quieres
+                              showBoldButton: true,
+                              showItalicButton: true,
+                              showUnderLineButton: true,
+                              showStrikeThrough: true,
+
+                              // ✅ útiles tipo “Word/Docs”
+                              showListBullets: true,
+                              showListNumbers: true,
+                              showLink: true,
+                              showClearFormat: true,
+                              showUndo: true,
+                              showRedo: true,
+
+                              // ❌ quita lo que no te interese
+                              showInlineCode: false,
+                              showCodeBlock: false,
+                              showQuote: false,
+                              showIndent: false,
+                              showAlignmentButtons: false,
+                              showDirection: false,
+                              showSearchButton: false,
+                              showSubscript: false,
+                              showSuperscript: false,
+                              showListCheck: false,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         // Campo descripción con altura fija y scroll propio
                         SizedBox(
                           height: descHeight,
-                          child: TextField(
-                            controller: descCtrl,
-                            enabled: !saving,
-                            keyboardType: TextInputType.multiline,
-                            textInputAction: TextInputAction.newline,
-                            maxLines: null, // permite crecer internamente
-                            expands: true,  // ocupa el alto del SizedBox
-                            decoration: const InputDecoration(
-                              labelText: 'Descripción',
-                              alignLabelWithHint: true,
-                              border: OutlineInputBorder(),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              border: Border.all(color: theme.dividerColor),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: quill.QuillEditor.basic(
+                                controller: avisoCtrl,
+                                focusNode: avisoFocus,
+                                scrollController: avisoScroll,
+                                config: quill.QuillEditorConfig(
+                                  autoFocus: false,
+                                  expands: true,
+                                  padding: EdgeInsets.zero,
+                                  placeholder: 'Descripción',
+                                  showCursor: !saving,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -611,7 +667,7 @@ class _AgendaPageState extends State<AgendaPage> {
                       ? null
                       : () async {
                           final titulo = tituloCtrl.text.trim();
-                          final desc = descCtrl.text.trim();
+                          final plainDesc = avisoCtrl.document.toPlainText().trim();
 
                           // ✅ SnackBars SIEMPRE con parentCtx, no con context del diálogo
                           if (titulo.isEmpty) {
@@ -620,7 +676,7 @@ class _AgendaPageState extends State<AgendaPage> {
                             );
                             return;
                           }
-                          if (desc.isEmpty) {
+                          if (plainDesc.isEmpty) {
                             ScaffoldMessenger.of(parentCtx).showSnackBar(
                               const SnackBar(content: Text('Escribe la descripción')),
                             );
@@ -633,12 +689,17 @@ class _AgendaPageState extends State<AgendaPage> {
                             return;
                           }
 
-                          setStateDialog(() => saving = true);
+                          setStateDialog(() {
+                            saving = true;
+                            avisoCtrl.readOnly = true;
+                          });
 
                           try {
+                            final descDeltaJson = _deltaJsonSinTamanos(avisoCtrl);
+
                             await ApiService.crearAviso(
                               titulo: titulo,
-                              descripcion: desc,
+                              descripcion: descDeltaJson,
                               vigenciaDia: vigencia!,
                             );
 
@@ -675,7 +736,9 @@ class _AgendaPageState extends State<AgendaPage> {
     );
     } finally {
       tituloCtrl.dispose();
-      descCtrl.dispose();
+      avisoFocus.dispose();
+      avisoScroll.dispose();
+      avisoCtrl.dispose();
     }
   }
   Future<void> _limpiarSesionLocal() async {
@@ -909,6 +972,32 @@ class _AgendaPageState extends State<AgendaPage> {
     final m = fecha.month.toString().padLeft(2, '0');
     final y = fecha.year.toString();
     return '$d/$m/$y';
+  }
+
+  String _deltaJsonSinTamanos(quill.QuillController c) {
+    final ops = c.document.toDelta().toJson();
+    final cleaned = ops.map((op) {
+      if (op is Map && op['attributes'] is Map) {
+        final m = Map<String, dynamic>.from(op);
+        final attrs = Map<String, dynamic>.from(m['attributes'] as Map);
+
+        attrs.remove('size');
+        attrs.remove('font');
+        attrs.remove('header');
+        attrs.remove('small');
+        attrs.remove('line-height');
+
+        if (attrs.isEmpty) {
+          m.remove('attributes');
+        } else {
+          m['attributes'] = attrs;
+        }
+        return m;
+      }
+      return op;
+    }).toList();
+
+    return jsonEncode(cleaned);
   }
 
   @override
