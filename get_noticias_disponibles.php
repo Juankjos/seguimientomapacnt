@@ -1,5 +1,6 @@
 <?php
 require 'config.php';
+header('Content-Type: application/json; charset=utf-8');
 
 // Noticias que no tienen reportero asignado (reportero_id IS NULL)
 $sql = "
@@ -15,7 +16,7 @@ $sql = "
         n.fecha_cita,
         n.latitud,
         n.longitud,
-        n.limite_tiempo_minutos,
+        n.limite_tiempo_minutos
     FROM noticias n
     LEFT JOIN clientes c ON n.cliente_id = c.id
     WHERE n.reportero_id IS NULL
@@ -24,7 +25,7 @@ $sql = "
 ";
 
 $stmt = $pdo->query($sql);
-$rows = $stmt->fetchAll();
+$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 echo json_encode([
     'success' => true,
