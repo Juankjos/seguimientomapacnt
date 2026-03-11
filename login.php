@@ -19,7 +19,14 @@ if ($nombre === '' || $passwordRaw === '') {
 
 // 1) Buscar usuario
 $stmt = $pdo->prepare('
-    SELECT id, nombre, password, role, puede_crear_noticias
+    SELECT id, nombre, password, role, 
+        puede_crear_noticias,
+        puede_ver_gestion_noticias,
+        puede_ver_estadisticas,
+        puede_ver_rastreo_general,
+        puede_ver_empleado_mes,
+        puede_ver_gestion,
+        puede_ver_clientes
     FROM reporteros
     WHERE nombre = ?
     LIMIT 1
@@ -88,6 +95,12 @@ echo json_encode([
     'role'         => $user['role'],
     'ws_token'     => $token,
     'ws_token_exp' => $exp,
-    'puede_crear_noticias' => (int)($user['puede_crear_noticias'] ?? 0),
+    'puede_crear_noticias'        => (int)($user['puede_crear_noticias'] ?? 0),
+    'puede_ver_gestion_noticias'  => (int)($user['puede_ver_gestion_noticias'] ?? 0),
+    'puede_ver_estadisticas'      => (int)($user['puede_ver_estadisticas'] ?? 0),
+    'puede_ver_rastreo_general'   => (int)($user['puede_ver_rastreo_general'] ?? 0),
+    'puede_ver_empleado_mes'      => (int)($user['puede_ver_empleado_mes'] ?? 0),
+    'puede_ver_gestion'           => (int)($user['puede_ver_gestion'] ?? 0),
+    'puede_ver_clientes'          => (int)($user['puede_ver_clientes'] ?? 0),
 ]);
 exit;

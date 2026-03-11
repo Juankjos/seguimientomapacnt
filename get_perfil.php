@@ -16,7 +16,15 @@ if ($token === '') {
 
 try {
     $stmt = $pdo->prepare("
-        SELECT id, nombre, role, puede_crear_noticias, ws_token_exp
+        SELECT id, nombre, role, 
+        puede_crear_noticias, 
+        puede_ver_gestion_noticias,
+        puede_ver_estadisticas,
+        puede_ver_rastreo_general,
+        puede_ver_empleado_mes,
+        puede_ver_gestion,
+        puede_ver_clientes, 
+        ws_token_exp
         FROM reporteros
         WHERE ws_token = ?
         LIMIT 1
@@ -44,6 +52,12 @@ try {
             'nombre' => $row['nombre'],
             'role' => $row['role'],
             'puede_crear_noticias' => (int)($row['puede_crear_noticias'] ?? 0),
+            'puede_ver_gestion_noticias' => (int)($row['puede_ver_gestion_noticias'] ?? 0),
+            'puede_ver_estadisticas'     => (int)($row['puede_ver_estadisticas'] ?? 0),
+            'puede_ver_rastreo_general'  => (int)($row['puede_ver_rastreo_general'] ?? 0),
+            'puede_ver_empleado_mes'     => (int)($row['puede_ver_empleado_mes'] ?? 0),
+            'puede_ver_gestion'          => (int)($row['puede_ver_gestion'] ?? 0),
+            'puede_ver_clientes'         => (int)($row['puede_ver_clientes'] ?? 0),
         ],
     ]);
     exit;

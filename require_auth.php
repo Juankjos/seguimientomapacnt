@@ -24,7 +24,15 @@ function require_auth(PDO $pdo, array $in = []): array {
     }
 
     $stmt = $pdo->prepare("
-        SELECT id, nombre, role, puede_crear_noticias, ws_token_exp
+        SELECT id, nombre, role, 
+        puede_crear_noticias,
+        puede_ver_gestion_noticias,
+        puede_ver_estadisticas,
+        puede_ver_rastreo_general,
+        puede_ver_empleado_mes,
+        puede_ver_gestion,
+        puede_ver_clientes,
+        ws_token_exp
         FROM reporteros
         WHERE ws_token = ?
             AND ws_token_exp > NOW()

@@ -266,6 +266,12 @@ class ApiService {
     String? password,
     String? role,
     bool? puedeCrearNoticias,
+    bool? puedeVerGestionNoticias,
+    bool? puedeVerEstadisticas,
+    bool? puedeVerRastreoGeneral,
+    bool? puedeVerEmpleadoMes,
+    bool? puedeVerGestion,
+    bool? puedeVerClientes,
   }) async {
     final url = Uri.parse('$baseUrl/update_perfil.php');
 
@@ -285,8 +291,18 @@ class ApiService {
     if (puedeCrearNoticias != null) {
       body['puede_crear_noticias'] = puedeCrearNoticias ? '1' : '0';
     }
+    if (puedeVerGestionNoticias != null) body['puede_ver_gestion_noticias'] = puedeVerGestionNoticias ? '1' : '0';
+    if (puedeVerEstadisticas != null) body['puede_ver_estadisticas'] = puedeVerEstadisticas ? '1' : '0';
+    if (puedeVerRastreoGeneral != null) body['puede_ver_rastreo_general'] = puedeVerRastreoGeneral ? '1' : '0';
+    if (puedeVerEmpleadoMes != null) body['puede_ver_empleado_mes'] = puedeVerEmpleadoMes ? '1' : '0';
+    if (puedeVerGestion != null) body['puede_ver_gestion'] = puedeVerGestion ? '1' : '0';
+    if (puedeVerClientes != null) body['puede_ver_clientes'] = puedeVerClientes ? '1' : '0';
 
-    final resp = await http.post(url, body: body);
+    final resp = await http.post(
+      url,
+      body: _withToken(body),
+      headers: _authHeaders(),
+    );
 
     if (resp.statusCode != 200) {
       throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
@@ -362,7 +378,11 @@ class ApiService {
     }
     if (role != null && role.trim().isNotEmpty) body['role'] = role.trim();
 
-    final response = await http.post(url, body: body);
+    final response = await http.post(
+      url,
+      body: _withToken(body),
+      headers: _authHeaders(),
+    );
 
     if (response.statusCode == 200) {
       final Map<String, dynamic> data = json.decode(response.body);
@@ -419,25 +439,29 @@ class ApiService {
   }
 
   // 🔹 Toma los permisos de crear noticias en usuarios
-  static Future<bool> getPermisoCrearNoticias() async {
+  static Future<Map<String, dynamic>> getPerfil() async {
     final uri = Uri.parse('$baseUrl/get_perfil.php');
+    final resp = await http.post(uri, body: {'ws_token': wsToken});
 
-    final resp = await http.post(uri, body: {
-      'ws_token': wsToken,
-    });
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
 
     final decoded = jsonDecode(resp.body);
-    if (decoded is! Map) {
-      throw Exception('Respuesta inválida');
-    }
+    if (decoded is! Map) throw Exception('Respuesta inválida');
     if (decoded['success'] != true) {
       throw Exception(decoded['message']?.toString() ?? 'No autorizado');
     }
 
     final data = decoded['data'];
-    if (data is! Map) return false;
+    if (data is! Map) throw Exception('Respuesta inválida');
+    return data.map((k, v) => MapEntry(k.toString(), v));
+  }
 
-    return _toBool(data['puede_crear_noticias']);
+  // 🔹 Toma los permisos de crear noticias en usuarios (Pero en bool)
+  static Future<bool> getPermisoCrearNoticias() async {
+    final p = await getPerfil();
+    return _toBool(p['puede_crear_noticias']);
   }
 
   // 🔹 Noticias de un reportero (incluye cerradas opcional)

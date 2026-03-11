@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'dart:convert';
 
+import '../services/session_service.dart';
 import '../auth_controller.dart';
 import '../models/noticia.dart';
 import '../services/api_service.dart';
@@ -417,41 +418,76 @@ class _AgendaPageState extends State<AgendaPage> {
     _nombreActual = widget.reporteroNombre;
     _selectedMonthInYear = _focusedDay.month;
 
-    _initPermisoCrearNoticias();
-    _refrescarPermisoCrearNoticiasDesdeServidor(showError: false);
+    _initPermisosLocal();
+    _refrescarPerfilDesdeServidor(showError: false);
     _cargarNoticias();
   }
 
-  Future<void> _initPermisoCrearNoticias() async {
-    if (widget.puedeCrearNoticias != null) {
-      AuthController.puedeCrearNoticias.value = widget.puedeCrearNoticias!;
+  Future<void> _initPermisosLocal() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (!widget.esAdmin) {
+      AuthController.puedeCrearNoticias.value =
+          prefs.getBool('auth_puede_crear_noticias') ??
+          prefs.getBool('last_puede_crear_noticias') ??
+          false;
+
+      AuthController.menuPerms.value = const MenuPerms();
       return;
     }
 
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final v = prefs.getBool('auth_puede_crear_noticias') ??
-          prefs.getBool('last_puede_crear_noticias') ??
-          false;
-      AuthController.puedeCrearNoticias.value = v;
-    } catch (_) {
-      AuthController.puedeCrearNoticias.value = false;
-    }
+    bool getOrFalse(String k) => prefs.getBool(k) ?? false;
+
+    AuthController.puedeCrearNoticias.value = true;
+
+    AuthController.menuPerms.value = MenuPerms(
+      gestionNoticias: getOrFalse('auth_puede_ver_gestion_noticias'),
+      estadisticas: getOrFalse('auth_puede_ver_estadisticas'),
+      rastreoGeneral: getOrFalse('auth_puede_ver_rastreo_general'),
+      empleadoMes: getOrFalse('auth_puede_ver_empleado_mes'),
+      gestion: getOrFalse('auth_puede_ver_gestion'),
+      clientes: getOrFalse('auth_puede_ver_clientes'),
+    );
   }
 
-  Future<void> _refrescarPermisoCrearNoticiasDesdeServidor({bool showError = false}) async {
+  bool _toBool(dynamic x) {
+    if (x == null) return false;
+    if (x is bool) return x;
+    if (x is num) return x.toInt() == 1;
+    final s = x.toString().trim().toLowerCase();
+    return s == '1' || s == 'true' || s == 'yes' || s == 'si';
+  }
+
+  Future<void> _refrescarPerfilDesdeServidor({bool showError = false}) async {
+    if (!widget.esAdmin) return;
+
     try {
-      final v = await ApiService.getPermisoCrearNoticias();
-
+      final p = await ApiService.getPerfil();
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('auth_puede_crear_noticias', v);
-      await prefs.setBool('last_puede_crear_noticias', v);
 
-      AuthController.puedeCrearNoticias.value = v;
+      bool b(String k) => _toBool(p[k]);
+
+      final perms = MenuPerms(
+        gestionNoticias: b('puede_ver_gestion_noticias'),
+        estadisticas: b('puede_ver_estadisticas'),
+        rastreoGeneral: b('puede_ver_rastreo_general'),
+        empleadoMes: b('puede_ver_empleado_mes'),
+        gestion: b('puede_ver_gestion'),
+        clientes: b('puede_ver_clientes'),
+      );
+
+      AuthController.menuPerms.value = perms;
+
+      await prefs.setBool('auth_puede_ver_gestion_noticias', perms.gestionNoticias);
+      await prefs.setBool('auth_puede_ver_estadisticas', perms.estadisticas);
+      await prefs.setBool('auth_puede_ver_rastreo_general', perms.rastreoGeneral);
+      await prefs.setBool('auth_puede_ver_empleado_mes', perms.empleadoMes);
+      await prefs.setBool('auth_puede_ver_gestion', perms.gestion);
+      await prefs.setBool('auth_puede_ver_clientes', perms.clientes);
     } catch (e) {
       if (showError && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No pude refrescar permiso: $e')),
+          SnackBar(content: Text('No pude refrescar permisos: $e')),
         );
       }
     }
@@ -742,16 +778,8 @@ class _AgendaPageState extends State<AgendaPage> {
     }
   }
   Future<void> _limpiarSesionLocal() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('ws_token');
-      await prefs.remove('auth_reportero_id');
-      await prefs.remove('auth_nombre');
-      await prefs.remove('auth_role');
-      await prefs.remove('auth_puede_crear_noticias');
-      await prefs.setBool('auth_logged_in', false);
-    } catch (_) {}
-    AuthController.puedeCrearNoticias.value = false;
+    await SessionService.clearSession();
+    AuthController.reset();
   }
 
   void _confirmarCerrarSesion() {
@@ -785,101 +813,124 @@ class _AgendaPageState extends State<AgendaPage> {
     );
   }
 
-  Widget _buildDrawerAdmin() {
+  Drawer _buildDrawerByPerms(MenuPerms perms) {
+    final roleStr = widget.esAdmin ? 'admin' : 'reportero';
+
     return Drawer(
       child: Column(
         children: [
           UserAccountsDrawerHeader(
             accountName: Text(_nombreActual),
-            accountEmail: const Text('Admin'),
+            accountEmail: Text(widget.esAdmin ? 'Admin' : 'Reportero'),
             currentAccountPicture: CircleAvatar(
               child: Text(
-                _nombreActual.isNotEmpty ? _nombreActual[0].toUpperCase() : 'A',
+                _nombreActual.isNotEmpty ? _nombreActual[0].toUpperCase() : 'U',
               ),
             ),
           ),
+
           ListTile(
             leading: const Icon(Icons.person),
             title: const Text('Perfil'),
             onTap: _abrirPerfilAdmin,
           ),
-          ListTile(
-            leading: const Icon(Icons.notifications),
-            title: const Text('Avisos'),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AvisosPage()),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.article),
-            title: const Text('Gestión Noticias'),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const GestionNoticiasPage()),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.bar_chart),
-            title: const Text('Estadísticas'),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const EstadisticasScreen()),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.public),
-            title: const Text('Rastreo General'),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => RastreoGeneralPage(role: 'admin')),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.star_rounded),
-            title: const Text('Empleado del Mes'),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => EmpleadoDestacadoPage(role: 'admin'),),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.manage_accounts),
-            title: const Text('Gestión'),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const GestionReporterosPage()),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.groups_rounded),
-            title: const Text('Clientes'),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ClientesPage()),
-              );
-            },
-          ),
+
+          // Avisos: tú los dejaste como admin-only
+          if (widget.esAdmin)
+            ListTile(
+              leading: const Icon(Icons.notifications),
+              title: const Text('Avisos'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AvisosPage()),
+                );
+              },
+            ),
+
+          if (perms.gestionNoticias)
+            ListTile(
+              leading: const Icon(Icons.article),
+              title: const Text('Gestión Noticias'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const GestionNoticiasPage()),
+                );
+              },
+            ),
+
+          if (perms.estadisticas)
+            ListTile(
+              leading: const Icon(Icons.bar_chart),
+              title: const Text('Estadísticas'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const EstadisticasScreen()),
+                );
+              },
+            ),
+
+          if (perms.rastreoGeneral)
+            ListTile(
+              leading: const Icon(Icons.public),
+              title: const Text('Rastreo General'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => RastreoGeneralPage(role: roleStr),
+                  ),
+                );
+              },
+            ),
+
+          if (perms.empleadoMes)
+            ListTile(
+              leading: const Icon(Icons.star_rounded),
+              title: const Text('Empleado del Mes'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => EmpleadoDestacadoPage(role: roleStr),
+                  ),
+                );
+              },
+            ),
+
+          if (perms.gestion)
+            ListTile(
+              leading: const Icon(Icons.manage_accounts),
+              title: const Text('Gestión'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const GestionReporterosPage()),
+                );
+              },
+            ),
+
+          if (perms.clientes)
+            ListTile(
+              leading: const Icon(Icons.groups_rounded),
+              title: const Text('Clientes'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ClientesPage()),
+                );
+              },
+            ),
+
           const Spacer(),
           const Divider(),
           ListTile(
@@ -894,6 +945,7 @@ class _AgendaPageState extends State<AgendaPage> {
   }
 
   Future<void> _cargarNoticias() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -904,8 +956,9 @@ class _AgendaPageState extends State<AgendaPage> {
           ? await ApiService.getNoticiasAdmin()
           : await ApiService.getNoticiasAgenda(widget.reporteroId);
 
-      _eventosPorDia.clear();
+      if (!mounted) return;
 
+      _eventosPorDia.clear();
       for (final n in noticias) {
         if (n.fechaCita == null) continue;
         final fechaClave = _soloFecha(n.fechaCita!);
@@ -913,17 +966,16 @@ class _AgendaPageState extends State<AgendaPage> {
         _eventosPorDia[fechaClave]!.add(n);
       }
 
+      if (!mounted) return;
       setState(() {
         _selectedDay = _selectedDay ?? _soloFecha(_focusedDay);
       });
     } catch (e) {
-      setState(() {
-        _error = 'Error al cargar agenda: $e';
-      });
+      if (!mounted) return;
+      setState(() => _error = 'Error al cargar agenda: $e');
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (!mounted) return;
+      setState(() => _loading = false);
     }
   }
 
@@ -1002,60 +1054,67 @@ class _AgendaPageState extends State<AgendaPage> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: AuthController.puedeCrearNoticias,
-      builder: (context, showFabCrear, _) {
-        return Scaffold(
-          appBar: AppBar(
-            title: Text('Agenda de ${widget.reporteroNombre}'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                tooltip: 'Actualizar',
-                onPressed: _loading
-                    ? null
-                    : () async {
-                        await _refrescarPermisoCrearNoticiasDesdeServidor(showError: false);
-                        await _cargarNoticias();
-                      },
-              ),
-            ],
-          ),
-          drawer: widget.esAdmin ? _buildDrawerAdmin() : null,
-          body: _wrapWebWidth(_buildBody(showFabCrear: showFabCrear)),
-          floatingActionButton: showFabCrear
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Crear noticia (igual que ya lo tienes)
-                FloatingActionButton.extended(
-                  heroTag: 'fab_crear_noticia',
-                  icon: const Icon(Icons.add),
-                  label: const Text('Crear noticia'),
-                  onPressed: () async {
-                    final creado = await Navigator.push<bool>(
-                      context,
-                      MaterialPageRoute(builder: (_) => const CrearNoticiaPage()),
-                    );
-                    if (creado == true) {
-                      await _refrescarPermisoCrearNoticiasDesdeServidor(showError: false);
-                      await _cargarNoticias();
-                    }
-                  },
-                ),
+    return ValueListenableBuilder<MenuPerms>(
+      valueListenable: AuthController.menuPerms,
+      builder: (context, perms, _) {
+        return ValueListenableBuilder<bool>(
+          valueListenable: AuthController.puedeCrearNoticias,
+          builder: (context, showFabCrear, _) {
+            final effectivePerms = widget.esAdmin ? perms : const MenuPerms();
+            final showDrawer = widget.esAdmin;
 
-                if (widget.esAdmin) ...[
-                  const SizedBox(width: 12),
-                  FloatingActionButton.extended(
-                    heroTag: 'fab_crear_aviso',
-                    icon: const Icon(Icons.notifications),
-                    label: const Text('Crear avisos'),
-                    onPressed: _abrirCrearAvisoDialog,
+            return Scaffold(
+              appBar: AppBar(
+                title: Text('Agenda de ${widget.reporteroNombre}'),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Actualizar',
+                    onPressed: _loading
+                        ? null
+                        : () async {
+                            await _refrescarPerfilDesdeServidor(showError: false);
+                            await _cargarNoticias();
+                          },
                   ),
                 ],
-              ],
-            )
-          : null,
+              ),
+              drawer: showDrawer ? _buildDrawerByPerms(effectivePerms) : null,
+              body: _wrapWebWidth(_buildBody(showFabCrear: showFabCrear)),
+              floatingActionButton: showFabCrear
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        FloatingActionButton.extended(
+                          heroTag: 'fab_crear_noticia',
+                          icon: const Icon(Icons.add),
+                          label: const Text('Crear noticia'),
+                          onPressed: () async {
+                            final creado = await Navigator.push<bool>(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const CrearNoticiaPage()),
+                            );
+                            if (creado == true) {
+                              await _refrescarPerfilDesdeServidor(showError: false);
+                              await _cargarNoticias();
+                            }
+                          },
+                        ),
+                        if (widget.esAdmin) ...[
+                          const SizedBox(width: 12),
+                          FloatingActionButton.extended(
+                            heroTag: 'fab_crear_aviso',
+                            icon: const Icon(Icons.notifications),
+                            label: const Text('Crear avisos'),
+                            onPressed: _abrirCrearAvisoDialog,
+                          ),
+                        ],
+                      ],
+                    )
+                  : null,
+            );
+          },
         );
       },
     );
