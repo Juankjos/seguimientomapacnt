@@ -62,6 +62,7 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
   late bool _puedeVerEmpleadoMes;
   late bool _puedeVerGestion;
   late bool _puedeVerClientes;
+  late bool _puedeVerTomarNoticias;
 
   bool _guardando = false;
   bool _borrando = false;
@@ -81,6 +82,7 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
     _puedeVerEmpleadoMes = widget.reportero.puedeVerEmpleadoMes;
     _puedeVerGestion = widget.reportero.puedeVerGestion;
     _puedeVerClientes = widget.reportero.puedeVerClientes;
+    _puedeVerTomarNoticias = widget.reportero.puedeVerTomarNoticias;
   }
 
   @override
@@ -135,6 +137,16 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
     final pass = _passCtrl.text.trim();
     final pass2 = _pass2Ctrl.text.trim();
 
+    final isAdmin = _role == 'admin';
+
+    final sendGestionNoticias = isAdmin ? _puedeVerGestionNoticias : false;
+    final sendEstadisticas    = isAdmin ? _puedeVerEstadisticas : false;
+    final sendRastreo         = isAdmin ? _puedeVerRastreoGeneral : false;
+    final sendGestion         = isAdmin ? _puedeVerGestion : false;
+    final sendClientes        = isAdmin ? _puedeVerClientes : false;
+
+    final sendTomarNoticias   = !isAdmin ? _puedeVerTomarNoticias : false;
+
     String? passwordToSend;
     if (pass.isNotEmpty || pass2.isNotEmpty) {
       if (pass.length < 6) {
@@ -161,12 +173,13 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
         password: passwordToSend,
         role: _role,
         puedeCrearNoticias: _puedeCrearNoticias,
-        puedeVerGestionNoticias: _puedeVerGestionNoticias,
-        puedeVerEstadisticas: _puedeVerEstadisticas,
-        puedeVerRastreoGeneral: _puedeVerRastreoGeneral,
+        puedeVerGestionNoticias: sendGestionNoticias,
+        puedeVerEstadisticas: sendEstadisticas,
+        puedeVerRastreoGeneral: sendRastreo,
         puedeVerEmpleadoMes: _puedeVerEmpleadoMes,
-        puedeVerGestion: _puedeVerGestion,
-        puedeVerClientes: _puedeVerClientes,
+        puedeVerGestion: sendGestion,
+        puedeVerClientes: sendClientes,
+        puedeVerTomarNoticias: sendTomarNoticias,
       );
 
       final prefs = await SharedPreferences.getInstance();
@@ -295,12 +308,25 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
               DropdownMenuItem(value: 'reportero', child: Text('Reportero')),
               DropdownMenuItem(value: 'admin', child: Text('Administrador')),
             ],
-            onChanged: _guardando ? null : (v) => setState(() => _role = (v ?? 'reportero')),
+            onChanged: _guardando ? null : (v) {
+                  final next = (v ?? 'reportero'); setState(() { _role = next;
+                    if (_role == 'reportero') {
+                      _puedeVerGestionNoticias = false;
+                      _puedeVerEstadisticas = false;
+                      _puedeVerRastreoGeneral = false;
+                      _puedeVerGestion = false;
+                      _puedeVerClientes = false;
+                    } else {
+                      _puedeVerTomarNoticias = false;
+                    }
+                  });
+                },
           ),
         ],
       ),
     );
 
+    final bool isAdmin = _role == 'admin';
     final rightCard = _card(
       theme,
       Column(
@@ -330,36 +356,49 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
                   ),
                 ),
 
-                SwitchListTile.adaptive(
-                  value: _puedeVerGestionNoticias,
-                  onChanged: _guardando ? null : (v) => setState(() => _puedeVerGestionNoticias = v),
-                  title: const Text('Gestión noticias'),
-                ),
-                SwitchListTile.adaptive(
-                  value: _puedeVerEstadisticas,
-                  onChanged: _guardando ? null : (v) => setState(() => _puedeVerEstadisticas = v),
-                  title: const Text('Estadísticas'),
-                ),
-                SwitchListTile.adaptive(
-                  value: _puedeVerRastreoGeneral,
-                  onChanged: _guardando ? null : (v) => setState(() => _puedeVerRastreoGeneral = v),
-                  title: const Text('Rastreo General'),
-                ),
-                SwitchListTile.adaptive(
-                  value: _puedeVerEmpleadoMes,
-                  onChanged: _guardando ? null : (v) => setState(() => _puedeVerEmpleadoMes = v),
-                  title: const Text('Empleado del mes'),
-                ),
-                SwitchListTile.adaptive(
-                  value: _puedeVerGestion,
-                  onChanged: _guardando ? null : (v) => setState(() => _puedeVerGestion = v),
-                  title: const Text('Gestión'),
-                ),
-                SwitchListTile.adaptive(
-                  value: _puedeVerClientes,
-                  onChanged: _guardando ? null : (v) => setState(() => _puedeVerClientes = v),
-                  title: const Text('Clientes'),
-                ),
+                if (isAdmin) ...[
+                  SwitchListTile.adaptive(
+                    value: _puedeVerGestionNoticias,
+                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerGestionNoticias = v),
+                    title: const Text('Gestión noticias'),
+                  ),
+                  SwitchListTile.adaptive(
+                    value: _puedeVerEstadisticas,
+                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerEstadisticas = v),
+                    title: const Text('Estadísticas'),
+                  ),
+                  SwitchListTile.adaptive(
+                    value: _puedeVerRastreoGeneral,
+                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerRastreoGeneral = v),
+                    title: const Text('Rastreo General'),
+                  ),
+                  SwitchListTile.adaptive(
+                    value: _puedeVerEmpleadoMes,
+                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerEmpleadoMes = v),
+                    title: const Text('Empleado del mes'),
+                  ),
+                  SwitchListTile.adaptive(
+                    value: _puedeVerGestion,
+                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerGestion = v),
+                    title: const Text('Gestión'),
+                  ),
+                  SwitchListTile.adaptive(
+                    value: _puedeVerClientes,
+                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerClientes = v),
+                    title: const Text('Clientes'),
+                  ),
+                ] else ...[
+                  SwitchListTile.adaptive(
+                    value: _puedeVerTomarNoticias,
+                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerTomarNoticias = v),
+                    title: const Text('Tomar Noticias'),
+                  ),
+                  SwitchListTile.adaptive(
+                    value: _puedeVerEmpleadoMes,
+                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerEmpleadoMes = v),
+                    title: const Text('Empleado del mes'),
+                  ),
+                ],
               ],
             ),
           ),

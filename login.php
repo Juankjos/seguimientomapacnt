@@ -26,6 +26,7 @@ $stmt = $pdo->prepare('
         puede_ver_rastreo_general,
         puede_ver_empleado_mes,
         puede_ver_gestion,
+        puede_ver_tomar_noticias,
         puede_ver_clientes
     FROM reporteros
     WHERE nombre = ?
@@ -102,5 +103,6 @@ echo json_encode([
     'puede_ver_empleado_mes'      => (int)($user['puede_ver_empleado_mes'] ?? 0),
     'puede_ver_gestion'           => (int)($user['puede_ver_gestion'] ?? 0),
     'puede_ver_clientes'          => (int)($user['puede_ver_clientes'] ?? 0),
+    'puede_ver_tomar_noticias'    => (int)($user['puede_ver_tomar_noticias'] ?? 0),
 ]);
 exit;

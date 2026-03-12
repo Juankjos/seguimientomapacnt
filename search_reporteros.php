@@ -13,6 +13,7 @@ $sql = "
         puede_ver_rastreo_general,
         puede_ver_empleado_mes,
         puede_ver_gestion,
+        puede_ver_tomar_noticias,
         puede_ver_clientes
     FROM reporteros
     WHERE 1=1

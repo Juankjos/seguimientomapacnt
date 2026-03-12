@@ -32,6 +32,7 @@ function require_auth(PDO $pdo, array $in = []): array {
         puede_ver_empleado_mes,
         puede_ver_gestion,
         puede_ver_clientes,
+        puede_ver_tomar_noticias,
         ws_token_exp
         FROM reporteros
         WHERE ws_token = ?

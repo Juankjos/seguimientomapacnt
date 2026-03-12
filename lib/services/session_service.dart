@@ -25,6 +25,7 @@ class SessionService {
   static const _kVerEmpleadoMes = 'auth_puede_ver_empleado_mes';
   static const _kVerGestion = 'auth_puede_ver_gestion';
   static const _kVerClientes = 'auth_puede_ver_clientes';
+  static const _kVerTomarNoticias = 'auth_puede_ver_tomar_noticias';
 
   static DateTime? _parseServerExpToUtc(String raw) {
     final s = raw.trim();
@@ -133,6 +134,7 @@ class SessionService {
     await prefs.setBool(_kVerEmpleadoMes, _toBool(data['puede_ver_empleado_mes']));
     await prefs.setBool(_kVerGestion, _toBool(data['puede_ver_gestion']));
     await prefs.setBool(_kVerClientes, _toBool(data['puede_ver_clientes']));
+    await prefs.setBool(_kVerTomarNoticias, _toBool(data['puede_ver_tomar_noticias']));
 
     // Expiración
     await setSessionExpiryFromServerOr8h(wsTokenExp: data['ws_token_exp']?.toString());
@@ -170,6 +172,7 @@ class SessionService {
     await prefs.remove(_kVerEmpleadoMes);
     await prefs.remove(_kVerGestion);
     await prefs.remove(_kVerClientes);
+    await prefs.remove(_kVerTomarNoticias);
 
     ApiService.wsToken = '';
 

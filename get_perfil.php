@@ -24,6 +24,7 @@ try {
         puede_ver_empleado_mes,
         puede_ver_gestion,
         puede_ver_clientes, 
+        puede_ver_tomar_noticias,
         ws_token_exp
         FROM reporteros
         WHERE ws_token = ?
@@ -58,6 +59,7 @@ try {
             'puede_ver_empleado_mes'     => (int)($row['puede_ver_empleado_mes'] ?? 0),
             'puede_ver_gestion'          => (int)($row['puede_ver_gestion'] ?? 0),
             'puede_ver_clientes'         => (int)($row['puede_ver_clientes'] ?? 0),
+            'puede_ver_tomar_noticias'   => (int)($row['puede_ver_tomar_noticias'] ?? 0),
         ],
     ]);
     exit;

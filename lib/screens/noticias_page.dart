@@ -1,6 +1,7 @@
 // lib/screens/noticias_page.dart
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
@@ -66,12 +67,16 @@ class NoticiasPage extends StatefulWidget {
 class _NoticiasPageState extends State<NoticiasPage> {
   late Future<List<Noticia>> _futureNoticias;
   late String _nombreReportero;
+  bool _puedeVerTomarNoticias = false;
+  bool _puedeVerEmpleadoMes = false;
 
   @override
   void initState() {
     super.initState();
     _nombreReportero = widget.reporteroNombre;
     _futureNoticias = ApiService.getNoticias(widget.reporteroId);
+    _cargarPermisosLocal();
+    _refrescarPermisosDesdeServidor();
   }
 
   Future<void> _refrescar() async {
@@ -81,6 +86,41 @@ class _NoticiasPageState extends State<NoticiasPage> {
 
     try {
       await _futureNoticias;
+      await _refrescarPermisosDesdeServidor();
+    } catch (_) {}
+  }
+
+  Future<void> _cargarPermisosLocal() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _puedeVerTomarNoticias = prefs.getBool('auth_puede_ver_tomar_noticias') ?? false;
+      _puedeVerEmpleadoMes = prefs.getBool('auth_puede_ver_empleado_mes') ?? false;
+    });
+  }
+
+  Future<void> _refrescarPermisosDesdeServidor() async {
+    try {
+      final p = await ApiService.getPerfil();
+      final prefs = await SharedPreferences.getInstance();
+
+      bool toBool(dynamic x) {
+        if (x is bool) return x;
+        if (x is num) return x.toInt() == 1;
+        final s = (x ?? '').toString().trim().toLowerCase();
+        return s == '1' || s == 'true' || s == 'yes' || s == 'si';
+      }
+
+      final tomar = toBool(p['puede_ver_tomar_noticias']);
+      final emp = toBool(p['puede_ver_empleado_mes']);
+
+      await prefs.setBool('auth_puede_ver_tomar_noticias', tomar);
+      await prefs.setBool('auth_puede_ver_empleado_mes', emp);
+
+      if (!mounted) return;
+      setState(() {
+        _puedeVerTomarNoticias = tomar;
+        _puedeVerEmpleadoMes = emp;
+      });
     } catch (_) {}
   }
 
@@ -105,6 +145,15 @@ class _NoticiasPageState extends State<NoticiasPage> {
   }
 
   Future<void> _tomarNoticias({bool closeDrawer = false}) async {
+
+    if (!_puedeVerTomarNoticias) {
+      if (closeDrawer) Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No tienes permiso para Tomar Noticias')),
+      );
+      return;
+    }
+
     if (closeDrawer) Navigator.pop(context);
 
     await Navigator.push(
@@ -192,6 +241,14 @@ class _NoticiasPageState extends State<NoticiasPage> {
   Future<void> _irEmpleadoDestacado({bool closeDrawer = false}) async {
     if (closeDrawer) Navigator.pop(context);
 
+    if (!_puedeVerEmpleadoMes) {
+      if (closeDrawer) Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No tienes permiso para Empleado del Mes')),
+      );
+      return;
+    }
+
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -258,6 +315,7 @@ class _NoticiasPageState extends State<NoticiasPage> {
                 title: const Text('Avisos'),
                 onTap: () => _irAvisos(closeDrawer: true),
               ),
+              if (_puedeVerTomarNoticias)
               ListTile(
                 leading: const Icon(Icons.assignment),
                 title: const Text('Tomar Noticias'),
@@ -268,6 +326,7 @@ class _NoticiasPageState extends State<NoticiasPage> {
                 title: const Text('Agenda'),
                 onTap: () => _irAgenda(closeDrawer: true),
               ),
+              if (_puedeVerEmpleadoMes)
               ListTile(
                 leading: const Icon(Icons.star_rounded),
                 title: const Text('Empleado del Mes'),
@@ -432,15 +491,17 @@ class _NoticiasPageState extends State<NoticiasPage> {
                 ),
 
                 const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.assignment),
-                    label: const Text('Tomar Noticias'),
-                    onPressed: () => _tomarNoticias(),
+                if (_puedeVerTomarNoticias) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.assignment),
+                      label: const Text('Tomar Noticias'),
+                      onPressed: () => _tomarNoticias(),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
+                  const SizedBox(height: 8),
+                ],
 
                 SizedBox(
                   width: double.infinity,
@@ -452,15 +513,17 @@ class _NoticiasPageState extends State<NoticiasPage> {
                 ),
                 const SizedBox(height: 8),
 
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.star_rounded),
-                    label: const Text('Empleado del Mes'),
-                    onPressed: () => _irEmpleadoDestacado(),
+                if (_puedeVerEmpleadoMes) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.star_rounded),
+                      label: const Text('Empleado del Mes'),
+                      onPressed: () => _irEmpleadoDestacado(),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
+                  const SizedBox(height: 8),
+                ],
 
                 SizedBox(
                   width: double.infinity,

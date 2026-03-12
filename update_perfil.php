@@ -54,6 +54,7 @@ $menuPerms = [
     'puede_ver_empleado_mes'     => null,
     'puede_ver_gestion'          => null,
     'puede_ver_clientes'         => null,
+    'puede_ver_tomar_noticias'   => null,
 ];
 
 foreach ($menuPerms as $k => $_) {
@@ -143,6 +144,7 @@ try {
             puede_ver_rastreo_general,
             puede_ver_empleado_mes,
             puede_ver_gestion,
+            puede_ver_tomar_noticias,
             puede_ver_clientes
         FROM reporteros
         WHERE id = ?

@@ -272,6 +272,7 @@ class ApiService {
     bool? puedeVerEmpleadoMes,
     bool? puedeVerGestion,
     bool? puedeVerClientes,
+    bool? puedeVerTomarNoticias,
   }) async {
     final url = Uri.parse('$baseUrl/update_perfil.php');
 
@@ -297,6 +298,7 @@ class ApiService {
     if (puedeVerEmpleadoMes != null) body['puede_ver_empleado_mes'] = puedeVerEmpleadoMes ? '1' : '0';
     if (puedeVerGestion != null) body['puede_ver_gestion'] = puedeVerGestion ? '1' : '0';
     if (puedeVerClientes != null) body['puede_ver_clientes'] = puedeVerClientes ? '1' : '0';
+    if (puedeVerTomarNoticias != null) body['puede_ver_tomar_noticias'] = puedeVerTomarNoticias ? '1' : '0';
 
     final resp = await http.post(
       url,
