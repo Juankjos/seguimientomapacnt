@@ -326,7 +326,7 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
                   padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Permisos del menú', style: TextStyle(fontWeight: FontWeight.w800)),
+                    child: Text('Accesos al Menú', style: TextStyle(fontWeight: FontWeight.w800)),
                   ),
                 ),
 

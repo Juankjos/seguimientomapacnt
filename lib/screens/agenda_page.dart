@@ -417,10 +417,17 @@ class _AgendaPageState extends State<AgendaPage> {
     super.initState();
     _nombreActual = widget.reporteroNombre;
     _selectedMonthInYear = _focusedDay.month;
+  }
 
-    _initPermisosLocal();
-    _refrescarPerfilDesdeServidor(showError: false);
-    _cargarNoticias();
+  Future<void> _openAndRefresh(Widget page, {bool refreshPerms = true}) async {
+    Navigator.pop(context); // cierra drawer
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+
+    if (!mounted) return;
+
+    if (refreshPerms) {
+      await _refrescarPerfilDesdeServidor(showError: false);
+    }
   }
 
   Future<void> _initPermisosLocal() async {
@@ -508,9 +515,12 @@ class _AgendaPageState extends State<AgendaPage> {
       ),
     );
 
-    if (nuevoNombre != null && nuevoNombre.trim().isNotEmpty && mounted) {
+    if (!mounted) return;
+
+    if (nuevoNombre != null && nuevoNombre.trim().isNotEmpty) {
       setState(() => _nombreActual = nuevoNombre.trim());
     }
+    await _refrescarPerfilDesdeServidor(showError: false);
   }
 
   Future<void> _abrirCrearAvisoDialog() async {
@@ -853,13 +863,7 @@ class _AgendaPageState extends State<AgendaPage> {
             ListTile(
               leading: const Icon(Icons.article),
               title: const Text('Gestión Noticias'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const GestionNoticiasPage()),
-                );
-              },
+              onTap: () => _openAndRefresh(const GestionNoticiasPage()),
             ),
 
           if (perms.estadisticas)
@@ -909,13 +913,7 @@ class _AgendaPageState extends State<AgendaPage> {
             ListTile(
               leading: const Icon(Icons.manage_accounts),
               title: const Text('Gestión'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const GestionReporterosPage()),
-                );
-              },
+              onTap: () => _openAndRefresh(const GestionReporterosPage()),
             ),
 
           if (perms.clientes)
