@@ -139,7 +139,7 @@ class AgendaPage extends StatefulWidget {
 }
 
 class _AgendaPageState extends State<AgendaPage> {
-  bool _loading = false;
+  bool _loading = true;
   String? _error;
 
   final Map<DateTime, List<Noticia>> _eventosPorDia = {};
@@ -417,6 +417,12 @@ class _AgendaPageState extends State<AgendaPage> {
     super.initState();
     _nombreActual = widget.reporteroNombre;
     _selectedMonthInYear = _focusedDay.month;
+
+    Future.microtask(() async {
+      await _initPermisosLocal();
+      await _refrescarPerfilDesdeServidor(showError: false);
+      await _cargarNoticias();
+    });
   }
 
   Future<void> _openAndRefresh(Widget page, {bool refreshPerms = true}) async {
