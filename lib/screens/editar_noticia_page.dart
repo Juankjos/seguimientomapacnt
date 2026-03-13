@@ -1161,6 +1161,20 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
 
   // ===================== LOGIC =====================
 
+  DateTime? _parseMysqlDateTime(String? s) {
+    if (s == null) return null;
+    final t = s.trim();
+    if (t.isEmpty) return null;
+
+    // "YYYY-MM-DD HH:mm:ss" -> "YYYY-MM-DDTHH:mm:ss" (parseable)
+    final iso = t.contains('T') ? t : t.replaceFirst(' ', 'T');
+    try {
+      return DateTime.parse(iso);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _seleccionarFechaHora() async {
     if (!_puedeEditarFecha) return;
 
@@ -1330,6 +1344,44 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     }
   }
 
+  Future<void> _alertaCitaOcupada({ApiHttpException? ex}) async {
+    String? detalle;
+
+    if (ex?.data != null) {
+      final data = ex!.data!;
+      final n = data['noticia']?.toString();
+      final fcRaw = data['fecha_cita']?.toString();
+      final limRaw = data['limite']?.toString();
+
+      final fc = _parseMysqlDateTime(fcRaw);
+      final lim = int.tryParse(limRaw ?? '');
+
+      final parts = <String>[];
+      if (n != null && n.trim().isNotEmpty) parts.add('Conflicto con: "$n"');
+      if (fc != null) parts.add('Cita: ${_fmtFechaHora(fc)}');
+      if (lim != null && lim > 0) parts.add('Límite: ${_labelLimite(_normalizarLimite(lim))}');
+
+      if (parts.isNotEmpty) detalle = parts.join('\n');
+    }
+
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('No se puede agendar'),
+        content: Text(
+          'El reportero ya cuenta con una cita a esta fecha / hora'
+          '${detalle != null ? '\n\n$detalle' : ''}',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _quitarCliente() {
     setState(() {
       _clienteId = null;
@@ -1465,6 +1517,19 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
       if (!mounted) return;
       Navigator.pop(context, updated);
     } catch (e) {
+      if (!mounted) return;
+
+      if (e is ApiHttpException &&
+          (e.code == 'cita_ocupada' || e.statusCode == 409)) {
+        await _alertaCitaOcupada(ex: e);
+        return;
+      }
+
+      if (e is ApiHttpException) {
+        setState(() => _error = e.message);
+        return;
+      }
+
       setState(() => _error = 'Error al guardar: $e');
     } finally {
       if (mounted) setState(() => _guardando = false);

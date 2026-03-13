@@ -1542,6 +1542,25 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
     }
   }
 
+  Future<void> _alertaCitaOcupada({String? detalle}) async {
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('No se puede agendar'),
+        content: Text(
+          'El reportero ya cuenta con una cita a esta fecha / hora'
+          '${detalle != null ? '\n\n$detalle' : ''}',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _buscarClientes(String query) async {
     if (query.trim().isEmpty) {
       setState(() => _resultadosClientes = []);
@@ -1654,6 +1673,17 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
+
+      if (e is ApiHttpException && e.statusCode == 409 && e.code == 'cita_ocupada') {
+        final d = e.data;
+        final detalle = (d != null && d['noticia'] != null && d['fecha_cita'] != null)
+            ? 'Conflicto con: "${d['noticia']}"\nFecha: ${d['fecha_cita']}'
+            : null;
+
+        await _alertaCitaOcupada(detalle: detalle ?? e.message);
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al crear noticia: $e')),
       );

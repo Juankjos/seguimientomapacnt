@@ -124,6 +124,46 @@ class _NoticiasSinAsignarPageState extends State<NoticiasSinAsignarPage> {
     });
   }
 
+  String _fmtRango(DateTime start, int minutos) {
+    final end = start.add(Duration(minutes: minutos));
+    return '${_fmtFecha(start)} → ${_fmtFecha(end)}';
+  }
+
+  DateTime? _parseMysqlDateTime(String? s) {
+    if (s == null) return null;
+    final t = s.trim();
+    if (t.isEmpty) return null;
+    final iso = t.contains('T') ? t : t.replaceFirst(' ', 'T');
+    try {
+      return DateTime.parse(iso);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _mostrarErroresAsignacion({
+    required String reporteroNombre,
+    required List<String> lineas,
+  }) async {
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('No se pudieron asignar algunas noticias'),
+        content: SingleChildScrollView(
+          child: Text(
+            'Reportero: "$reporteroNombre"\n\n' + lineas.join('\n\n'),
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _abrirDetalle(Noticia n) async {
     final changed = await Navigator.push<bool>(
       context,
@@ -257,6 +297,7 @@ class _NoticiasSinAsignarPageState extends State<NoticiasSinAsignarPage> {
     final reportero = await _elegirReportero();
     if (reportero == null) return;
     final seleccionadas = _items.where((n) => _seleccion.contains(n.id)).toList();
+    final selById = {for (final n in seleccionadas) n.id: n};
 
     Map<int, Noticia> choques = {};
     final requiereChequeo = seleccionadas.any(
@@ -339,6 +380,7 @@ class _NoticiasSinAsignarPageState extends State<NoticiasSinAsignarPage> {
     final fails = <String>[];
 
     final ids = _seleccion.toList();
+    final conflictLines = <String>[];
 
     try {
       for (final noticiaId in ids) {
@@ -347,7 +389,44 @@ class _NoticiasSinAsignarPageState extends State<NoticiasSinAsignarPage> {
           okCount++;
         } catch (e) {
           failCount++;
-          fails.add('#$noticiaId');
+
+          if (e is ApiHttpException && (e.code == 'cita_ocupada' || e.statusCode == 409)) {
+            final data = e.data ?? {};
+            final confId = int.tryParse((data['noticia_id'] ?? '').toString());
+            final confNoticia = data['noticia']?.toString();
+            final fcRaw = data['fecha_cita']?.toString();
+            final limRaw = data['limite']?.toString();
+
+            final fc = _parseMysqlDateTime(fcRaw);
+            final lim = int.tryParse(limRaw ?? '');
+
+            final sel = selById[noticiaId];
+            final selTitulo = sel?.noticia ?? 'Noticia #$noticiaId';
+            final selCita = sel?.fechaCita;
+            final selLim = sel?.limiteTiempoMinutos ?? 60;
+
+            final b = StringBuffer()
+              ..writeln('• "$selTitulo" (#$noticiaId)')
+              ..writeln('  Motivo: choque de horarios');
+
+            if (selCita != null) {
+              b.writeln('  Rango solicitado: ${_fmtRango(selCita, selLim)}');
+            }
+
+            if ((confNoticia ?? '').trim().isNotEmpty) {
+              b.writeln('  Conflicto con: "${confNoticia!.trim()}"${confId != null ? " (#$confId)" : ""}');
+            }
+            if (fc != null) {
+              final confLim = (lim != null && lim > 0) ? lim : 60;
+              b.writeln('  Rango ocupado: ${_fmtRango(fc, confLim)}');
+            }
+
+            conflictLines.add(b.toString());
+
+            fails.add('#$noticiaId (choque)');
+          } else {
+            fails.add('#$noticiaId');
+          }
         }
       }
     } finally {
@@ -359,12 +438,23 @@ class _NoticiasSinAsignarPageState extends State<NoticiasSinAsignarPage> {
 
     if (okCount > 0) _huboCambios = true;
 
+    if (mounted && conflictLines.isNotEmpty) {
+      await _mostrarErroresAsignacion(
+        reporteroNombre: reportero.nombre,
+        lineas: conflictLines,
+      );
+    }
+
+    final extraFails = fails.isEmpty
+    ? ''
+    : ' (${fails.take(5).join(", ")}${fails.length > 5 ? "…" : ""})';
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           failCount == 0
               ? 'Asignadas: $okCount'
-              : 'Asignadas: $okCount • Fallaron: $failCount (${fails.take(5).join(", ")}${fails.length > 5 ? "…" : ""})',
+              : 'Asignadas: $okCount • Fallaron: $failCount$extraFails',
         ),
       ),
     );

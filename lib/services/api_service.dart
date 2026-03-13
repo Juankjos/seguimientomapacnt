@@ -23,6 +23,25 @@ class ReporteroBusqueda {
   }
 }
 
+class ApiHttpException implements Exception {
+  final int statusCode;
+  final String message;
+  final String? code;
+  final Map<String, dynamic>? data;
+  final String? raw;
+
+  ApiHttpException({
+    required this.statusCode,
+    required this.message,
+    this.code,
+    this.data,
+    this.raw,
+  });
+
+  @override
+  String toString() => 'ApiHttpException($statusCode, code=$code, message=$message)';
+}
+
 class ApiService {
 
   static const String baseUrl = 'https://nube.tvctepa.com/CNT';
@@ -35,6 +54,29 @@ class ApiService {
     if (x is num) return x.toInt() == 1;
     final s = x.toString().trim().toLowerCase();
     return s == '1' || s == 'true' || s == 'yes' || s == 'si';
+  }
+  static ApiHttpException _parseApiError(http.Response resp) {
+    try {
+      final decoded = jsonDecode(resp.body);
+      if (decoded is Map) {
+        final msg = (decoded['message'] ?? 'Error en servidor').toString();
+        final code = decoded['code']?.toString();
+        final data = decoded['data'];
+        return ApiHttpException(
+          statusCode: resp.statusCode,
+          message: msg,
+          code: code,
+          data: data is Map ? data.map((k, v) => MapEntry(k.toString(), v)) : null,
+          raw: resp.body,
+        );
+      }
+    } catch (_) {}
+
+    return ApiHttpException(
+      statusCode: resp.statusCode,
+      message: 'Error en servidor (${resp.statusCode})',
+      raw: resp.body,
+    );
   }
 
   // 🔹 Ayuda con Headers para Login
@@ -208,8 +250,9 @@ class ApiService {
       if (data['success'] != true) {
         throw Exception(data['message'] ?? 'Error al crear noticia');
       }
+      return;
     } else {
-      throw Exception('Error en el servidor al crear noticia (${response.statusCode})');
+      throw _parseApiError(response);
     }
   }
 
@@ -422,22 +465,32 @@ class ApiService {
   }) async {
     final url = Uri.parse('$baseUrl/tomar_noticia.php');
 
-    final response = await http.post(
+    final resp = await http.post(
       url,
-      body: {
+      body: _withToken({
         'reportero_id': reporteroId.toString(),
         'noticia_id': noticiaId.toString(),
-      },
+      }),
+      headers: _authHeaders(),
     );
 
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> data = json.decode(response.body);
-      if (data['success'] != true) {
-        throw Exception(data['message'] ?? 'No se pudo tomar la noticia');
-      }
-    } else {
-      throw Exception('Error en el servidor (${response.statusCode})');
+    if (resp.statusCode != 200) {
+      throw _parseApiError(resp);
     }
+
+    final decoded = jsonDecode(resp.body);
+    if (decoded is Map && decoded['success'] == true) return;
+
+    final msg = (decoded is Map ? decoded['message'] : null) ?? 'No se pudo asignar la noticia';
+    throw ApiHttpException(
+      statusCode: 200,
+      message: msg.toString(),
+      code: decoded is Map ? decoded['code']?.toString() : null,
+      data: (decoded is Map && decoded['data'] is Map)
+          ? (decoded['data'] as Map).map((k, v) => MapEntry(k.toString(), v))
+          : null,
+      raw: resp.body,
+    );
   }
 
   // 🔹 Toma los permisos de crear noticias en usuarios
@@ -604,23 +657,31 @@ class ApiService {
   static Future<void> eliminarNoticiaDePendientes(int noticiaId) async {
     final url = Uri.parse('$baseUrl/update_pendiente_noticia.php');
 
-    final response = await http.post(
+    final resp = await http.post(
       url,
-      body: {
+      body: _withToken({
         'noticia_id': noticiaId.toString(),
-      },
+      }),
+      headers: _authHeaders(),
     );
 
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> data = json.decode(response.body);
-      if (data['success'] != true) {
-        throw Exception(data['message'] ?? 'Error al eliminar pendiente');
-      }
-    } else {
-      throw Exception(
-        'Error en el servidor al eliminar pendiente (${response.statusCode})',
+    if (resp.statusCode == 200) {
+      final decoded = jsonDecode(resp.body);
+      if (decoded is Map && decoded['success'] == true) return;
+
+      final msg = (decoded is Map ? decoded['message'] : null) ?? 'Error al eliminar pendiente';
+      throw ApiHttpException(
+        statusCode: 200,
+        message: msg.toString(),
+        code: decoded is Map ? decoded['code']?.toString() : null,
+        data: (decoded is Map && decoded['data'] is Map)
+            ? (decoded['data'] as Map).map((k, v) => MapEntry(k.toString(), v))
+            : null,
+        raw: resp.body,
       );
     }
+
+    throw _parseApiError(resp);
   }
 
   // 🔹 Revisar colision de noticia si es Entrevista
@@ -757,7 +818,7 @@ class ApiService {
       }
       throw Exception(data['message'] ?? 'Error al actualizar noticia');
     } else { 
-      throw Exception('Error en el servidor (${response.statusCode})');
+      throw _parseApiError(response);
     }
   }
 

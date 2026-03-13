@@ -61,11 +61,7 @@ function fmt_dt_mx_long(?string $mysql): string {
 $raw  = file_get_contents('php://input');
 $json = json_decode($raw ?: '', true);
 $in = (is_array($json) && json_last_error() === JSON_ERROR_NONE) ? $json : $_POST;
-
-// Para reutilizar lógica basada en $_POST:
-if (is_array($in)) {
-  $_POST = $in;
-}
+if (is_array($in)) $_POST = $in;
 
 // -------------------- AUTH --------------------
 $user = require_auth($pdo, is_array($in) ? $in : []);
@@ -149,56 +145,62 @@ if ($hasLimiteTiempo) {
     echo json_encode(['success' => false, 'message' => 'limite_tiempo_minutos excede el máximo permitido']);
     exit;
   }
+
+  // 🔒 Seguridad: solo admin puede cambiar el límite
+  if ($role !== 'admin') {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'No tienes permiso para cambiar limite_tiempo_minutos']);
+    exit;
+  }
 }
 
 try {
-  // ---- TRANSACTION para evitar correos dobles / carreras ----
   $pdo->beginTransaction();
 
-  // Lock row
-    $stmt = $pdo->prepare("
-        SELECT
-                n.id,
-                n.noticia,
-                COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
-                n.descripcion,
-                n.cliente_id,
-                c.nombre   AS cliente,
-                c.whatsapp AS cliente_whatsapp,
-                n.domicilio,
-                n.ubicacion_en_mapa,
-                n.reportero_id,
-                r.nombre AS reportero,
-                n.fecha_pago,
-                n.fecha_cita,
-                n.fecha_cita_anterior,
-                n.fecha_cita_cambios,
-                n.latitud,
-                n.longitud,
-                n.hora_llegada,
-                n.llegada_latitud,
-                n.llegada_longitud,
-                n.pendiente,
-                n.ultima_mod,
-                n.ruta_iniciada,
-                n.ruta_iniciada_at,
-                n.tiempo_en_nota,
-                n.limite_tiempo_minutos
-            FROM noticias n
-            LEFT JOIN reporteros r ON n.reportero_id = r.id
-            LEFT JOIN clientes  c ON n.cliente_id  = c.id
-            WHERE n.id = ?
-            LIMIT 1
-            FOR UPDATE
-    ");
-    $stmt->execute([$noticiaId]);
-    $actual = $stmt->fetch(PDO::FETCH_ASSOC);
+  // Lock noticia
+  $stmt = $pdo->prepare("
+    SELECT
+      n.id,
+      n.noticia,
+      COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
+      n.descripcion,
+      n.cliente_id,
+      c.nombre   AS cliente,
+      c.whatsapp AS cliente_whatsapp,
+      n.domicilio,
+      n.ubicacion_en_mapa,
+      n.reportero_id,
+      r.nombre AS reportero,
+      n.fecha_pago,
+      n.fecha_cita,
+      n.fecha_cita_anterior,
+      n.fecha_cita_cambios,
+      n.latitud,
+      n.longitud,
+      n.hora_llegada,
+      n.llegada_latitud,
+      n.llegada_longitud,
+      n.pendiente,
+      n.ultima_mod,
+      n.ruta_iniciada,
+      n.ruta_iniciada_at,
+      n.tiempo_en_nota,
+      n.limite_tiempo_minutos
+    FROM noticias n
+    LEFT JOIN reporteros r ON n.reportero_id = r.id
+    LEFT JOIN clientes  c ON n.cliente_id  = c.id
+    WHERE n.id = ?
+    LIMIT 1
+    FOR UPDATE
+  ");
+  $stmt->execute([$noticiaId]);
+  $actual = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$actual) {
-        $pdo->rollBack();
-        echo json_encode(['success' => false, 'message' => 'Noticia no encontrada']);
-        exit;
-    }
+  if (!$actual) {
+    $pdo->rollBack();
+    echo json_encode(['success' => false, 'message' => 'Noticia no encontrada']);
+    exit;
+  }
 
   // Seguridad: reportero solo su propia noticia
   $repIdNoticia = (int)($actual['reportero_id'] ?? 0);
@@ -209,7 +211,7 @@ try {
     exit;
   }
 
-  // Old values (para reglas y correos)
+  // Old values
   $oldDesc  = $actual['descripcion'];
   $oldFecha = (string)($actual['fecha_cita'] ?? '');
   $cambios  = (int)($actual['fecha_cita_cambios'] ?? 0);
@@ -224,18 +226,83 @@ try {
   $horaLlegadaActual = $actual['hora_llegada'];
   $tiempoNotaActual  = $actual['tiempo_en_nota'];
 
-  // Flags política (solo estos disparan correo)
+  // Flags política
   $changedFechaReal = ($hasFechaCita && $oldFecha !== (string)($fechaNueva ?? ''));
   $changedDomReal = false;
   if ($hasDomicilio) {
     $changedDomReal = ($oldDomTxt !== trim((string)($domicilioParsed ?? '')));
   }
 
-  // Para ruta
   $wantsStartRoute = ($hasRutaIniciada && $rutaIniciadaReq === 1);
   $startedRouteNow = ($wantsStartRoute && $rutaIniciadaActual === 0);
 
-  // Build updates
+  // -------------------- VALIDACION RANGO (anti-choques) --------------------
+  $pendienteActual = (int)($actual['pendiente'] ?? 0);
+
+  $fechaFinal = $hasFechaCita
+      ? $fechaNueva
+      : normalize_mysql_datetime($actual['fecha_cita'] ?? null);
+
+  $limiteFinal = $hasLimiteTiempo ? (int)$limiteTiempoReq : $oldLimite;
+
+  $debeValidarRango =
+      ($pendienteActual === 1) &&
+      ($repIdNoticia > 0) &&
+      ($fechaFinal !== null) &&
+      ($hasFechaCita || $hasLimiteTiempo);
+
+  if ($debeValidarRango) {
+    // lock reportero para serializar cambios de agenda
+    $lockRep = $pdo->prepare("SELECT id FROM reporteros WHERE id = ? FOR UPDATE");
+    $lockRep->execute([$repIdNoticia]);
+    if (!$lockRep->fetchColumn()) {
+      $pdo->rollBack();
+      echo json_encode(['success' => false, 'message' => 'Reportero no existe']);
+      exit;
+    }
+
+    $dtStart = new DateTime($fechaFinal);
+    $newStart = $dtStart->format('Y-m-d H:i:s');
+    $newEnd   = (clone $dtStart)->modify('+' . $limiteFinal . ' minutes')->format('Y-m-d H:i:s');
+
+    $chk = $pdo->prepare("
+      SELECT
+        id, noticia, fecha_cita,
+        IFNULL(limite_tiempo_minutos, 60) AS limite,
+        DATE_ADD(fecha_cita, INTERVAL IFNULL(limite_tiempo_minutos, 60) MINUTE) AS fecha_fin
+      FROM noticias
+      WHERE reportero_id = ?
+        AND pendiente = 1
+        AND fecha_cita IS NOT NULL
+        AND id <> ?
+        AND fecha_cita < ?
+        AND DATE_ADD(fecha_cita, INTERVAL IFNULL(limite_tiempo_minutos, 60) MINUTE) > ?
+      ORDER BY fecha_cita ASC
+      LIMIT 1
+    ");
+    $chk->execute([$repIdNoticia, $noticiaId, $newEnd, $newStart]);
+    $conf = $chk->fetch(PDO::FETCH_ASSOC);
+
+    if ($conf) {
+      $pdo->rollBack();
+      http_response_code(409);
+      echo json_encode([
+        'success' => false,
+        'code'    => 'cita_ocupada',
+        'message' => 'El reportero ya cuenta con una cita a esta fecha / hora',
+        'data'    => [
+          'noticia_id' => (int)$conf['id'],
+          'noticia'    => (string)$conf['noticia'],
+          'fecha_cita' => (string)$conf['fecha_cita'],
+          'fecha_fin'  => (string)$conf['fecha_fin'],
+          'limite'     => (int)$conf['limite'],
+        ],
+      ]);
+      exit;
+    }
+  }
+
+  // -------------------- BUILD UPDATES --------------------
   $updates = [];
   $params  = [':id' => $noticiaId];
 
@@ -383,13 +450,11 @@ try {
 
   $wantsTiempoNota = $hasTiempoNota;
 
-  // Si no hay updates: idempotencia / no cambios
+  // Sin cambios
   if (empty($updates)) {
-    // idempotencia controlada
     if (($wantsStartRoute && $rutaIniciadaActual === 1) ||
         ($wantsTiempoNota && $tiempoNotaActual !== null && trim((string)$tiempoNotaActual) !== '' && (int)$tiempoNotaActual === (int)$tiempoNotaReq)) {
 
-      // Trae row para devolver
       $stmt2 = $pdo->prepare("
         SELECT
           n.id, n.noticia, COALESCE(n.tipo_de_nota,'Nota') AS tipo_de_nota,
@@ -429,40 +494,41 @@ try {
   $stmtUp = $pdo->prepare($sqlUp);
   $stmtUp->execute($params);
 
-    $stmt3 = $pdo->prepare("
-        SELECT
-            n.id,
-            n.noticia,
-            COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
-            n.descripcion,
-            n.cliente_id,
-            c.nombre   AS cliente,
-            c.whatsapp AS cliente_whatsapp,
-            n.domicilio,
-            n.ubicacion_en_mapa,
-            n.reportero_id,
-            r.nombre AS reportero,
-            n.fecha_pago,
-            n.fecha_cita,
-            n.fecha_cita_anterior,
-            n.fecha_cita_cambios,
-            n.latitud,
-            n.longitud,
-            n.hora_llegada,
-            n.llegada_latitud,
-            n.llegada_longitud,
-            n.pendiente,
-            n.ultima_mod,
-            n.ruta_iniciada,
-            n.ruta_iniciada_at,
-            n.tiempo_en_nota,
-            n.limite_tiempo_minutos
-        FROM noticias n
-        LEFT JOIN reporteros r ON n.reportero_id = r.id
-        LEFT JOIN clientes  c ON n.cliente_id  = c.id
-        WHERE n.id = ?
-        LIMIT 1
-    ");
+  // Trae row final
+  $stmt3 = $pdo->prepare("
+    SELECT
+      n.id,
+      n.noticia,
+      COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
+      n.descripcion,
+      n.cliente_id,
+      c.nombre   AS cliente,
+      c.whatsapp AS cliente_whatsapp,
+      n.domicilio,
+      n.ubicacion_en_mapa,
+      n.reportero_id,
+      r.nombre AS reportero,
+      n.fecha_pago,
+      n.fecha_cita,
+      n.fecha_cita_anterior,
+      n.fecha_cita_cambios,
+      n.latitud,
+      n.longitud,
+      n.hora_llegada,
+      n.llegada_latitud,
+      n.llegada_longitud,
+      n.pendiente,
+      n.ultima_mod,
+      n.ruta_iniciada,
+      n.ruta_iniciada_at,
+      n.tiempo_en_nota,
+      n.limite_tiempo_minutos
+    FROM noticias n
+    LEFT JOIN reporteros r ON n.reportero_id = r.id
+    LEFT JOIN clientes  c ON n.cliente_id  = c.id
+    WHERE n.id = ?
+    LIMIT 1
+  ");
   $stmt3->execute([$noticiaId]);
   $row = $stmt3->fetch(PDO::FETCH_ASSOC);
 
@@ -473,7 +539,6 @@ try {
   $mailError  = null;
   $mailTo     = null;
 
-  // Determina tipo de correo (prioridad)
   $mailType = null; // route_started | rescheduled | domicilio_changed
   if ($startedRouteNow) $mailType = 'route_started';
   else if ($changedFechaReal) $mailType = 'rescheduled';
@@ -512,11 +577,10 @@ try {
         $bodyText  = '';
         $bodyHtml  = '';
 
-        
         if ($mailType === 'route_started') {
-            $subject  = 'Tu reportero ya está en camino - Televisión Por Cable Tepa';
+          $subject  = 'Tu reportero ya está en camino - Televisión Por Cable Tepa';
 
-            $bodyText =
+          $bodyText =
             "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
             "Tu reportero ya está en camino. Recuerda estar en el lugar y hora acordada.\n\n" .
             "Asunto: {$tituloNoticia}\n" .
@@ -526,15 +590,15 @@ try {
             "Estatus: En trayecto\n\n" .
             "Televisión Por Cable Tepa";
 
-            $details = [
+          $details = [
             ['Asunto', $tituloNoticia],
             ['Cita', $citaNuevaTxt],
             ['Domicilio', $domTxt],
-            ];
-            if ($reporteroTxt !== '') $details[] = ['Reportero', $reporteroTxt];
-            $details[] = ['Estatus', 'En trayecto'];
+          ];
+          if ($reporteroTxt !== '') $details[] = ['Reportero', $reporteroTxt];
+          $details[] = ['Estatus', 'En trayecto'];
 
-            $bodyHtml = email_template_html([
+          $bodyHtml = email_template_html([
             'brand' => 'Televisión Por Cable Tepa',
             'title' => 'Reporte en camino',
             'preheader' => 'El reportero ya va en camino. Revisa los detalles de tu cita.',
@@ -542,13 +606,13 @@ try {
             'intro' => 'Tu reportero ya está en camino. Recuerda estar en el lugar y hora acordada.',
             'details' => $details,
             'footer' => 'Televisión Por Cable Tepa',
-            ]);
+          ]);
 
         } elseif ($mailType === 'rescheduled') {
-            $citaOldTxt = fmt_dt_mx_long($actual['fecha_cita'] ?? null);
-            $subject = 'Tu cita fue actualizada - Televisión Por Cable Tepa';
+          $citaOldTxt = fmt_dt_mx_long($actual['fecha_cita'] ?? null);
+          $subject = 'Tu cita fue actualizada - Televisión Por Cable Tepa';
 
-            $bodyText =
+          $bodyText =
             "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
             "Tu cita fue actualizada.\n\n" .
             "Asunto: {$tituloNoticia}\n" .
@@ -557,15 +621,15 @@ try {
             "Domicilio: {$domTxt}\n\n" .
             "Televisión Por Cable Tepa";
 
-            $details = [
+          $details = [
             ['Asunto', $tituloNoticia],
             ['Antes', $citaOldTxt],
             ['Ahora', $citaNuevaTxt],
             ['Domicilio', $domTxt],
             ['Estatus', 'Reprogramada'],
-            ];
+          ];
 
-            $bodyHtml = email_template_html([
+          $bodyHtml = email_template_html([
             'brand' => 'Televisión Por Cable Tepa',
             'title' => 'Cita actualizada',
             'preheader' => 'Se actualizó la fecha de tu cita.',
@@ -573,15 +637,15 @@ try {
             'intro' => 'Se actualizó la fecha de tu cita. Te compartimos el cambio:',
             'details' => $details,
             'footer' => 'Televisión Por Cable Tepa',
-            ]);
+          ]);
 
         } else { // domicilio_changed
-            $domOld = trim((string)($actual['domicilio'] ?? ''));
-            $domOld = ($domOld !== '') ? $domOld : 'Sin domicilio';
+          $domOld = trim((string)($actual['domicilio'] ?? ''));
+          $domOld = ($domOld !== '') ? $domOld : 'Sin domicilio';
 
-            $subject = 'Se actualizó el domicilio de tu cita - Televisión Por Cable Tepa';
+          $subject = 'Se actualizó el domicilio de tu cita - Televisión Por Cable Tepa';
 
-            $bodyText =
+          $bodyText =
             "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
             "Se actualizó el domicilio de tu cita.\n\n" .
             "Asunto: {$tituloNoticia}\n" .
@@ -590,15 +654,15 @@ try {
             "Ahora: {$domTxt}\n\n" .
             "Televisión Por Cable Tepa";
 
-            $details = [
+          $details = [
             ['Asunto', $tituloNoticia],
             ['Cita', $citaNuevaTxt],
             ['Domicilio anterior', $domOld],
             ['Domicilio nuevo', $domTxt],
             ['Estatus', 'Actualización de domicilio'],
-            ];
+          ];
 
-            $bodyHtml = email_template_html([
+          $bodyHtml = email_template_html([
             'brand' => 'Televisión Por Cable Tepa',
             'title' => 'Domicilio actualizado',
             'preheader' => 'Se actualizó el domicilio de tu cita.',
@@ -606,12 +670,12 @@ try {
             'intro' => 'Se actualizó el domicilio de tu cita. Revisa los datos:',
             'details' => $details,
             'footer' => 'Televisión Por Cable Tepa',
-            ]);
+          ]);
         }
 
         smtp_send_mail($mailCfg, $correoCliente, $nombreCliente, $subject, $bodyText, $bodyHtml);
         $mailStatus = 'sent';
-        }
+      }
     }
   } catch (Throwable $e) {
     $mailStatus = 'error';

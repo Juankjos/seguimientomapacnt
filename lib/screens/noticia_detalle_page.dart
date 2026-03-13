@@ -339,7 +339,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     setState(() => _eliminando = true);
 
     try {
-      await ApiService.eliminarNoticiaDePendientes(widget.noticia.id);
+      await ApiService.eliminarNoticiaDePendientes(_noticia.id);
 
       if (!mounted) return;
 
@@ -350,8 +350,9 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
+      final msg = (e is ApiHttpException) ? e.message : e.toString();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al eliminar pendiente: $e')),
+        SnackBar(content: Text('Error al eliminar pendiente: $msg')),
       );
     } finally {
       if (mounted) setState(() => _eliminando = false);
@@ -687,17 +688,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
               ],
             ),
 
-            if (_noticia.ultimaMod != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Última modificación: ${_formatearFechaCitaAmPm(_noticia.ultimaMod!)}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: Colors.grey[700],
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-
             const SizedBox(height: 8),
 
             if (_noticia.fechaCitaAnterior != null &&
@@ -707,7 +697,10 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
               const SizedBox(height: 4),
               Text(
                 'Fecha de cita Anterior: ${_formatearFechaCitaAmPm(_noticia.fechaCitaAnterior!)}',
-                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.grey[700],
+                  fontStyle: FontStyle.italic,
+                ),
               ),
             ],
 
@@ -715,7 +708,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
               'Fecha de cita Actual: '
               '${_noticia.fechaCita != null ? _formatearFechaCitaAmPm(_noticia.fechaCita!) : 'Sin fecha de cita'}',
               style: const TextStyle(
-                  color: Color.fromARGB(255, 54, 117, 244),
                   fontWeight: FontWeight.w600,
                 ),
             ),
@@ -747,6 +739,17 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w800,
                   color: _colorTiempoEnNota(),
+                ),
+              ),
+            ],
+
+            if (_noticia.ultimaMod != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Última modificación: ${_formatearFechaCitaAmPm(_noticia.ultimaMod!)}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.grey[700],
+                  fontStyle: FontStyle.italic,
                 ),
               ),
             ],
