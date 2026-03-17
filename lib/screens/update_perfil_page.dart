@@ -164,7 +164,7 @@ class _UpdatePerfilPageState extends State<UpdatePerfilPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Actual: ${widget.nombreActual}',
+            'Actual (Tu usuario con el que ingresarás a la APP): ${widget.nombreActual}',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface.withOpacity(0.7),
               fontWeight: FontWeight.w600,
