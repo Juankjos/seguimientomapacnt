@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
+import '../models/admin_notificacion.dart';
 import '../models/noticia.dart';
 import '../models/reportero_admin.dart';
 import '../models/aviso.dart';
@@ -1006,6 +1007,61 @@ class ApiService {
 
     final List list = (decoded['data'] as List?) ?? [];
     return list.map((e) => Aviso.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  // 🔹 Ver eventos en botón de notificación
+  static Future<AdminNotificacionFeed> getAdminNotificaciones({
+    int limit = 20,
+  }) async {
+    final url = Uri.parse('$baseUrl/get_admin_notificaciones.php');
+
+    final resp = await http.post(
+      url,
+      body: _withToken({'limit': '$limit'}),
+      headers: _authHeaders(),
+    );
+
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
+
+    final data = json.decode(resp.body);
+    if (data is! Map || data['success'] != true) {
+      throw Exception((data is Map ? data['message'] : null) ?? 'No se pudieron obtener notificaciones');
+    }
+
+    final unread = int.tryParse(data['unread_count'].toString()) ?? 0;
+    final list = (data['data'] as List?) ?? [];
+
+    return AdminNotificacionFeed(
+      unreadCount: unread,
+      items: list
+          .whereType<Map>()
+          .map((e) => AdminNotificacion.fromJson(
+                e.map((k, v) => MapEntry(k.toString(), v)),
+              ))
+          .toList(),
+    );
+  }
+
+  // 🔹 Marcar eventos en botón de notificación
+  static Future<void> marcarAdminNotificacionLeida(int notificacionId) async {
+    final url = Uri.parse('$baseUrl/mark_admin_notificacion_read.php');
+
+    final resp = await http.post(
+      url,
+      body: _withToken({'notificacion_id': '$notificacionId'}),
+      headers: _authHeaders(),
+    );
+
+    if (resp.statusCode != 200) {
+      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+    }
+
+    final data = json.decode(resp.body);
+    if (data is! Map || data['success'] != true) {
+      throw Exception((data is Map ? data['message'] : null) ?? 'No se pudo marcar leída');
+    }
   }
 
   // 🔹 Buscar cliente

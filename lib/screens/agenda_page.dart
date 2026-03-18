@@ -5,10 +5,12 @@ import 'package:table_calendar/table_calendar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'dart:convert';
+import 'dart:async';
 
 import '../services/session_service.dart';
 import '../auth_controller.dart';
 import '../models/noticia.dart';
+import '../models/admin_notificacion.dart';
 import '../services/api_service.dart';
 import 'noticia_detalle_page.dart';
 import 'crear_noticia_page.dart';
@@ -141,6 +143,16 @@ class AgendaPage extends StatefulWidget {
 class _AgendaPageState extends State<AgendaPage> {
   bool _loading = true;
   String? _error;
+
+  Timer? _notifTimer;
+  bool _notifLoading = false;
+  int _notifUnreadCount = 0;
+  List<AdminNotificacion> _notificaciones = [];
+
+  final LayerLink _notifLayerLink = LayerLink();
+  OverlayEntry? _notifOverlayEntry;
+  final GlobalKey _notifButtonKey = GlobalKey();
+  final ScrollController _notifScrollController = ScrollController();
 
   final Map<DateTime, List<Noticia>> _eventosPorDia = {};
 
@@ -422,7 +434,21 @@ class _AgendaPageState extends State<AgendaPage> {
       await _initPermisosLocal();
       await _refrescarPerfilDesdeServidor(showError: false);
       await _cargarNoticias();
+
+      if (widget.esAdmin && kIsWeb) {
+        await _cargarNotificacionesAdmin(silent: false);
+        _notifTimer?.cancel();
+        _notifTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+          _cargarNotificacionesAdmin(silent: true);
+        });
+      }
     });
+  }
+
+  @override
+  void dispose() {
+    _notifTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _openAndRefresh(Widget page, {bool refreshPerms = true}) async {
@@ -461,6 +487,301 @@ class _AgendaPageState extends State<AgendaPage> {
       gestion: getOrFalse('auth_puede_ver_gestion'),
       clientes: getOrFalse('auth_puede_ver_clientes'),
     );
+  }
+
+  Future<void> _cargarNotificacionesAdmin({bool silent = true}) async {
+    if (!(widget.esAdmin && kIsWeb)) return;
+    if (_notifLoading) return;
+
+    _notifLoading = true;
+    try {
+      final feed = await ApiService.getAdminNotificaciones(limit: 20);
+
+      if (!mounted) return;
+      setState(() {
+        _notificaciones = feed.items;
+        _notifUnreadCount = feed.unreadCount;
+      });
+    } catch (e) {
+      if (!silent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No pude cargar notificaciones: $e')),
+        );
+      }
+    } finally {
+      _notifLoading = false;
+    }
+  }
+
+  Noticia? _buscarNoticiaPorId(int noticiaId) {
+    for (final lista in _eventosPorDia.values) {
+      for (final n in lista) {
+        if (n.id == noticiaId) return n;
+      }
+    }
+    return null;
+  }
+
+  String _fmtNotifDate(DateTime? dt) {
+    if (dt == null) return '';
+    final d = dt.day.toString().padLeft(2, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    final y = dt.year.toString();
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    return '$d/$m/$y $hh:$mm';
+  }
+
+  void _toggleNotifOverlay() {
+    if (_notifOverlayEntry != null) {
+      _cerrarNotifOverlay();
+    } else {
+      _abrirNotifOverlay();
+    }
+  }
+
+  void _cerrarNotifOverlay() {
+    _notifOverlayEntry?.remove();
+    _notifOverlayEntry = null;
+  }
+
+  Future<void> _abrirNotifOverlay() async {
+    await _cargarNotificacionesAdmin(silent: true);
+    if (!mounted) return;
+
+    final overlay = Overlay.of(context);
+    final buttonContext = _notifButtonKey.currentContext;
+    if (overlay == null || buttonContext == null) return;
+
+    final renderBox = buttonContext.findRenderObject() as RenderBox;
+    final buttonSize = renderBox.size;
+
+    _notifOverlayEntry = OverlayEntry(
+      builder: (context) {
+        final theme = Theme.of(context);
+
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _cerrarNotifOverlay,
+                child: const SizedBox.expand(),
+              ),
+            ),
+
+            CompositedTransformFollower(
+              link: _notifLayerLink,
+              showWhenUnlinked: false,
+              offset: Offset(-320 + buttonSize.width, buttonSize.height + 8),
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: 360,
+                  constraints: const BoxConstraints(
+                    maxHeight: 420,
+                    minHeight: 80,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: theme.dividerColor.withOpacity(0.25),
+                      width: 0.9,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                        color: Colors.black.withOpacity(0.16),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: theme.dividerColor.withOpacity(0.18),
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Notificaciones',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                            if (_notifUnreadCount > 0)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primaryContainer,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  '$_notifUnreadCount nuevas',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: theme.colorScheme.onPrimaryContainer,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+
+                      if (_notificaciones.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+                          child: Text('No hay notificaciones.'),
+                        )
+                      else
+                        Flexible(
+                          child: Scrollbar(
+                            controller: _notifScrollController,
+                            thumbVisibility: true,
+                            child: ListView.separated(
+                              controller: _notifScrollController,
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              shrinkWrap: true,
+                              itemCount: _notificaciones.length,
+                              separatorBuilder: (_, __) => Divider(
+                                height: 1,
+                                color: theme.dividerColor.withOpacity(0.12),
+                              ),
+                              itemBuilder: (_, index) {
+                                final item = _notificaciones[index];
+
+                                return InkWell(
+                                  onTap: () => _abrirNotificacion(item),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 12,
+                                    ),
+                                    color: item.leida
+                                        ? Colors.transparent
+                                        : theme.colorScheme.primary.withOpacity(0.06),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 2),
+                                          child: Icon(
+                                            item.leida
+                                                ? Icons.notifications_none
+                                                : Icons.notifications_active,
+                                            size: 18,
+                                            color: item.leida
+                                                ? theme.colorScheme.onSurface.withOpacity(0.65)
+                                                : theme.colorScheme.primary,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                item.mensaje,
+                                                style: TextStyle(
+                                                  fontWeight: item.leida
+                                                      ? FontWeight.w500
+                                                      : FontWeight.w800,
+                                                  fontSize: 13.5,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                _fmtNotifDate(item.createdAt),
+                                                style: TextStyle(
+                                                  fontSize: 11.5,
+                                                  color: theme.colorScheme.onSurface.withOpacity(0.62),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Icon(
+                                          Icons.chevron_right,
+                                          size: 18,
+                                          color: theme.colorScheme.onSurface.withOpacity(0.45),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    overlay.insert(_notifOverlayEntry!);
+  }
+
+  Future<void> _abrirNotificacion(AdminNotificacion item) async {
+    _cerrarNotifOverlay();
+    try {
+      if (!item.leida) {
+        await ApiService.marcarAdminNotificacionLeida(item.id);
+      }
+      await _cargarNotificacionesAdmin(silent: true);
+      var noticia = _buscarNoticiaPorId(item.noticiaId);
+      if (noticia == null) {
+        await _cargarNoticias();
+        noticia = _buscarNoticiaPorId(item.noticiaId);
+      }
+      if (!mounted) return;
+      if (noticia == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No encontré la noticia para abrir detalles.'),
+          ),
+        );
+        return;
+      }
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NoticiaDetallePage(
+            noticia: noticia!,
+            soloLectura: (noticia.pendiente == false),
+            role: 'admin',
+          ),
+        ),
+      );
+      await _cargarNoticias();
+      await _cargarNotificacionesAdmin(silent: true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al abrir notificación: $e')),
+      );
+    }
   }
 
   bool _toBool(dynamic x) {
@@ -1071,14 +1392,65 @@ class _AgendaPageState extends State<AgendaPage> {
               appBar: AppBar(
                 title: Text('Agenda de ${widget.reporteroNombre}'),
                 actions: [
+                  if (widget.esAdmin && kIsWeb)
+                  CompositedTransformTarget(
+                    link: _notifLayerLink,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        IconButton(
+                          key: _notifButtonKey,
+                          icon: const Icon(Icons.notifications_outlined),
+                          tooltip: 'Notificaciones',
+                          onPressed: _toggleNotifOverlay,
+                        ),
+                        if (_notifUnreadCount > 0)
+                          Positioned(
+                            right: 6,
+                            top: 6,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              constraints: const BoxConstraints(
+                                minWidth: 18,
+                                minHeight: 18,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                borderRadius: BorderRadius.circular(999),
+                                boxShadow: [
+                                  BoxShadow(
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                    color: Colors.black.withOpacity(0.18),
+                                  ),
+                                ],
+                              ),
+                              child: Text(
+                                _notifUnreadCount > 99 ? '99+' : '$_notifUnreadCount',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                   IconButton(
                     icon: const Icon(Icons.refresh),
                     tooltip: 'Actualizar',
                     onPressed: _loading
                         ? null
                         : () async {
+                            _cerrarNotifOverlay();
                             await _refrescarPerfilDesdeServidor(showError: false);
                             await _cargarNoticias();
+                            if (widget.esAdmin && kIsWeb) {
+                              await _cargarNotificacionesAdmin(silent: true);
+                            }
                           },
                   ),
                 ],

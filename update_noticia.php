@@ -236,6 +236,36 @@ try {
   $wantsStartRoute = ($hasRutaIniciada && $rutaIniciadaReq === 1);
   $startedRouteNow = ($wantsStartRoute && $rutaIniciadaActual === 0);
 
+  if ($startedRouteNow) {
+    $reporteroNombreNotif = trim((string)($actual['reportero'] ?? ''));
+    $mensajeNotif = $reporteroNombreNotif !== ''
+      ? "{$reporteroNombreNotif} ha iniciado su ruta."
+      : "El reportero ha iniciado su ruta.";
+
+    $stmtNotif = $pdo->prepare("
+      INSERT INTO admin_notificaciones (
+        tipo,
+        noticia_id,
+        reportero_id,
+        mensaje,
+        created_at
+      ) VALUES (
+        'inicio_ruta',
+        :noticia_id,
+        :reportero_id,
+        :mensaje,
+        NOW()
+      )
+      ON DUPLICATE KEY UPDATE id = id
+    ");
+
+    $stmtNotif->execute([
+      ':noticia_id'   => $noticiaId,
+      ':reportero_id' => $repIdNoticia > 0 ? $repIdNoticia : null,
+      ':mensaje'      => $mensajeNotif,
+    ]);
+  }
+
   // -------------------- VALIDACION RANGO (anti-choques) --------------------
   $pendienteActual = (int)($actual['pendiente'] ?? 0);
 
