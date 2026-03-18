@@ -22,7 +22,7 @@ $raw  = file_get_contents('php://input');
 $json = json_decode($raw ?: '', true);
 $in = (is_array($json) && json_last_error() === JSON_ERROR_NONE) ? $json : $_POST;
 
-// Auth (obtiene id y rol desde token)
+// Auth
 $user = require_auth($pdo, is_array($in) ? $in : []);
 $role = (string)($user['role'] ?? 'reportero');
 $userId = (int)($user['id'] ?? 0);
@@ -41,17 +41,44 @@ if ($noticiaId <= 0) {
 }
 
 try {
-  // 1) Verifica existencia y permiso
+  $pdo->beginTransaction();
+
   if ($role === 'admin') {
-    $stmt = $pdo->prepare("SELECT id, pendiente FROM noticias WHERE id = ? LIMIT 1");
+    $stmt = $pdo->prepare("
+      SELECT
+        n.id,
+        n.pendiente,
+        n.reportero_id,
+        n.noticia,
+        r.nombre AS reportero
+      FROM noticias n
+      LEFT JOIN reporteros r ON r.id = n.reportero_id
+      WHERE n.id = ?
+      LIMIT 1
+      FOR UPDATE
+    ");
     $stmt->execute([$noticiaId]);
   } else {
-    $stmt = $pdo->prepare("SELECT id, pendiente FROM noticias WHERE id = ? AND reportero_id = ? LIMIT 1");
+    $stmt = $pdo->prepare("
+      SELECT
+        n.id,
+        n.pendiente,
+        n.reportero_id,
+        n.noticia,
+        r.nombre AS reportero
+      FROM noticias n
+      LEFT JOIN reporteros r ON r.id = n.reportero_id
+      WHERE n.id = ? AND n.reportero_id = ?
+      LIMIT 1
+      FOR UPDATE
+    ");
     $stmt->execute([$noticiaId, $userId]);
   }
 
   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
   if (!$row) {
+    $pdo->rollBack();
     http_response_code(404);
     echo json_encode([
       'success' => false,
@@ -61,7 +88,21 @@ try {
     exit;
   }
 
-  // 2) Actualiza: siempre toca ultima_mod para evitar rowCount=0 por “no cambios”
+  $pendienteActual = (int)($row['pendiente'] ?? 0);
+  $reporteroId = !empty($row['reportero_id']) ? (int)$row['reportero_id'] : null;
+  $reporteroNombre = trim((string)($row['reportero'] ?? ''));
+  $tituloNoticia = trim((string)($row['noticia'] ?? ''));
+
+  if ($pendienteActual === 0) {
+    $pdo->commit();
+    echo json_encode([
+      'success' => true,
+      'message' => 'La noticia ya no estaba pendiente',
+    ]);
+    exit;
+  }
+
+  // 3) Cambio real: 1 -> 0
   if ($role === 'admin') {
     $up = $pdo->prepare("
       UPDATE noticias
@@ -80,15 +121,49 @@ try {
     $up->execute([$noticiaId, $userId]);
   }
 
+  $mensajeNotif = '';
+  if ($reporteroNombre !== '') {
+    $mensajeNotif = "{$reporteroNombre} ha finalizado {$tituloNoticia}.";
+  } else {
+    $mensajeNotif = "Una noticia ha sido finalizada.";
+  }
+
+  $stmtNotif = $pdo->prepare("
+    INSERT INTO admin_notificaciones (
+      tipo,
+      noticia_id,
+      reportero_id,
+      mensaje,
+      created_at
+    ) VALUES (
+      'cierre_noticia',
+      :noticia_id,
+      :reportero_id,
+      :mensaje,
+      NOW()
+    )
+    ON DUPLICATE KEY UPDATE id = id
+  ");
+
+  $stmtNotif->execute([
+    ':noticia_id'   => $noticiaId,
+    ':reportero_id' => $reporteroId,
+    ':mensaje'      => $mensajeNotif,
+  ]);
+
+  $pdo->commit();
+
   echo json_encode([
     'success' => true,
-    'message' => ((int)$row['pendiente'] === 1)
-        ? 'Noticia eliminada de tus pendientes'
-        : 'La noticia ya no estaba pendiente',
+    'message' => 'Noticia eliminada de tus pendientes',
   ]);
   exit;
 
 } catch (Throwable $e) {
+  if ($pdo->inTransaction()) {
+    try { $pdo->rollBack(); } catch (Throwable $_) {}
+  }
+
   http_response_code(500);
   error_log("update_pendiente_noticia.php error: " . $e->getMessage());
   echo json_encode([
