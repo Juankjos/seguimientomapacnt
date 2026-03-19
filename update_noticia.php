@@ -57,6 +57,38 @@ function fmt_dt_mx_long(?string $mysql): string {
   }
 }
 
+function dt_date_part(?string $mysql): ?string {
+  if ($mysql === null || trim($mysql) === '') return null;
+  $dt = normalize_mysql_datetime($mysql);
+  if ($dt === null) return null;
+  return substr($dt, 0, 10); // YYYY-MM-DD
+}
+
+function dt_time_part(?string $mysql): ?string {
+  if ($mysql === null || trim($mysql) === '') return null;
+  $dt = normalize_mysql_datetime($mysql);
+  if ($dt === null) return null;
+  return substr($dt, 11, 5); // HH:MM
+}
+
+function normalize_text_nullable($v): ?string {
+  if ($v === null) return null;
+  $s = trim((string)$v);
+  return $s === '' ? null : $s;
+}
+
+function join_campos_es(array $campos): string {
+  $campos = array_values(array_unique(array_filter($campos)));
+  $n = count($campos);
+
+  if ($n === 0) return '';
+  if ($n === 1) return $campos[0];
+  if ($n === 2) return $campos[0] . ' y ' . $campos[1];
+
+  $last = array_pop($campos);
+  return implode(', ', $campos) . ' y ' . $last;
+}
+
 // -------------------- INPUT (JSON o FORM) --------------------
 $raw  = file_get_contents('php://input');
 $json = json_decode($raw ?: '', true);
@@ -229,6 +261,43 @@ try {
   // Flags política
   $changedFechaReal = ($hasFechaCita && $oldFecha !== (string)($fechaNueva ?? ''));
   $changedDomReal = false;
+
+  $camposEditadosNotif = [];
+
+  // ---- NOTIFICACIÓN DB ----
+  // ---- fecha/hora de cita ----
+  $oldFechaNorm = normalize_mysql_datetime($actual['fecha_cita'] ?? null);
+  $newFechaNorm = $hasFechaCita ? $fechaNueva : $oldFechaNorm;
+
+  if ($hasFechaCita && $oldFechaNorm !== $newFechaNorm) {
+    $oldDate = dt_date_part($oldFechaNorm);
+    $newDate = dt_date_part($newFechaNorm);
+
+    $oldTime = dt_time_part($oldFechaNorm);
+    $newTime = dt_time_part($newFechaNorm);
+
+    if ($oldDate !== $newDate) {
+      $camposEditadosNotif[] = 'fecha de cita';
+    }
+    if ($oldTime !== $newTime) {
+      $camposEditadosNotif[] = 'hora de cita';
+    }
+  }
+
+  // ---- descripción ----
+  if ($descripcion !== null) {
+    $oldDescNorm = normalize_text_nullable($actual['descripcion'] ?? null);
+    $newDescNorm = normalize_text_nullable($descripcion);
+    if ($oldDescNorm !== $newDescNorm) {
+      $camposEditadosNotif[] = 'descripción';
+    }
+  }
+
+  // ---- límite de tiempo ----
+  if ($hasLimiteTiempo && $limiteTiempoReq !== $oldLimite) {
+    $camposEditadosNotif[] = 'límite de tiempo';
+  }
+
   if ($hasDomicilio) {
     $changedDomReal = ($oldDomTxt !== trim((string)($domicilioParsed ?? '')));
   }
@@ -248,12 +317,15 @@ try {
         noticia_id,
         reportero_id,
         mensaje,
+        dedupe_key,
         created_at
-      ) VALUES (
+      )
+      VALUES (
         'inicio_ruta',
         :noticia_id,
         :reportero_id,
         :mensaje,
+        :dedupe_key,
         NOW()
       )
       ON DUPLICATE KEY UPDATE id = id
@@ -263,6 +335,7 @@ try {
       ':noticia_id'   => $noticiaId,
       ':reportero_id' => $repIdNoticia > 0 ? $repIdNoticia : null,
       ':mensaje'      => $mensajeNotif,
+      ':dedupe_key'   => "inicio_ruta:{$noticiaId}",
     ]);
   }
 
@@ -480,6 +553,16 @@ try {
 
   $wantsTiempoNota = $hasTiempoNota;
 
+  $actorNombre = trim((string)($user['nombre'] ?? ''));
+  if ($actorNombre === '' && $userId > 0) {
+    $qActor = $pdo->prepare("SELECT nombre FROM reporteros WHERE id = ? LIMIT 1");
+    $qActor->execute([$userId]);
+    $actorNombre = trim((string)($qActor->fetchColumn() ?: ''));
+  }
+  if ($actorNombre === '') {
+    $actorNombre = ($role === 'admin') ? 'Un administrador' : 'Un reportero';
+  }
+
   // Sin cambios
   if (empty($updates)) {
     if (($wantsStartRoute && $rutaIniciadaActual === 1) ||
@@ -523,6 +606,39 @@ try {
   $sqlUp = "UPDATE noticias SET " . implode(", ", $updates) . " WHERE id = :id LIMIT 1";
   $stmtUp = $pdo->prepare($sqlUp);
   $stmtUp->execute($params);
+
+  if (!empty($camposEditadosNotif)) {
+    $camposTxt = join_campos_es($camposEditadosNotif);
+
+    $mensajeEdit = "{$actorNombre} modificó {$camposTxt}.";
+    // Si quieres incluir el título:
+    // $tituloNotif = trim((string)($actual['noticia'] ?? ''));
+    // $mensajeEdit = "{$actorNombre} modificó {$camposTxt} en la noticia '{$tituloNotif}'.";
+
+    $stmtNotifEdit = $pdo->prepare("
+      INSERT INTO admin_notificaciones (
+        tipo,
+        noticia_id,
+        reportero_id,
+        mensaje,
+        dedupe_key,
+        created_at
+      ) VALUES (
+        'edicion_noticia',
+        :noticia_id,
+        :reportero_id,
+        :mensaje,
+        NULL,
+        NOW()
+      )
+    ");
+
+    $stmtNotifEdit->execute([
+      ':noticia_id'   => $noticiaId,
+      ':reportero_id' => $userId > 0 ? $userId : null,
+      ':mensaje'      => $mensajeEdit,
+    ]);                                                                                                                                                                                                                                                                                                                                     
+  }
 
   // Trae row final
   $stmt3 = $pdo->prepare("
