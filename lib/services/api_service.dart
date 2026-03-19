@@ -550,19 +550,32 @@ class ApiService {
   }) async {
     final url = Uri.parse('$baseUrl/reassign_noticias.php');
 
-    final resp = await http.post(url, body: {
-      'noticia_ids': json.encode(noticiaIds),
-      'nuevo_reportero_id': (nuevoReporteroId ?? '').toString(),
-    });
+    final resp = await http.post(
+      url,
+      body: _withToken({
+        'noticia_ids': json.encode(noticiaIds),
+        'nuevo_reportero_id': (nuevoReporteroId ?? '').toString(),
+      }),
+      headers: _authHeaders(),
+    );
 
     if (resp.statusCode != 200) {
-      throw Exception('Error en servidor (${resp.statusCode}): ${resp.body}');
+      throw _parseApiError(resp);
     }
 
-    final Map<String, dynamic> data = json.decode(resp.body);
-    if (data['success'] != true) {
-      throw Exception(data['message'] ?? 'No se pudo reasignar');
-    }
+    final decoded = jsonDecode(resp.body);
+    if (decoded is Map && decoded['success'] == true) return;
+
+    final msg = (decoded is Map ? decoded['message'] : null) ?? 'No se pudo reasignar';
+    throw ApiHttpException(
+      statusCode: 200,
+      message: msg.toString(),
+      code: decoded is Map ? decoded['code']?.toString() : null,
+      data: (decoded is Map && decoded['data'] is Map)
+          ? (decoded['data'] as Map).map((k, v) => MapEntry(k.toString(), v))
+          : null,
+      raw: resp.body,
+    );
   }
 
   // 🔹 Buscar reportero a una noticia

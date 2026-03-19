@@ -40,8 +40,8 @@ if ($noticiaId <= 0) {
 }
 
 // Target reportero:
-// - reportero: SIEMPRE se asigna a sí mismo (ignora lo que manden)
-// - admin: puede asignar a cualquiera (requiere reportero_id)
+// - reportero: SIEMPRE se asigna a sí mismo
+// - admin: puede asignar a cualquiera
 $reporteroId = 0;
 
 if ($role === 'admin') {
@@ -80,16 +80,20 @@ try {
     exit;
   }
 
-  // Lock reportero (serializa agenda del reportero)
-  $stmtR = $pdo->prepare("SELECT id FROM reporteros WHERE id = ? FOR UPDATE");
+  // Lock reportero
+  $stmtR = $pdo->prepare("SELECT id, nombre FROM reporteros WHERE id = ? FOR UPDATE");
   $stmtR->execute([$reporteroId]);
-  if (!$stmtR->fetchColumn()) {
+  $r = $stmtR->fetch(PDO::FETCH_ASSOC);
+
+  if (!$r) {
     $pdo->rollBack();
     echo json_encode(['success' => false, 'message' => 'El reportero no existe']);
     exit;
   }
 
-  // Validación de traslape solo si esta noticia tiene fecha_cita
+  $nombreReportero = trim((string)($r['nombre'] ?? ''));
+
+  // Validación de traslape
   $fechaCita = !empty($n['fecha_cita']) ? (string)$n['fecha_cita'] : null;
   $limite = (int)($n['limite'] ?? 60);
 
@@ -149,6 +153,36 @@ try {
     exit;
   }
 
+  // Notificación admin
+  $tituloNoticia = trim((string)($n['noticia'] ?? 'Noticia'));
+  $mensajeNotif = $nombreReportero !== ''
+    ? "{$tituloNoticia} ha sido asignada a {$nombreReportero}."
+    : "{$tituloNoticia} ha sido asignada a un reportero.";
+
+  $stmtNotif = $pdo->prepare("
+    INSERT INTO admin_notificaciones (
+      tipo,
+      noticia_id,
+      reportero_id,
+      mensaje,
+      dedupe_key,
+      created_at
+    ) VALUES (
+      'asignacion_noticia',
+      :noticia_id,
+      :reportero_id,
+      :mensaje,
+      NULL,
+      NOW()
+    )
+  ");
+
+  $stmtNotif->execute([
+    ':noticia_id'   => $noticiaId,
+    ':reportero_id' => $reporteroId,
+    ':mensaje'      => $mensajeNotif,
+  ]);
+
   $pdo->commit();
 
   echo json_encode([
@@ -162,6 +196,7 @@ try {
     try { $pdo->rollBack(); } catch (Throwable $_) {}
   }
   http_response_code(500);
+  error_log("tomar_noticia.php error: " . $e->getMessage());
   echo json_encode(['success' => false, 'message' => 'Error al tomar noticia']);
   exit;
 }

@@ -119,20 +119,24 @@ if ($fechaCita !== '') {
 }
 
 $newId = 0;
+$nombreReporteroAsignado = '';
 
 try {
-  // --- Transacción: serializa por reportero + valida traslape + inserta ---
   $pdo->beginTransaction();
 
   // Lock reportero si existe (evita carreras en agenda)
   if ($reporteroId !== null) {
-    $lockRep = $pdo->prepare("SELECT id FROM reporteros WHERE id = ? FOR UPDATE");
+    $lockRep = $pdo->prepare("SELECT id, nombre FROM reporteros WHERE id = ? FOR UPDATE");
     $lockRep->execute([$reporteroId]);
-    if (!$lockRep->fetchColumn()) {
+    $rep = $lockRep->fetch(PDO::FETCH_ASSOC);
+
+    if (!$rep) {
       $pdo->rollBack();
       echo json_encode(['success' => false, 'message' => 'reportero_id no existe']);
       exit;
     }
+
+    $nombreReporteroAsignado = trim((string)($rep['nombre'] ?? ''));
   }
 
   // Validación de traslape por rango (solo si hay reportero y fecha)
@@ -177,7 +181,7 @@ try {
     }
   }
 
-  // Insert
+  // Insert principal
   $sql = "
     INSERT INTO noticias (
       noticia, tipo_de_nota, descripcion, cliente_id, domicilio, reportero_id, fecha_cita, pendiente, limite_tiempo_minutos
@@ -199,6 +203,37 @@ try {
   ]);
 
   $newId = (int)$pdo->lastInsertId();
+
+  // Notificación si nace asignada
+  if ($reporteroId !== null) {
+    $mensajeNotif = $nombreReporteroAsignado !== ''
+      ? "{$noticia} ha sido asignada a {$nombreReporteroAsignado}."
+      : "{$noticia} ha sido asignada a un reportero.";
+
+    $stmtNotif = $pdo->prepare("
+      INSERT INTO admin_notificaciones (
+        tipo,
+        noticia_id,
+        reportero_id,
+        mensaje,
+        dedupe_key,
+        created_at
+      ) VALUES (
+        'asignacion_noticia',
+        :noticia_id,
+        :reportero_id,
+        :mensaje,
+        NULL,
+        NOW()
+      )
+    ");
+
+    $stmtNotif->execute([
+      ':noticia_id'   => $newId,
+      ':reportero_id' => $reporteroId,
+      ':mensaje'      => $mensajeNotif,
+    ]);
+  }
 
   $pdo->commit();
 
