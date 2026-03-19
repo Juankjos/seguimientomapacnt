@@ -35,6 +35,7 @@ try {
             ON l.notificacion_id = n.id
             AND l.admin_id = :admin_id
         WHERE l.notificacion_id IS NULL
+        AND n.created_at >= (NOW() - INTERVAL 1 DAY)
     ");
     $qCount->execute([':admin_id' => $adminId]);
     $unread = (int)($qCount->fetchColumn() ?: 0);
@@ -52,6 +53,7 @@ try {
         LEFT JOIN admin_notificaciones_leidas l
             ON l.notificacion_id = n.id
             AND l.admin_id = :admin_id
+        WHERE n.created_at >= (NOW() - INTERVAL 1 DAY)
         ORDER BY n.created_at DESC, n.id DESC
         LIMIT :lim
     ");
@@ -64,10 +66,13 @@ try {
         'unread_count' => $unread,
         'data' => $q->fetchAll(PDO::FETCH_ASSOC),
     ]);
+    exit;
 } catch (Throwable $e) {
     http_response_code(500);
+    error_log("get_admin_notificaciones.php error: " . $e->getMessage());
     echo json_encode([
         'success' => false,
         'message' => 'Error interno',
     ]);
+    exit;
 }
