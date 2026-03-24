@@ -137,7 +137,8 @@ try {
     exit;
   }
 
-  $ahora = date('Y-m-d H:i:s');
+  $ahora = (new DateTime('now', new DateTimeZone('America/Mexico_City')))
+  ->format('Y-m-d H:i:s');
 
   $up = $pdo->prepare("
     UPDATE noticias

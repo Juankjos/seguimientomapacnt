@@ -416,10 +416,7 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
         return;
       }
 
-      final ahora = DateTime.now();
-      final horaLlegadaStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(ahora);
-
-      await ApiService.registrarLlegadaNoticia(
+      final noticiaActualizada = await ApiService.registrarLlegadaNoticia(
         noticiaId: widget.noticia.id,
         latitud: pos.latitude,
         longitud: pos.longitude,
@@ -437,9 +434,9 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       _posicionSub = null;
 
       Navigator.pop(context, {
-        'llegadaLatitud': pos.latitude,
-        'llegadaLongitud': pos.longitude,
-        'horaLlegada': horaLlegadaStr,
+        'llegadaLatitud': noticiaActualizada.llegadaLatitud,
+        'llegadaLongitud': noticiaActualizada.llegadaLongitud,
+        'horaLlegada': noticiaActualizada.horaLlegada?.toString(),
       });
     } catch (e) {
       if (!mounted) return;

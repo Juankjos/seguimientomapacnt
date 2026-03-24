@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/admin_notificacion.dart';
 import '../models/noticia.dart';
@@ -46,7 +47,7 @@ class ApiHttpException implements Exception {
 class ApiService {
 
   static const String baseUrl = 'https://nube.tvctepa.com/CNT';
-  static const String wsBaseUrl = 'ws://192.168.2.68:3001'; //'ws://45.238.188.51:2246';
+  static const String wsBaseUrl = 'wss://nube.tvctepa.com/CNT/ws'; //'ws://192.168.2.68:3001';wss://nube.tvctepa.com/CNT/ws
   static String wsToken = '';
   static String _mysqlDateTime(DateTime dt) => DateFormat('yyyy-MM-dd HH:mm:ss').format(dt);
   static bool _toBool(dynamic x) {
@@ -632,7 +633,7 @@ class ApiService {
   }
 
   // 🔹 Al llegar al destino, guardar lat y long de llegada
-  static Future<void> registrarLlegadaNoticia({
+  static Future<Noticia> registrarLlegadaNoticia({
     required int noticiaId,
     required double latitud,
     required double longitud,
@@ -643,16 +644,12 @@ class ApiService {
       throw Exception('No autorizado (ws_token vacío)');
     }
 
-    final ahora = DateTime.now();
-    final horaLlegadaStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(ahora);
-
     final resp = await http.post(
       url,
       body: _withToken({
         'noticia_id': noticiaId.toString(),
         'latitud': latitud.toString(),
         'longitud': longitud.toString(),
-        'hora_llegada': horaLlegadaStr,
       }),
       headers: _authHeaders(),
     );
@@ -662,7 +659,11 @@ class ApiService {
     }
 
     final data = json.decode(resp.body);
-    if (data is Map && data['success'] == true) return;
+    if (data is Map && data['success'] == true) {
+      return Noticia.fromJson(
+        (data['data'] as Map).map((k, v) => MapEntry(k.toString(), v)),
+      );
+    }
 
     throw Exception((data is Map ? data['message'] : null) ?? 'Error al registrar llegada');
   }

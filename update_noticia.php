@@ -157,7 +157,10 @@ $hasFechaCita = array_key_exists('fecha_cita', $_POST);
 $fechaNueva   = $hasFechaCita ? normalize_mysql_datetime($_POST['fecha_cita']) : null;
 
 $ultimaMod = normalize_mysql_datetime($_POST['ultima_mod'] ?? null);
-if ($ultimaMod === null) $ultimaMod = date('Y-m-d H:i:s');
+if ($ultimaMod === null) {
+  $ultimaMod = (new DateTime('now', new DateTimeZone('America/Mexico_City')))
+    ->format('Y-m-d H:i:s');
+}
 
 $hasRutaIniciada = array_key_exists('ruta_iniciada', $_POST);
 $rutaIniciadaReq = $hasRutaIniciada ? (int)$_POST['ruta_iniciada'] : null;
