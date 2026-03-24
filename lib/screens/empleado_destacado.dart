@@ -745,14 +745,14 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
-                      pw.Text('Total: ${noticias.length}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                      pw.Text('Realizadas: $realizadas'),
+                      pw.Text('Realizadas: $realizadas', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                       pw.Text('Pendientes: $pendientes'),
+                      pw.Text('Total: ${noticias.length}'),
                     ],
                   ),
                   pw.SizedBox(height: 6),
                   pw.Text(
-                    'Mínimo del mes: $minimoMeta     Extras: ${extrasIds.length}',
+                    'Mínimo del mes a Realizar: $minimoMeta     Extras: ${extrasIds.length}',
                     style: const pw.TextStyle(fontSize: 10.5),
                   ),
                 ],
@@ -779,7 +779,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
 
             widgets.add(
               _bulletLine(
-                '$title: ${list.length} (Realizadas:$wReal | Pendientes:$wPend${wExtras > 0 ? ' | Extras:$wExtras' : ''})',
+                '$title: Realizadas: $wReal, Pendientes: $wPend${wExtras > 0 ? ', Extras: $wExtras' : ''} | TOTAL: ${list.length}',
               ),
             );
           }
