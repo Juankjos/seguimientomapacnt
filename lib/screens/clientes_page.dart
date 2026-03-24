@@ -431,7 +431,7 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
                         enabled: !_creando,
                         keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(
-                          labelText: 'Correo (opcional)',
+                          labelText: 'Correo (OBLIGATORIO)',
                           border: OutlineInputBorder(),
                           hintText: 'ejemplo@dominio.com',
                         ),

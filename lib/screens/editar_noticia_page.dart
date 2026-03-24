@@ -1179,25 +1179,37 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     if (!_puedeEditarFecha) return;
 
     final now = DateTime.now();
+
+    // Solo fecha, sin hora
+    final hoy = DateUtils.dateOnly(now);
+
     final initial = _fechaCita ?? now;
+    final initialSoloFecha = DateUtils.dateOnly(initial);
+
+    // Evita que initialDate quede antes de firstDate
+    final initialDate = initialSoloFecha.isBefore(hoy) ? hoy : initialSoloFecha;
 
     final pickedDate = await showDatePicker(
       context: context,
       locale: const Locale('es', 'MX'),
-      initialDate: initial,
-      firstDate: DateTime(now.year - 1),
+      initialDate: initialDate,
+      firstDate: hoy, // <- bloquea cualquier día anterior a hoy
       lastDate: DateTime(now.year + 5),
       helpText: 'Seleccionar fecha',
       cancelText: 'Cancelar',
       confirmText: 'Aceptar',
+      selectableDayPredicate: (day) {
+        final soloDia = DateUtils.dateOnly(day);
+        return !soloDia.isBefore(hoy);
+      },
     );
 
     if (pickedDate == null) return;
 
     final bool esDesktop = !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.macOS ||
-      defaultTargetPlatform == TargetPlatform.linux);
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.linux);
 
     final pickedTime = (kIsWeb || esDesktop)
         ? await _showHybridTimePicker12h(
