@@ -310,6 +310,60 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
     }
   }
 
+  Future<void> _eliminarCliente() async {
+    if (_guardando || _cargando) return;
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar cliente'),
+        content: Text(
+          'Vas a eliminar a "${_cliente.nombre}".\n\n'
+          'Esta acción no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true) return;
+
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
+
+    try {
+      await ApiService.deleteCliente(clienteId: _cliente.id);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cliente eliminado')),
+      );
+
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _guardando = false;
+        _error = e.toString();
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo eliminar: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final rawWhatsapp = (_cliente.whatsapp ?? '').trim();
@@ -419,7 +473,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
                         enabled: !_guardando,
                         keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(
-                          labelText: 'Correo (opcional)',
+                          labelText: 'Correo (OBLIGATORIO)',
                           border: OutlineInputBorder(),
                           hintText: 'ejemplo@gmail.com',
                         ),
@@ -491,6 +545,28 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
                                 icon: const Icon(Icons.copy),
                                 onPressed: () => _copiar(domicilioDisplay),
                               ),
+                      ),
+
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(
+                            color: Colors.white,
+                            width: 1.5,
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                          textStyle: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: (_guardando || _cargando) ? null : _eliminarCliente,
+                        icon: const Icon(Icons.delete_outline, color: Colors.white),
+                        label: const Text('Eliminar cliente'),
                       ),
 
                       const SizedBox(height: 18),

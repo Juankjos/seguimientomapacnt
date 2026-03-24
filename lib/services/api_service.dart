@@ -1185,4 +1185,30 @@ class ApiService {
     throw Exception((data is Map ? data['message'] : null) ?? 'No se pudo actualizar cliente');
   }
 
+  // 🔹 Eliminar cliente
+  static Future<void> deleteCliente({required int clienteId}) async {
+    if (clienteId <= 0) {
+      throw Exception('clienteId inválido: $clienteId');
+    }
+
+    final url = Uri.parse('$baseUrl/delete_cliente.php');
+
+    final res = await http.post(
+      url,
+      body: _withToken({
+        'id': clienteId.toString(),
+      }),
+      headers: _authHeaders(),
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception('Error en servidor (${res.statusCode}): ${res.body}');
+    }
+
+    final data = json.decode(res.body);
+    if (data is Map && data['success'] == true) return;
+
+    throw Exception((data is Map ? data['message'] : null) ?? 'No se pudo eliminar cliente');
+  }
+
 }

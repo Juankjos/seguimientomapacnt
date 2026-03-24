@@ -127,10 +127,17 @@ class _ClientesPageState extends State<ClientesPage> {
       );
       return;
     }
-    await Navigator.push(
+
+    final changed = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => ClienteDetallePage(cliente: c)),
+      MaterialPageRoute(
+        builder: (_) => ClienteDetallePage(cliente: c),
+      ),
     );
+
+    if (changed == true) {
+      await _cargar(q: _searchCtrl.text.trim());
+    }
   }
 
   @override
