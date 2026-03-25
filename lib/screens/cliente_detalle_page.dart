@@ -11,7 +11,6 @@ import 'noticia_detalle_page.dart';
 String _formatPhoneDigits(String digits) {
   if (digits.isEmpty) return '';
 
-  // 3-3-4 para <= 10 (ej. 378 711 4606)
   if (digits.length <= 3) return digits;
   if (digits.length <= 6) {
     return '${digits.substring(0, 3)} ${digits.substring(3)}';
@@ -20,7 +19,6 @@ String _formatPhoneDigits(String digits) {
     return '${digits.substring(0, 3)} ${digits.substring(3, 6)} ${digits.substring(6)}';
   }
 
-  // Si excede 10, conserva 3-3 y luego agrupa de 3 en 3
   final buffer = StringBuffer()
     ..write(digits.substring(0, 3))
     ..write(' ')
@@ -66,7 +64,6 @@ class PhoneSpacingFormatter extends TextInputFormatter {
 
     final formatted = _formatPhoneDigits(digits);
 
-    // Cuántos dígitos había antes del cursor
     final end = newValue.selection.end.clamp(0, newValue.text.length);
     final digitsBeforeCursor =
         newValue.text.substring(0, end).replaceAll(RegExp(r'\D'), '').length;
@@ -99,6 +96,9 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   final _domCtrl = TextEditingController();
   final _correoCtrl = TextEditingController();
 
+  static const double _kDesktopBreakpoint = 1100;
+  static const double _kMaxContentWidth = 1450;
+
   bool _cargando = false;
   bool _guardando = false;
   String? _error;
@@ -106,6 +106,9 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   List<Noticia> _noticiasCliente = [];
   bool _cargandoNoticias = false;
   String? _errorNoticias;
+
+  String _filtroNoticias = 'agendadas';
+  String _lada = '+52';
 
   static const _ladasAmerica = <({String label, String code})>[
     (label: 'México', code: '+52'),
@@ -133,8 +136,6 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
     (label: 'Brasil', code: '+55'),
   ];
 
-  String _lada = '+52';
-
   @override
   void initState() {
     super.initState();
@@ -156,8 +157,10 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   ({String lada, String digits}) _parseWhatsapp(String raw) {
     final cleaned = raw.trim().replaceAll(RegExp(r'\s+'), '');
     if (cleaned.isEmpty) return (lada: '+52', digits: '');
+
     final codes = _ladasAmerica.map((e) => e.code).toList()
       ..sort((a, b) => b.length.compareTo(a.length));
+
     if (cleaned.startsWith('+')) {
       for (final code in codes) {
         if (cleaned.startsWith(code)) {
@@ -167,6 +170,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
       }
       return (lada: '+52', digits: cleaned.replaceAll(RegExp(r'\D'), ''));
     }
+
     return (lada: '+52', digits: cleaned.replaceAll(RegExp(r'\D'), ''));
   }
 
@@ -198,7 +202,6 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
         _cargando = false;
       });
 
-      // Solo rehidratar si NO está guardando/para no pisar lo que el usuario teclea
       if (!_guardando) _hidratarFormDesdeCliente(fresh);
     } catch (e) {
       if (!mounted) return;
@@ -227,8 +230,6 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   String? _validarTelefono(String? v) {
     final digits = (v ?? '').replaceAll(RegExp(r'\D'), '');
     if (digits.isEmpty) return null;
-
-    // Reglas simples (ajústalas si quieres):
     if (digits.length < 7) return 'Teléfono muy corto';
     if (digits.length > 15) return 'Teléfono muy largo';
     return null;
@@ -236,7 +237,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
 
   String? _validarCorreo(String? v) {
     final s = (v ?? '').trim();
-    if (s.isEmpty) return null;
+    if (s.isEmpty) return 'El correo es requerido';
     final ok = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(s);
     return ok ? null : 'Correo inválido';
   }
@@ -249,7 +250,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
     final telDigits = _telCtrl.text.replaceAll(RegExp(r'\D'), '');
     final whatsapp = telDigits.isEmpty ? null : '$_lada$telDigits';
     final domicilio = _domCtrl.text.trim().isEmpty ? null : _domCtrl.text.trim();
-    final correo = _correoCtrl.text.trim().isEmpty ? null : _correoCtrl.text.trim();
+    final correo = _correoCtrl.text.trim();
 
     setState(() {
       _guardando = true;
@@ -276,7 +277,6 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
         const SnackBar(content: Text('Cliente actualizado')),
       );
 
-      // Actualiza inputs a lo que guardó el server
       _hidratarFormDesdeCliente(updated);
     } catch (e) {
       if (!mounted) return;
@@ -364,17 +364,455 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildPanelCard({
+    required BuildContext context,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    required Widget child,
+  }) {
+    final theme = Theme.of(context);
+
+    return Card(
+      elevation: 1.5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (trailing != null) trailing,
+              ],
+            ),
+            const SizedBox(height: 16),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoChip(
+    BuildContext context, {
+    required IconData icon,
+    required String text,
+    VoidCallback? onCopy,
+  }) {
+    final theme = Theme.of(context);
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: 44),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: theme.colorScheme.primary),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (onCopy != null) ...[
+            const SizedBox(width: 6),
+            InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: onCopy,
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(
+                  Icons.copy,
+                  size: 16,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResumenClienteHeader(BuildContext context) {
     final rawWhatsapp = (_cliente.whatsapp ?? '').trim();
     final domicilioDisplay = (_cliente.domicilio ?? '').trim();
     final correoDisplay = (_cliente.correo ?? '').trim();
 
     final parsed = _parseWhatsapp(rawWhatsapp);
     final whatsappPretty = rawWhatsapp.isEmpty
-        ? '—'
+        ? 'Sin WhatsApp'
         : '${parsed.lada} ${_formatPhoneDigits(parsed.digits)}';
 
+    final theme = Theme.of(context);
+
+    return Card(
+      elevation: 1.2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 30,
+              backgroundColor: theme.colorScheme.primaryContainer,
+              child: Text(
+                _cliente.nombre.isNotEmpty ? _cliente.nombre[0].toUpperCase() : '?',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _cliente.nombre,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _infoChip(
+                        context,
+                        icon: Icons.phone_outlined,
+                        text: whatsappPretty,
+                        onCopy: rawWhatsapp.isEmpty
+                            ? null
+                            : () => _copiar('${parsed.lada}${parsed.digits}'),
+                      ),
+                      _infoChip(
+                        context,
+                        icon: Icons.email_outlined,
+                        text: correoDisplay.isEmpty ? 'Sin correo' : correoDisplay,
+                        onCopy: correoDisplay.isEmpty ? null : () => _copiar(correoDisplay),
+                      ),
+                      _infoChip(
+                        context,
+                        icon: Icons.location_on_outlined,
+                        text: domicilioDisplay.isEmpty ? 'Sin domicilio' : domicilioDisplay,
+                        onCopy: domicilioDisplay.isEmpty ? null : () => _copiar(domicilioDisplay),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDangerZone(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: Colors.red.withOpacity(0.06),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.red.withOpacity(0.18)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Eliminar Cliente',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: Colors.red,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Esta acción no se puede deshacer.',
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                side: const BorderSide(
+                  color: Colors.white,
+                  width: 1.5,
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: (_guardando || _cargando) ? null : _eliminarCliente,
+              icon: const Icon(Icons.delete_outline, color: Colors.white),
+              label: const Text('Eliminar cliente'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDatosClienteSection(BuildContext context) {
+    return _buildPanelCard(
+      context: context,
+      title: 'Editar cliente',
+      subtitle: 'Actualiza la información principal del cliente.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextFormField(
+            controller: _nombreCtrl,
+            enabled: !_guardando,
+            decoration: const InputDecoration(
+              labelText: 'Nombre',
+              border: OutlineInputBorder(),
+            ),
+            validator: _validarNombre,
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 14),
+
+          Row(
+            children: [
+              Expanded(
+                flex: 4,
+                child: DropdownButtonFormField<String>(
+                  value: _lada,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Lada',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _ladasAmerica
+                      .map((x) => DropdownMenuItem(
+                            value: x.code,
+                            child: Text('${x.label} (${x.code})'),
+                          ))
+                      .toList(),
+                  onChanged: _guardando
+                      ? null
+                      : (v) {
+                          setState(() => _lada = v ?? '+52');
+                        },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 6,
+                child: TextFormField(
+                  controller: _telCtrl,
+                  enabled: !_guardando,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    PhoneSpacingFormatter(maxDigits: 15),
+                  ],
+                  decoration: const InputDecoration(
+                    labelText: 'WhatsApp (número)',
+                    border: OutlineInputBorder(),
+                    hintText: 'Ej: 3331234567',
+                  ),
+                  validator: _validarTelefono,
+                  textInputAction: TextInputAction.next,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _correoCtrl,
+            enabled: !_guardando,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'Correo',
+              border: OutlineInputBorder(),
+              hintText: 'ejemplo@gmail.com',
+            ),
+            validator: _validarCorreo,
+            textInputAction: TextInputAction.next,
+          ),
+
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _domCtrl,
+            enabled: !_guardando,
+            decoration: const InputDecoration(
+              labelText: 'Domicilio',
+              border: OutlineInputBorder(),
+            ),
+            maxLines: 3,
+            textInputAction: TextInputAction.newline,
+          ),
+
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: (_guardando) ? null : _guardar,
+            icon: _guardando
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save),
+            label: Text(_guardando ? 'Guardando…' : 'Guardar cambios'),
+          ),
+
+          const SizedBox(height: 20),
+          _buildDangerZone(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoticiasList(List<Noticia> items) {
+    if (items.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(left: 8, top: 8, bottom: 8),
+        child: Text('Sin registros'),
+      );
+    }
+
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (_, i) {
+        final n = items[i];
+        final fecha = n.fechaCita;
+        final fechaTxt = (fecha != null)
+            ? DateFormat('dd/MM/yyyy hh:mm a', 'es_MX').format(fecha)
+            : 'Sin fecha';
+        final rep = (n.reportero ?? '').trim().isEmpty
+            ? 'Sin reportero'
+            : n.reportero!.trim();
+
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.article_outlined),
+          title: Text(n.noticia),
+          subtitle: Text('$fechaTxt • $rep'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => NoticiaDetallePage(
+                  noticia: n,
+                  role: 'admin',
+                  soloLectura: true,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildNoticiasClienteSection(BuildContext context) {
+    final agendadas = _noticiasCliente
+        .where((n) => (n.pendiente ?? true) == true)
+        .toList();
+
+    final terminadas = _noticiasCliente
+        .where((n) => (n.pendiente ?? true) == false)
+        .toList();
+
+    final visibles = _filtroNoticias == 'agendadas' ? agendadas : terminadas;
+
+    return _buildPanelCard(
+      context: context,
+      title: 'Noticias del cliente',
+      subtitle: 'Consulta el historial y las noticias activas asociadas.',
+      trailing: IconButton(
+        tooltip: 'Actualizar noticias',
+        icon: const Icon(Icons.refresh),
+        onPressed: _cargandoNoticias ? null : _cargarNoticiasCliente,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SegmentedButton<String>(
+            segments: [
+              ButtonSegment<String>(
+                value: 'agendadas',
+                label: Text('Agendadas (${agendadas.length})'),
+                icon: const Icon(Icons.schedule),
+              ),
+              ButtonSegment<String>(
+                value: 'terminadas',
+                label: Text('Terminadas (${terminadas.length})'),
+                icon: const Icon(Icons.check_circle_outline),
+              ),
+            ],
+            selected: {_filtroNoticias},
+            onSelectionChanged: (value) {
+              setState(() => _filtroNoticias = value.first);
+            },
+          ),
+          const SizedBox(height: 16),
+
+          if (_cargandoNoticias)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_errorNoticias != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                _errorNoticias!,
+                style: const TextStyle(color: Colors.red),
+              ),
+            )
+          else
+            _buildNoticiasList(visibles),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(_cliente.nombre),
@@ -406,261 +844,53 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
                     child: Text(_error!, textAlign: TextAlign.center),
                   ),
                 )
-              : Form(
-                  key: _formKey,
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-                    children: [
-                      TextFormField(
-                        controller: _nombreCtrl,
-                        enabled: !_guardando,
-                        decoration: const InputDecoration(
-                          labelText: 'Nombre',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: _validarNombre,
-                        textInputAction: TextInputAction.next,
-                      ),
-                      const SizedBox(height: 14),
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isDesktop = constraints.maxWidth >= _kDesktopBreakpoint;
 
-                      Row(
-                        children: [
-                          Expanded(
-                            flex: 4,
-                            child: DropdownButtonFormField<String>(
-                              value: _lada,
-                              isExpanded: true,
-                              decoration: const InputDecoration(
-                                labelText: 'Lada',
-                                border: OutlineInputBorder(),
-                              ),
-                              items: _ladasAmerica
-                                  .map((x) => DropdownMenuItem(
-                                        value: x.code,
-                                        child: Text('${x.label} (${x.code})'),
-                                      ))
-                                  .toList(),
-                              onChanged: _guardando ? null : (v) {
-                                setState(() => _lada = v ?? '+52');
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 6,
-                            child: TextFormField(
-                              controller: _telCtrl,
-                              enabled: !_guardando,
-                              keyboardType: TextInputType.phone,
-                              inputFormatters: [
-                                PhoneSpacingFormatter(maxDigits: 15),
-                              ],
-                              decoration: const InputDecoration(
-                                labelText: 'WhatsApp (número)',
-                                border: OutlineInputBorder(),
-                                hintText: 'Ej: 3331234567',
-                              ),
-                              validator: _validarTelefono,
-                              textInputAction: TextInputAction.next,
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _correoCtrl,
-                        enabled: !_guardando,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: const InputDecoration(
-                          labelText: 'Correo (OBLIGATORIO)',
-                          border: OutlineInputBorder(),
-                          hintText: 'ejemplo@gmail.com',
-                        ),
-                        validator: _validarCorreo,
-                        textInputAction: TextInputAction.next,
-                      ),
-
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _domCtrl,
-                        enabled: !_guardando,
-                        decoration: const InputDecoration(
-                          labelText: 'Domicilio',
-                          border: OutlineInputBorder(),
-                        ),
-                        maxLines: 3,
-                        textInputAction: TextInputAction.newline,
-                      ),
-
-                      const SizedBox(height: 14),
-                      FilledButton.icon(
-                        onPressed: (_guardando) ? null : _guardar,
-                        icon: _guardando
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                    final content = Column(
+                      children: [
+                        _buildResumenClienteHeader(context),
+                        const SizedBox(height: 16),
+                        isDesktop
+                            ? Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    flex: 5,
+                                    child: _buildDatosClienteSection(context),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    flex: 6,
+                                    child: _buildNoticiasClienteSection(context),
+                                  ),
+                                ],
                               )
-                            : const Icon(Icons.save),
-                        label: Text(_guardando ? 'Guardando…' : 'Guardar cambios'),
-                      ),
-
-                      const SizedBox(height: 18),
-                      const Divider(),
-
-                      // Sección "actual" (solo para ver/copy rápido)
-                      ListTile(
-                        title: const Text('WhatsApp Actual',
-                            style: TextStyle(fontWeight: FontWeight.w800)),
-                        subtitle: Text(whatsappPretty),
-                        trailing: rawWhatsapp.isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: 'Copiar',
-                                icon: const Icon(Icons.copy),
-                                onPressed: () => _copiar('${parsed.lada}${parsed.digits}'),
+                            : Column(
+                                children: [
+                                  _buildDatosClienteSection(context),
+                                  const SizedBox(height: 16),
+                                  _buildNoticiasClienteSection(context),
+                                ],
                               ),
-                      ),
-                      ListTile(
-                        title: const Text('Correo Actual',
-                            style: TextStyle(fontWeight: FontWeight.w800)),
-                        subtitle: Text(correoDisplay.isEmpty ? '—' : correoDisplay),
-                        trailing: correoDisplay.isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: 'Copiar',
-                                icon: const Icon(Icons.copy),
-                                onPressed: () => _copiar(correoDisplay),
-                              ),
-                      ),
-                      ListTile(
-                        title: const Text('Domicilio Actual',
-                            style: TextStyle(fontWeight: FontWeight.w800)),
-                        subtitle: Text(domicilioDisplay.isEmpty ? '—' : domicilioDisplay),
-                        trailing: domicilioDisplay.isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: 'Copiar',
-                                icon: const Icon(Icons.copy),
-                                onPressed: () => _copiar(domicilioDisplay),
-                              ),
-                      ),
-
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(
-                            color: Colors.white,
-                            width: 1.5,
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                          textStyle: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: (_guardando || _cargando) ? null : _eliminarCliente,
-                        icon: const Icon(Icons.delete_outline, color: Colors.white),
-                        label: const Text('Eliminar cliente'),
-                      ),
-
-                      const SizedBox(height: 18),
-                      const Divider(),
-
-                      ListTile(
-                        title: const Text(
-                          'Noticias del cliente',
-                          style: TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        trailing: IconButton(
-                          tooltip: 'Actualizar noticias',
-                          icon: const Icon(Icons.refresh),
-                          onPressed: _cargandoNoticias ? null : _cargarNoticiasCliente,
-                        ),
-                      ),
-
-                      if (_cargandoNoticias)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 10),
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                      else if (_errorNoticias != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Text(_errorNoticias!, style: const TextStyle(color: Colors.red)),
-                        )
-                      else ...[
-                        Builder(builder: (context) {
-                          final agendadas = _noticiasCliente.where((n) => (n.pendiente ?? true) == true).toList();
-                          final terminadas = _noticiasCliente.where((n) => (n.pendiente ?? true) == false).toList();
-
-                          Widget lista(List<Noticia> items) {
-                            if (items.isEmpty) {
-                              return const Padding(
-                                padding: EdgeInsets.only(left: 16, bottom: 10),
-                                child: Text('Sin registros'),
-                              );
-                            }
-                            return ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: items.length,
-                              separatorBuilder: (_, __) => const Divider(height: 1),
-                              itemBuilder: (_, i) {
-                                final n = items[i];
-                                final fecha = n.fechaCita;
-                                final fechaTxt = (fecha != null)
-                                    ? DateFormat('dd/MM/yyyy hh:mm a', 'es_MX').format(fecha)
-                                    : 'Sin fecha';
-                                final rep = (n.reportero ?? '').trim().isEmpty
-                                    ? 'Sin reportero'
-                                    : n.reportero!.trim();
-                                return ListTile(
-                                  leading: const Icon(Icons.article_outlined),
-                                  title: Text(n.noticia),
-                                  subtitle: Text('$fechaTxt • $rep'),
-                                  trailing: const Icon(Icons.chevron_right),
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => NoticiaDetallePage(
-                                          noticia: n,
-                                          role: 'admin',
-                                          soloLectura: true,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
-                            );
-                          }
-
-                          return Column(
-                            children: [
-                              ExpansionTile(
-                                initiallyExpanded: true,
-                                title: Text('Agendadas (${agendadas.length})',
-                                    style: const TextStyle(fontWeight: FontWeight.w800)),
-                                children: [lista(agendadas)],
-                              ),
-                              ExpansionTile(
-                                title: Text('Terminadas (${terminadas.length})',
-                                    style: const TextStyle(fontWeight: FontWeight.w800)),
-                                children: [lista(terminadas)],
-                              ),
-                            ],
-                          );
-                        }),
                       ],
-                    ],
-                  ),
+                    );
+
+                    return Form(
+                      key: _formKey,
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: _kMaxContentWidth),
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+                            child: content,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
     );
   }
