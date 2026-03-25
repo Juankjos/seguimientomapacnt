@@ -81,6 +81,19 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   bool get _soloLectura => widget.soloLectura || _noticia.pendiente == false;
   bool get _yaTieneHoraLlegada => _noticia.horaLlegada != null;
 
+  bool _puedeEditarNoticias = false;
+  bool _puedeSerEspectadorRutas = false;
+  bool _puedeModificarUbicacion = false;
+  bool _cargandoPermisos = true;
+
+  bool _asBool(dynamic x) {
+    if (x == null) return false;
+    if (x is bool) return x;
+    if (x is num) return x.toInt() == 1;
+    final s = x.toString().trim().toLowerCase();
+    return s == '1' || s == 'true' || s == 'yes' || s == 'si';
+  }
+
   String _fmtLimiteTiempoNota() {
     final min = _noticia.limiteTiempoMinutos;
     if (min == null) return 'Sin límite';
@@ -140,11 +153,31 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     return _formatPhoneDigits(digits);
   }
 
+  Future<void> _cargarPermisos() async {
+    try {
+      final perfil = await ApiService.getPerfil();
+      if (!mounted) return;
+
+      setState(() {
+        _puedeEditarNoticias = _asBool(perfil['puede_editar_noticias']);
+        _puedeSerEspectadorRutas = _asBool(perfil['puede_ser_espectador_rutas']);
+        _puedeModificarUbicacion = _asBool(perfil['puede_modificar_ubicacion']);
+        _cargandoPermisos = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _cargandoPermisos = false;
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _noticia = widget.noticia;
     _checkCronometroActivo();
+    _cargarPermisos();
 
     _clockTick = Timer.periodic(const Duration(seconds: 30), (_) async {
       if (!mounted) return;
@@ -515,6 +548,24 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     final bool puedeEliminarPendiente =
         !esAdmin && !_soloLectura && _noticia.tiempoEnNota != null;
 
+    final bool bloqueadoPorPermisosEditar =
+    _cargandoPermisos || !_puedeEditarNoticias;
+
+    final bool bloqueadoPorPermisosUbicacion =
+        _cargandoPermisos || !_puedeModificarUbicacion;
+
+    final bool bloqueadoPorPermisosEspectador =
+        _cargandoPermisos || !_puedeSerEspectadorRutas;
+
+    final bool puedeEditarAccion =
+        !_soloLectura && !limiteCambiosFecha && !bloqueadoPorPermisosEditar;
+
+    final bool puedeModificarUbicacionAccion =
+        !_soloLectura && !_yaTieneHoraLlegada && !bloqueadoPorPermisosUbicacion;
+
+    final bool puedeSerEspectadorAccion =
+        tieneCoordenadas && !_soloLectura && !bloqueadoPorPermisosEspectador;
+
     final routeGate = (!esAdmin && !_soloLectura && !rutaYaIniciada)
         ? _validarInicioRuta()
         : (allowed: true, message: null);
@@ -770,7 +821,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.edit_note),
                 label: const Text('Editar noticia'),
-                onPressed: (_soloLectura || limiteCambiosFecha)
+                onPressed: !puedeEditarAccion
                     ? null
                     : () async {
                         final updated = await Navigator.push<Noticia>(
@@ -795,7 +846,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: (_soloLectura || _yaTieneHoraLlegada)
+                onPressed: !puedeModificarUbicacionAccion
                     ? null
                     : _abrirMapaUbicacion,
                 icon: Icon(
@@ -811,6 +862,24 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
               ),
             ),
 
+            if (!_cargandoPermisos && !_puedeEditarNoticias) ...[
+                const SizedBox(height: 6),
+                const Text(
+                  'No tienes permiso para editar noticias.',
+                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+
+              if (!_cargandoPermisos && !_puedeModificarUbicacion && !_soloLectura) ...[
+                const SizedBox(height: 6),
+                const Text(
+                  'No tienes permiso para modificar ubicación.',
+                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+
             if (tieneCoordenadas) ...[
               const SizedBox(height: 10),
 
@@ -821,7 +890,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.visibility),
                     label: const Text('Ser espectador de ruta'),
-                    onPressed: _soloLectura
+                    onPressed: !puedeSerEspectadorAccion
                         ? null
                         : () async {
                             final changed = await Navigator.push<bool>(
@@ -838,7 +907,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
                             );
 
                             if (!mounted) return;
-                            if (changed == true) {
+                            if (changed == true && widget.role == 'admin') {
                               await _refrescarNoticia();
                             }
                           },

@@ -27,7 +27,10 @@ $stmt = $pdo->prepare('
         puede_ver_empleado_mes,
         puede_ver_gestion,
         puede_ver_tomar_noticias,
-        puede_ver_clientes
+        puede_ver_clientes,
+        puede_editar_noticias,
+        puede_ser_espectador_rutas,
+        puede_modificar_ubicacion
     FROM reporteros
     WHERE nombre = ?
     LIMIT 1
@@ -104,5 +107,8 @@ echo json_encode([
     'puede_ver_gestion'           => (int)($user['puede_ver_gestion'] ?? 0),
     'puede_ver_clientes'          => (int)($user['puede_ver_clientes'] ?? 0),
     'puede_ver_tomar_noticias'    => (int)($user['puede_ver_tomar_noticias'] ?? 0),
+    'puede_editar_noticias'      => (int)($user['puede_editar_noticias'] ?? 0),
+    'puede_ser_espectador_rutas' => (int)($user['puede_ser_espectador_rutas'] ?? 0),
+    'puede_modificar_ubicacion'  => (int)($user['puede_modificar_ubicacion'] ?? 0),
 ]);
 exit;

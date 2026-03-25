@@ -318,6 +318,9 @@ class ApiService {
     bool? puedeVerGestion,
     bool? puedeVerClientes,
     bool? puedeVerTomarNoticias,
+    bool? puedeEditarNoticias,
+    bool? puedeSerEspectadorRutas,
+    bool? puedeModificarUbicacion,
   }) async {
     final url = Uri.parse('$baseUrl/update_perfil.php');
 
@@ -344,6 +347,9 @@ class ApiService {
     if (puedeVerGestion != null) body['puede_ver_gestion'] = puedeVerGestion ? '1' : '0';
     if (puedeVerClientes != null) body['puede_ver_clientes'] = puedeVerClientes ? '1' : '0';
     if (puedeVerTomarNoticias != null) body['puede_ver_tomar_noticias'] = puedeVerTomarNoticias ? '1' : '0';
+    if (puedeEditarNoticias != null) body['puede_editar_noticias'] = puedeEditarNoticias ? '1' : '0';
+    if (puedeSerEspectadorRutas != null) body['puede_ser_espectador_rutas'] = puedeSerEspectadorRutas ? '1' : '0';
+    if (puedeModificarUbicacion != null) body['puede_modificar_ubicacion'] = puedeModificarUbicacion ? '1' : '0';
 
     final resp = await http.post(
       url,

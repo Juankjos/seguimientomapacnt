@@ -25,6 +25,9 @@ try {
         puede_ver_gestion,
         puede_ver_clientes, 
         puede_ver_tomar_noticias,
+        puede_editar_noticias,
+        puede_ser_espectador_rutas,
+        puede_modificar_ubicacion,
         ws_token_exp
         FROM reporteros
         WHERE ws_token = ?
@@ -60,6 +63,9 @@ try {
             'puede_ver_gestion'          => (int)($row['puede_ver_gestion'] ?? 0),
             'puede_ver_clientes'         => (int)($row['puede_ver_clientes'] ?? 0),
             'puede_ver_tomar_noticias'   => (int)($row['puede_ver_tomar_noticias'] ?? 0),
+            'puede_editar_noticias'   => (int)($row['puede_editar_noticias'] ?? 0),
+            'puede_ser_espectador_rutas'   => (int)($row['puede_ser_espectador_rutas'] ?? 0),
+            'puede_modificar_ubicacion'   => (int)($row['puede_modificar_ubicacion'] ?? 0),
         ],
     ]);
     exit;

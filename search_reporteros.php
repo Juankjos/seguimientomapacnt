@@ -14,7 +14,10 @@ $sql = "
         puede_ver_empleado_mes,
         puede_ver_gestion,
         puede_ver_tomar_noticias,
-        puede_ver_clientes
+        puede_ver_clientes,
+        puede_editar_noticias,
+        puede_ser_espectador_rutas,
+        puede_modificar_ubicacion
     FROM reporteros
     WHERE 1=1
 ";

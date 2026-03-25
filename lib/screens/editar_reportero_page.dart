@@ -63,6 +63,9 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
   late bool _puedeVerGestion;
   late bool _puedeVerClientes;
   late bool _puedeVerTomarNoticias;
+  late bool _puedeEditarNoticias;
+  late bool _puedeSerEspectadorRutas;
+  late bool _puedeModificarUbicacion;
 
   bool _guardando = false;
   bool _borrando = false;
@@ -83,6 +86,9 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
     _puedeVerGestion = widget.reportero.puedeVerGestion;
     _puedeVerClientes = widget.reportero.puedeVerClientes;
     _puedeVerTomarNoticias = widget.reportero.puedeVerTomarNoticias;
+    _puedeEditarNoticias = widget.reportero.puedeEditarNoticias;
+    _puedeSerEspectadorRutas = widget.reportero.puedeSerEspectadorRutas;
+    _puedeModificarUbicacion = widget.reportero.puedeModificarUbicacion;
   }
 
   @override
@@ -146,6 +152,9 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
     final sendClientes        = isAdmin ? _puedeVerClientes : false;
 
     final sendTomarNoticias   = !isAdmin ? _puedeVerTomarNoticias : false;
+    final sendEditarNoticias  =  _puedeEditarNoticias;
+    final sendEspectadorRutas =  _puedeSerEspectadorRutas;
+    final sendModificarUbicacion =  _puedeModificarUbicacion;
 
     String? passwordToSend;
     if (pass.isNotEmpty || pass2.isNotEmpty) {
@@ -180,6 +189,9 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
         puedeVerGestion: sendGestion,
         puedeVerClientes: sendClientes,
         puedeVerTomarNoticias: sendTomarNoticias,
+        puedeEditarNoticias: sendEditarNoticias,
+        puedeSerEspectadorRutas: sendEspectadorRutas,
+        puedeModificarUbicacion: sendModificarUbicacion,
       );
 
       final prefs = await SharedPreferences.getInstance();
@@ -265,6 +277,24 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
     );
   }
 
+  Widget _permisoTile({
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    required String title,
+    String? subtitle,
+    bool enabled = true,
+  }) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: SwitchListTile.adaptive(
+        value: value,
+        onChanged: (_guardando || !enabled) ? null : onChanged,
+        title: Text(title),
+        subtitle: subtitle != null ? Text(subtitle) : null,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -308,17 +338,11 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
               DropdownMenuItem(value: 'reportero', child: Text('Reportero')),
               DropdownMenuItem(value: 'admin', child: Text('Administrador')),
             ],
-            onChanged: _guardando ? null : (v) {
-                  final next = (v ?? 'reportero'); setState(() { _role = next;
-                    if (_role == 'reportero') {
-                      _puedeVerGestionNoticias = false;
-                      _puedeVerEstadisticas = false;
-                      _puedeVerRastreoGeneral = false;
-                      _puedeVerGestion = false;
-                      _puedeVerClientes = false;
-                    } else {
-                      _puedeVerTomarNoticias = false;
-                    }
+            onChanged: _guardando
+              ? null
+              : (v) {
+                  setState(() {
+                    _role = v ?? 'reportero';
                   });
                 },
           ),
@@ -346,59 +370,98 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
                   title: const Text('Puede crear noticias'),
                   subtitle: const Text('Si está activo, podrá "Crear noticia" desde Agenda.'),
                 ),
+
+                SwitchListTile.adaptive(
+                  value: _puedeEditarNoticias,
+                  onChanged: _guardando ? null : (v) => setState(() => _puedeEditarNoticias = v),
+                  title: const Text('Puede editar noticias'),
+                ),
+
+                _permisoTile(
+                  value: _puedeSerEspectadorRutas,
+                  onChanged: (v) => setState(() => _puedeSerEspectadorRutas = v),
+                  title: 'Puede ser espectador de rutas',
+                  enabled: isAdmin,
+                ),
+
+                SwitchListTile.adaptive(
+                  value: _puedeModificarUbicacion,
+                  onChanged: _guardando ? null : (v) => setState(() => _puedeModificarUbicacion = v),
+                  title: const Text('Puede modificar ubicación'),
+                ),
+
                 Divider(height: 1, color: theme.dividerColor),
 
                 const Padding(
                   padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Accesos al Menú', style: TextStyle(fontWeight: FontWeight.w800)),
+                    child: Text(
+                      'Accesos al Menú',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
                   ),
                 ),
 
-                if (isAdmin) ...[
-                  SwitchListTile.adaptive(
-                    value: _puedeVerGestionNoticias,
-                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerGestionNoticias = v),
-                    title: const Text('Gestión noticias'),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Los permisos no se borran al cambiar el rol; solo se habilitan o deshabilitan visualmente según corresponda.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
                   ),
-                  SwitchListTile.adaptive(
-                    value: _puedeVerEstadisticas,
-                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerEstadisticas = v),
-                    title: const Text('Estadísticas'),
-                  ),
-                  SwitchListTile.adaptive(
-                    value: _puedeVerRastreoGeneral,
-                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerRastreoGeneral = v),
-                    title: const Text('Rastreo General'),
-                  ),
-                  SwitchListTile.adaptive(
-                    value: _puedeVerEmpleadoMes,
-                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerEmpleadoMes = v),
-                    title: const Text('Empleado del mes'),
-                  ),
-                  SwitchListTile.adaptive(
-                    value: _puedeVerGestion,
-                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerGestion = v),
-                    title: const Text('Gestión'),
-                  ),
-                  SwitchListTile.adaptive(
-                    value: _puedeVerClientes,
-                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerClientes = v),
-                    title: const Text('Clientes'),
-                  ),
-                ] else ...[
-                  SwitchListTile.adaptive(
-                    value: _puedeVerTomarNoticias,
-                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerTomarNoticias = v),
-                    title: const Text('Tomar Noticias'),
-                  ),
-                  SwitchListTile.adaptive(
-                    value: _puedeVerEmpleadoMes,
-                    onChanged: _guardando ? null : (v) => setState(() => _puedeVerEmpleadoMes = v),
-                    title: const Text('Empleado del mes'),
-                  ),
-                ],
+                ),
+
+                _permisoTile(
+                  value: _puedeVerGestionNoticias,
+                  onChanged: (v) => setState(() => _puedeVerGestionNoticias = v),
+                  title: 'Gestión noticias',
+                  enabled: isAdmin,
+                ),
+
+                _permisoTile(
+                  value: _puedeVerEstadisticas,
+                  onChanged: (v) => setState(() => _puedeVerEstadisticas = v),
+                  title: 'Estadísticas',
+                  enabled: isAdmin,
+                ),
+
+                _permisoTile(
+                  value: _puedeVerRastreoGeneral,
+                  onChanged: (v) => setState(() => _puedeVerRastreoGeneral = v),
+                  title: 'Rastreo General',
+                  enabled: isAdmin,
+                ),
+
+                _permisoTile(
+                  value: _puedeVerEmpleadoMes,
+                  onChanged: (v) => setState(() => _puedeVerEmpleadoMes = v),
+                  title: 'Empleado del mes',
+                  enabled: true,
+                ),
+
+                _permisoTile(
+                  value: _puedeVerGestion,
+                  onChanged: (v) => setState(() => _puedeVerGestion = v),
+                  title: 'Gestión',
+                  enabled: isAdmin,
+                ),
+
+                _permisoTile(
+                  value: _puedeVerClientes,
+                  onChanged: (v) => setState(() => _puedeVerClientes = v),
+                  title: 'Clientes',
+                  enabled: isAdmin,
+                ),
+
+                _permisoTile(
+                  value: _puedeVerTomarNoticias,
+                  onChanged: (v) => setState(() => _puedeVerTomarNoticias = v),
+                  title: 'Tomar Noticias',
+                  enabled: !isAdmin,
+                ),
               ],
             ),
           ),

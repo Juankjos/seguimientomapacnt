@@ -57,9 +57,21 @@ $menuPerms = [
     'puede_ver_tomar_noticias'   => null,
 ];
 
+$actionPerms = [
+    'puede_editar_noticias'      => null,
+    'puede_ser_espectador_rutas' => null,
+    'puede_modificar_ubicacion'  => null,
+];
+
 foreach ($menuPerms as $k => $_) {
     if (array_key_exists($k, $_POST)) {
         $menuPerms[$k] = toTinyInt($_POST[$k]);
+    }
+}
+
+foreach ($actionPerms as $k => $_) {
+    if (array_key_exists($k, $_POST)) {
+        $actionPerms[$k] = toTinyInt($_POST[$k]);
     }
 }
 
@@ -86,10 +98,48 @@ if (!$isAdmin) {
             exit;
         }
     }
+
+    foreach ($actionPerms as $k => $v) {
+        if ($v !== null) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Sin permiso para cambiar permisos de acciones']);
+            exit;
+        }
+    }
 }
 
 $updates = [];
 $params  = [':id' => $reporteroId];
+
+if ($isAdmin) {
+    foreach ($actionPerms as $k => $v) {
+        if ($v !== null) {
+            $updates[] = "{$k} = :{$k}";
+            $params[":{$k}"] = $v;
+        }
+    }
+}
+
+if ($isAdmin && $puedeCrearNoticias !== null) {
+    $updates[] = "puede_crear_noticias = :puede_crear_noticias";
+    $params[':puede_crear_noticias'] = $puedeCrearNoticias;
+}
+
+if ($isAdmin) {
+    foreach ($menuPerms as $k => $v) {
+        if ($v !== null) {
+            $updates[] = "{$k} = :{$k}";
+            $params[":{$k}"] = $v;
+        }
+    }
+
+    foreach ($actionPerms as $k => $v) {
+        if ($v !== null) {
+            $updates[] = "{$k} = :{$k}";
+            $params[":{$k}"] = $v;
+        }
+    }
+}
 
 if ($nombre !== null) {
     $updates[] = "nombre = :nombre";
@@ -145,7 +195,10 @@ try {
             puede_ver_empleado_mes,
             puede_ver_gestion,
             puede_ver_tomar_noticias,
-            puede_ver_clientes
+            puede_ver_clientes,
+            puede_editar_noticias,
+            puede_ser_espectador_rutas,
+            puede_modificar_ubicacion
         FROM reporteros
         WHERE id = ?
         LIMIT 1

@@ -11,6 +11,9 @@ class ReporteroAdmin {
   final bool puedeVerGestion;
   final bool puedeVerClientes;
   final bool puedeVerTomarNoticias;
+  final bool puedeEditarNoticias;
+  final bool puedeSerEspectadorRutas;
+  final bool puedeModificarUbicacion;
 
   const ReporteroAdmin({
     required this.id,
@@ -24,6 +27,9 @@ class ReporteroAdmin {
     this.puedeVerGestion = false,
     this.puedeVerClientes = false,
     this.puedeVerTomarNoticias = false,
+    this.puedeEditarNoticias = false,
+    this.puedeSerEspectadorRutas = false,
+    this.puedeModificarUbicacion = false,
   });
 
   static bool _toBool(dynamic x) {
@@ -48,6 +54,9 @@ class ReporteroAdmin {
       puedeVerEmpleadoMes: _toBool(json['puede_ver_empleado_mes']),
       puedeVerGestion: _toBool(json['puede_ver_gestion']),
       puedeVerClientes: _toBool(json['puede_ver_clientes']),
+      puedeEditarNoticias: _toBool(json['puede_editar_noticias']),
+      puedeSerEspectadorRutas: _toBool(json['puede_ser_espectador_rutas']),
+      puedeModificarUbicacion: _toBool(json['puede_modificar_ubicacion']),
     );
   }
 }
