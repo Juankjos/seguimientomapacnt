@@ -75,6 +75,12 @@ class EmpleadoDestacadoItem {
     return nombre.trim();
   }
 
+  String get nombreGrafica {
+    final user = nombre.trim();
+    if (user.isNotEmpty) return user;
+    return nombreMostrado;
+  }
+
   factory EmpleadoDestacadoItem.fromJson(Map<String, dynamic> j) {
     final rawNombrePdf = (j['nombre_pdf'] ?? '').toString().trim();
     return EmpleadoDestacadoItem(
@@ -1213,7 +1219,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
                         leading: CircleAvatar(
                           backgroundColor: p.fill,
                           foregroundColor: p.accent,
-                          child: Text(it.nombreMostrado.isNotEmpty ? it.nombreMostrado[0].toUpperCase() : '?'),
+                          child: Text(it.nombreGrafica.isNotEmpty ? it.nombreGrafica[0].toUpperCase() : '?'),
                         ),
                         title: Text(it.nombreMostrado, maxLines: 1, overflow: TextOverflow.ellipsis),
                         subtitle: Text(
@@ -1406,7 +1412,7 @@ class _ColumnChartPainter extends CustomPainter {
             TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: p.accent),
       );
 
-      final short = _shortName(it.nombreMostrado);
+      final short = _shortName(it.nombreGrafica);
       _drawText(
         canvas,
         short,

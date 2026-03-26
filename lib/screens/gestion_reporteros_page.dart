@@ -438,13 +438,13 @@ class _CrearUsuarioDialogState extends State<_CrearUsuarioDialog> {
                         controller: _nombreCtrl,
                         enabled: !_creando,
                         decoration: const InputDecoration(
-                          labelText: 'Nombre',
+                          labelText: 'Usuario',
                           border: OutlineInputBorder(),
                         ),
                         textInputAction: TextInputAction.next,
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) return 'El nombre es requerido';
-                          if (v.trim().length < 2) return 'Nombre demasiado corto';
+                          if (v == null || v.trim().isEmpty) return 'El usuario es requerido';
+                          if (v.trim().length < 2) return 'Usuario demasiado corto';
                           return null;
                         },
                       ),

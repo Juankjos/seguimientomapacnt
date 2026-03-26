@@ -205,7 +205,7 @@ try {
       n.domicilio,
       n.ubicacion_en_mapa,
       n.reportero_id,
-      r.nombre AS reportero,
+      COALESCE(NULLIF(TRIM(r.nombre_pdf), ''), r.nombre) AS reportero,
       n.fecha_pago,
       n.fecha_cita,
       n.fecha_cita_anterior,
@@ -257,6 +257,14 @@ try {
 
   $oldClienteId = !empty($actual['cliente_id']) ? (int)$actual['cliente_id'] : 0;
   $oldDomTxt    = trim((string)($actual['domicilio'] ?? ''));
+
+  $clienteAsignadoAhora = false;
+  if ($hasClienteId) {
+    $clienteAsignadoAhora =
+      ($oldClienteId <= 0) &&
+      ($clienteIdParsed !== null) &&
+      ($clienteIdParsed > 0);
+  }
 
   $horaLlegadaActual = $actual['hora_llegada'];
   $tiempoNotaActual  = $actual['tiempo_en_nota'];
@@ -577,7 +585,7 @@ try {
           n.descripcion, n.cliente_id, n.domicilio, n.reportero_id, n.fecha_cita,
           n.pendiente, n.ultima_mod, n.ruta_iniciada, n.ruta_iniciada_at,
           n.tiempo_en_nota, n.limite_tiempo_minutos,
-          r.nombre AS reportero
+          COALESCE(NULLIF(TRIM(r.nombre_pdf), ''), r.nombre) AS reportero
         FROM noticias n
         LEFT JOIN reporteros r ON n.reportero_id = r.id
         WHERE n.id = ?
@@ -656,7 +664,7 @@ try {
       n.domicilio,
       n.ubicacion_en_mapa,
       n.reportero_id,
-      r.nombre AS reportero,
+      COALESCE(NULLIF(TRIM(r.nombre_pdf), ''), r.nombre) AS reportero,
       n.fecha_pago,
       n.fecha_cita,
       n.fecha_cita_anterior,
@@ -688,10 +696,12 @@ try {
   $mailError  = null;
   $mailTo     = null;
 
-  $mailType = null; // route_started | rescheduled | domicilio_changed
-  if ($startedRouteNow) $mailType = 'route_started';
-  else if ($changedFechaReal) $mailType = 'rescheduled';
-  else if ($changedDomReal) $mailType = 'domicilio_changed';
+  $mailType = null; // route_started | cliente_assigned | rescheduled | domicilio_changed
+
+  if ($startedRouteNow) { $mailType = 'route_started';
+  } elseif ($clienteAsignadoAhora) { $mailType = 'cliente_assigned';
+  } elseif ($changedFechaReal) { $mailType = 'rescheduled';
+  } elseif ($changedDomReal) { $mailType = 'domicilio_changed'; }
 
   try {
     $finalClienteId = !empty($row['cliente_id']) ? (int)$row['cliente_id'] : null;
@@ -757,6 +767,37 @@ try {
             'footer' => 'Televisión Por Cable Tepa',
           ]);
 
+        } elseif ($mailType === 'cliente_assigned') {
+          $subject = 'Has Agendado tu Cita - Televisión Por Cable Tepa';
+
+          $bodyText =
+            "Hola" . ($nombreCliente !== '' ? " {$nombreCliente}" : "") . ",\n\n" .
+            "Tu cita ha sido agendada exitosamente.\n\n" .
+            "Asunto: {$tituloNoticia}\n" .
+            "Cita: {$citaNuevaTxt}\n" .
+            "Domicilio: {$domTxt}\n" .
+            ($reporteroTxt !== '' ? "Reportero: {$reporteroTxt}\n" : "") .
+            "\nTelevisión Por Cable Tepa";
+
+          $details = [
+            ['Asunto', $tituloNoticia],
+            ['Cita', $citaNuevaTxt],
+            ['Domicilio', $domTxt],
+          ];
+          if ($reporteroTxt !== '') {
+            $details[] = ['Reportero', $reporteroTxt];
+          }
+          $details[] = ['Estatus', 'Agendada'];
+
+          $bodyHtml = email_template_html([
+            'brand' => 'Televisión Por Cable Tepa',
+            'title' => 'Cita agendada',
+            'preheader' => 'Tu cita ha sido asignada y registrada.',
+            'greeting' => 'Hola' . ($nombreCliente !== '' ? " {$nombreCliente}" : ''),
+            'intro' => 'Tu cita ha sido agendada exitosamente. Te compartimos los detalles:',
+            'details' => $details,
+            'footer' => 'Televisión Por Cable Tepa',
+          ]);
         } elseif ($mailType === 'rescheduled') {
           $citaOldTxt = fmt_dt_mx_long($actual['fecha_cita'] ?? null);
           $subject = 'Tu cita fue actualizada - Televisión Por Cable Tepa';
@@ -768,13 +809,15 @@ try {
             "Antes: {$citaOldTxt}\n" .
             "Ahora: {$citaNuevaTxt}\n" .
             "Domicilio: {$domTxt}\n\n" .
-            "Televisión Por Cable Tepa";
+            ($reporteroTxt !== '' ? "Reportero: {$reporteroTxt}\n" : "") .
+            "\nTelevisión Por Cable Tepa";
 
           $details = [
             ['Asunto', $tituloNoticia],
             ['Antes', $citaOldTxt],
             ['Ahora', $citaNuevaTxt],
             ['Domicilio', $domTxt],
+            $reporteroTxt !== '' ? ['Reportero', $reporteroTxt] : null,
             ['Estatus', 'Reprogramada'],
           ];
 
@@ -801,13 +844,15 @@ try {
             "Cita: {$citaNuevaTxt}\n" .
             "Antes: {$domOld}\n" .
             "Ahora: {$domTxt}\n\n" .
-            "Televisión Por Cable Tepa";
+            ($reporteroTxt !== '' ? "Reportero: {$reporteroTxt}\n" : "") .
+            "\nTelevisión Por Cable Tepa";
 
           $details = [
             ['Asunto', $tituloNoticia],
             ['Cita', $citaNuevaTxt],
             ['Domicilio anterior', $domOld],
             ['Domicilio nuevo', $domTxt],
+            $reporteroTxt !== '' ? ['Reportero', $reporteroTxt] : null,
             ['Estatus', 'Actualización de domicilio'],
           ];
 

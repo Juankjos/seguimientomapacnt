@@ -322,7 +322,7 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
           TextFormField(
             controller: _nombreCtrl,
             decoration: const InputDecoration(
-              labelText: 'Nombre',
+              labelText: 'Usuario',
               border: OutlineInputBorder(),
             ),
             onChanged: (_) => setState(() {}),

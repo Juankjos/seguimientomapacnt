@@ -126,7 +126,15 @@ try {
 
   // Lock reportero si existe (evita carreras en agenda)
   if ($reporteroId !== null) {
-    $lockRep = $pdo->prepare("SELECT id, nombre FROM reporteros WHERE id = ? FOR UPDATE");
+    $lockRep = $pdo->prepare("
+      SELECT 
+        id,
+        nombre,
+        nombre_pdf
+      FROM reporteros
+      WHERE id = ?
+      FOR UPDATE
+    ");
     $lockRep->execute([$reporteroId]);
     $rep = $lockRep->fetch(PDO::FETCH_ASSOC);
 
@@ -136,7 +144,10 @@ try {
       exit;
     }
 
-    $nombreReporteroAsignado = trim((string)($rep['nombre'] ?? ''));
+    $nombreReporteroAsignado = trim((string)($rep['nombre_pdf'] ?? ''));
+    if ($nombreReporteroAsignado === '') {
+      $nombreReporteroAsignado = trim((string)($rep['nombre'] ?? ''));
+    }
   }
 
   // Validación de traslape por rango (solo si hay reportero y fecha)
@@ -323,7 +334,8 @@ try {
         "¡Tu cita ha sido agendada exitosamente!\n\n" .
         "Asunto: {$noticia}\n" .
         "Fecha: {$fechaCitaTxt} (Hora local)\n\n" .
-        "Gracias por su preferencia.\nTelevisión Por Cable Tepa.";
+        ($nombreReporteroAsignado !== '' ? "Reportero: {$nombreReporteroAsignado}\n" : "") .
+        "\nGracias por su preferencia.\nTelevisión Por Cable Tepa.";
 
       $bodyHtml = email_template_html([
         'brand' => 'Televisión Por Cable Tepa',
@@ -334,6 +346,7 @@ try {
         'details' => [
           ['Asunto', $noticia],
           ['Fecha', $fechaCitaTxt . ' (hora local)'],
+          $nombreReporteroAsignado !== '' ? ['Reportero', $nombreReporteroAsignado] : null,
           ['Estatus', 'Agendada'],
         ],
         'footer' => 'Televisión Por Cable Tepa',
