@@ -1446,11 +1446,6 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
       return;
     }
 
-    if (_puedeEditarDescripcion && desc.isEmpty) {
-      setState(() => _error = 'La descripción no puede estar vacía.');
-      return;
-    }
-
     if (_yaTieneHoraLlegada && _huboCambioFecha()) {
       setState(() => _error =
           'No se puede cambiar la fecha de cita: ya se registró la hora de llegada.');
@@ -1464,8 +1459,22 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     }
 
     final String? tituloSend = _puedeEditarTitulo ? titulo : null;
-    final String? descSend = _puedeEditarDescripcion ? desc : null;
     final DateTime? fechaSend = _puedeEditarFecha ? _fechaCita : null;
+
+    final oldDescTrim = (widget.noticia.descripcion ?? '').trim();
+
+    String? descSend;
+    if (_puedeEditarDescripcion) {
+      if (_esAdmin) {
+        if (desc != oldDescTrim) {
+          descSend = desc;
+        }
+      } else {
+        if (_descActualVacia && desc.isNotEmpty) {
+          descSend = desc;
+        }
+      }
+    }
 
     final String? tipoSend = _puedeEditarTipoDeNota
         ? (_tipoDeNota != widget.noticia.tipoDeNota ? _tipoDeNota : null)
@@ -1924,7 +1933,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                 helperText: _esAdmin
                     ? 'Puedes editar la descripción.'
                     : (_puedeEditarDescripcion
-                        ? 'Puedes capturar la descripción (una sola vez).'
+                        ? 'Puedes capturar la descripción una sola vez (Opcional).'
                         : 'La descripción ya fue capturada y no se puede modificar.'),
                 border: const OutlineInputBorder(),
               ),

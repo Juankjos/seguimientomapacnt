@@ -481,19 +481,19 @@ try {
 
     if ($descripcion !== null) {
       $descVacia = ($oldDesc === null || trim((string)$oldDesc) === '');
+
       if (!$descVacia) {
         $pdo->rollBack();
         echo json_encode(['success' => false, 'message' => 'La descripción ya fue capturada y no se puede modificar']);
         exit;
       }
-      if (trim((string)$descripcion) === '') {
-        $pdo->rollBack();
-        echo json_encode(['success' => false, 'message' => 'La descripción no puede quedar vacía']);
-        exit;
-      }
 
-      $updates[] = "descripcion = :descripcion";
-      $params[':descripcion'] = $descripcion;
+      $descripcionTrim = trim((string)$descripcion);
+
+      if ($descripcionTrim !== '') {
+        $updates[] = "descripcion = :descripcion";
+        $params[':descripcion'] = $descripcionTrim;
+      }
     }
 
     if ($tipoDeNota !== null && $tipoDeNota !== $oldTipo) {
