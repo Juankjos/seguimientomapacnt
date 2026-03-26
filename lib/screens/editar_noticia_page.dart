@@ -1481,7 +1481,9 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
         : null;
 
     final int? limiteSend =
-        (limiteMin != widget.noticia.limiteTiempoMinutos) ? limiteMin : null;
+    (_esAdmin && limiteMin != widget.noticia.limiteTiempoMinutos)
+        ? limiteMin
+        : null;
 
     final nadaQueGuardar = (tituloSend == null) &&
         (descSend == null) &&
@@ -1686,9 +1688,10 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
             const SizedBox(height: 6),
             Text(
               _esAdmin
-                  ? '• Puedes editar título, descripción, cliente/domicilio y fecha.\n'
+                  ? '• Puedes editar título, descripción, cliente/domicilio, fecha y límite de tiempo.\n'
                   : '• Solo se puede capturar descripción una vez (si está vacía).\n'
-                    '• Fecha de cita: máximo 2 cambios.\n',
+                    '• Fecha de cita: máximo 2 cambios.\n'
+                    '• No puedes cambiar el límite de tiempo.\n',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface.withOpacity(0.8),
                 fontWeight: FontWeight.w600,
@@ -1740,7 +1743,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
               decoration: InputDecoration(
                 labelText: 'Título',
                 helperText:
-                    _puedeEditarTitulo ? 'Puedes editar el título.' : 'Solo Admin puede editar el título.',
+                    _puedeEditarTitulo ? 'Puedes editar el título.' : 'Solo Administradores puede editar el título.',
                 border: const OutlineInputBorder(),
               ),
             ),
@@ -1752,7 +1755,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                 labelText: 'Tipo de noticia',
                 helperText: _puedeEditarTipoDeNota
                     ? 'Puedes cambiar el tipo.'
-                    : 'Solo Admin puede cambiar el tipo.',
+                    : 'Solo Administradores puede cambiar el tipo.',
                 border: const OutlineInputBorder(),
               ),
               items: const [
@@ -1943,10 +1946,12 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
 
             DropdownButtonFormField<int>(
               value: _limiteTiempoMin,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Límite de tiempo',
-                helperText: 'Selecciona de 1 a 5 horas.',
-                border: OutlineInputBorder(),
+                helperText: _esAdmin
+                    ? 'Selecciona de 1 a 5 horas.'
+                    : 'Solo Administradores puede cambiar el límite de tiempo.',
+                border: const OutlineInputBorder(),
               ),
               items: _limitesMin
                   .map((m) => DropdownMenuItem<int>(
@@ -1954,10 +1959,12 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                         child: Text(_labelLimite(m)),
                       ))
                   .toList(),
-              onChanged: (v) {
-                if (v == null) return;
-                setState(() => _limiteTiempoMin = v);
-              },
+              onChanged: _esAdmin
+                  ? (v) {
+                      if (v == null) return;
+                      setState(() => _limiteTiempoMin = v);
+                    }
+                  : null,
             ),
 
             const SizedBox(height: 12),
