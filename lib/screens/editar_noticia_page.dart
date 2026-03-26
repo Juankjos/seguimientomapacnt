@@ -1725,6 +1725,18 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
             ),
             const SizedBox(height: 12),
 
+            TextField(
+              controller: _tituloCtrl,
+              enabled: _puedeEditarTitulo,
+              decoration: InputDecoration(
+                labelText: 'Título',
+                helperText:
+                    _puedeEditarTitulo ? 'Puedes editar el título.' : 'Solo Admin puede editar el título.',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+
             DropdownButtonFormField<String>(
               value: _tipoDeNota,
               decoration: InputDecoration(
@@ -1742,19 +1754,6 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                   ? (v) => setState(() => _tipoDeNota = v ?? 'Nota')
                   : null,
             ),
-            const SizedBox(height: 12),
-
-            TextField(
-              controller: _tituloCtrl,
-              enabled: _puedeEditarTitulo,
-              decoration: InputDecoration(
-                labelText: 'Título',
-                helperText:
-                    _puedeEditarTitulo ? 'Puedes editar el título.' : 'Solo Admin puede editar el título.',
-                border: const OutlineInputBorder(),
-              ),
-            ),
-
             const SizedBox(height: 12),
 
             // ---------- Cliente ----------
