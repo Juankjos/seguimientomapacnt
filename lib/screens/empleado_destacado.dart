@@ -64,14 +64,23 @@ _StatusPalette _paletteForTotal(int total, int minimo) {
 class EmpleadoDestacadoItem {
   final int id;
   final String nombre;
+  final String? nombrePdf;
   final int total;
 
-  EmpleadoDestacadoItem({required this.id, required this.nombre, required this.total});
+  EmpleadoDestacadoItem({required this.id, required this.nombre, this.nombrePdf, required this.total});
+
+  String get nombreMostrado {
+    final pdf = (nombrePdf ?? '').trim();
+    if (pdf.isNotEmpty) return pdf;
+    return nombre.trim();
+  }
 
   factory EmpleadoDestacadoItem.fromJson(Map<String, dynamic> j) {
+    final rawNombrePdf = (j['nombre_pdf'] ?? '').toString().trim();
     return EmpleadoDestacadoItem(
       id: (j['id'] as num).toInt(),
       nombre: (j['nombre'] ?? '').toString(),
+      nombrePdf: rawNombrePdf.isEmpty ? null : rawNombrePdf,
       total: (j['total'] as num?)?.toInt() ?? 0,
     );
   }
@@ -100,6 +109,12 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
 
   int _minimo = 10;
   List<EmpleadoDestacadoItem> _items = [];
+
+  String _nombrePdfONombre(ReporteroAdmin r) {
+    final pdf = (r.nombrePdf ?? '').trim();
+    if (pdf.isNotEmpty) return pdf;
+    return r.nombre.trim();
+  }
 
   bool get _esAdmin => widget.role == 'admin';
 
@@ -139,7 +154,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
     try {
       final all = await ApiService.getReporterosAdmin();
       reporteros = all.where(_isRoleReportero).toList()
-        ..sort((a, b) => a.nombre.toLowerCase().compareTo(b.nombre.toLowerCase()));
+        ..sort((a, b) => _nombrePdfONombre(a).toLowerCase().compareTo(_nombrePdfONombre(b).toLowerCase()));
 
       if (!mounted) return;
       Navigator.pop(context); // cierra loader
@@ -153,7 +168,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
     }
 
     int? selectedId;
-    String selectedNombre = '';
+    String selectedNombrePdf = '';
 
     await showDialog<void>(
       context: context,
@@ -176,7 +191,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
                       items: reporteros
                           .map((r) => DropdownMenuItem<int>(
                                 value: r.id,
-                                child: Text(r.nombre, overflow: TextOverflow.ellipsis),
+                                child: Text(_nombrePdfONombre(r), overflow: TextOverflow.ellipsis),
                               ))
                           .toList(),
                       onChanged: (v) {
@@ -184,7 +199,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
                         final rep = reporteros.where((x) => x.id == rid).toList();
                         setModalState(() {
                           selectedId = rid;
-                          selectedNombre = rep.isNotEmpty ? rep.first.nombre : '';
+                          selectedNombrePdf = rep.isNotEmpty ? _nombrePdfONombre(rep.first) : '';
                         });
                       },
                     ),
@@ -211,7 +226,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
                           Navigator.pop(dialogCtx);
                           await _descargarPdfDesglose(
                             reporteroId: selectedId!,
-                            reporteroNombre: selectedNombre,
+                            reporteroNombrePdf: selectedNombrePdf,
                           );
                         },
                   icon: const Icon(Icons.download),
@@ -227,7 +242,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
 
   Future<void> _descargarPdfDesglose({
     required int reporteroId,
-    required String reporteroNombre,
+    required String reporteroNombrePdf,
   }) async {
     // Loader
     if (mounted) {
@@ -257,7 +272,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
       }
 
       final bytes = await _buildPdfDesgloseBytes(
-        reporteroNombre: reporteroNombre.isEmpty ? 'Reportero #$reporteroId' : reporteroNombre,
+        reporteroNombre: reporteroNombrePdf.isEmpty ? 'Reportero #$reporteroId' : reporteroNombrePdf,
         anio: _anio,
         mes: _mes,
         mesNombre: _meses[_mes] ?? 'Mes',
@@ -265,7 +280,7 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
         noticias: monthList,
       );
 
-      final safeName = (reporteroNombre.isEmpty ? 'reportero_$reporteroId' : reporteroNombre)
+      final safeName = (reporteroNombrePdf.isEmpty ? 'reportero_$reporteroId' : reporteroNombrePdf)
           .toLowerCase()
           .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
           .replaceAll(RegExp(r'_+'), '_')
@@ -1198,9 +1213,9 @@ class _EmpleadoDestacadoPageState extends State<EmpleadoDestacadoPage> {
                         leading: CircleAvatar(
                           backgroundColor: p.fill,
                           foregroundColor: p.accent,
-                          child: Text(it.nombre.isNotEmpty ? it.nombre[0].toUpperCase() : '?'),
+                          child: Text(it.nombreMostrado.isNotEmpty ? it.nombreMostrado[0].toUpperCase() : '?'),
                         ),
-                        title: Text(it.nombre, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        title: Text(it.nombreMostrado, maxLines: 1, overflow: TextOverflow.ellipsis),
                         subtitle: Text(
                           extra > 0 ? 'Total: ${it.total}  (Extras: $extra)' : 'Total: ${it.total}',
                         ),
@@ -1391,7 +1406,7 @@ class _ColumnChartPainter extends CustomPainter {
             TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: p.accent),
       );
 
-      final short = _shortName(it.nombre);
+      final short = _shortName(it.nombreMostrado);
       _drawText(
         canvas,
         short,

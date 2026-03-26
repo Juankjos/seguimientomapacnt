@@ -35,10 +35,12 @@ if (!$isAdmin && $reporteroId !== $authId) {
 }
 
 $nombre      = isset($_POST['nombre']) ? trim((string)$_POST['nombre']) : null;
-$passwordRaw = array_key_exists('password', $_POST) ? (string)$_POST['password'] : null; // NO trim
+$nombrePdf   = array_key_exists('nombre_pdf', $_POST) ? trim((string)$_POST['nombre_pdf']) : null;
+$passwordRaw = array_key_exists('password', $_POST) ? (string)$_POST['password'] : null;
 $role        = isset($_POST['role']) ? trim((string)$_POST['role']) : null;
 
 $nombre      = ($nombre !== null && $nombre !== '') ? $nombre : null;
+$nombrePdf   = ($nombrePdf !== null) ? $nombrePdf : null; // permite vacío para limpiar
 $passwordRaw = ($passwordRaw !== null && $passwordRaw !== '') ? $passwordRaw : null;
 $role        = ($role !== null && $role !== '') ? $role : null;
 
@@ -86,12 +88,13 @@ if ($role !== null && !in_array($role, ['reportero', 'admin'], true)) {
 }
 
 if (!$isAdmin) {
-    if ($role !== null || $puedeCrearNoticias !== null) {
+    if ($role !== null || $puedeCrearNoticias !== null || $nombrePdf !== null) {
         http_response_code(403);
         echo json_encode(['success' => false, 'message' => 'Sin permiso para cambiar rol o permisos']);
         exit;
     }
-    foreach ($menuPerms as $k => $v) {
+
+    foreach ($menuPerms as $v) {
         if ($v !== null) {
             http_response_code(403);
             echo json_encode(['success' => false, 'message' => 'Sin permiso para cambiar permisos de menú']);
@@ -99,7 +102,7 @@ if (!$isAdmin) {
         }
     }
 
-    foreach ($actionPerms as $k => $v) {
+    foreach ($actionPerms as $v) {
         if ($v !== null) {
             http_response_code(403);
             echo json_encode(['success' => false, 'message' => 'Sin permiso para cambiar permisos de acciones']);
@@ -111,39 +114,14 @@ if (!$isAdmin) {
 $updates = [];
 $params  = [':id' => $reporteroId];
 
-if ($isAdmin) {
-    foreach ($actionPerms as $k => $v) {
-        if ($v !== null) {
-            $updates[] = "{$k} = :{$k}";
-            $params[":{$k}"] = $v;
-        }
-    }
-}
-
-if ($isAdmin && $puedeCrearNoticias !== null) {
-    $updates[] = "puede_crear_noticias = :puede_crear_noticias";
-    $params[':puede_crear_noticias'] = $puedeCrearNoticias;
-}
-
-if ($isAdmin) {
-    foreach ($menuPerms as $k => $v) {
-        if ($v !== null) {
-            $updates[] = "{$k} = :{$k}";
-            $params[":{$k}"] = $v;
-        }
-    }
-
-    foreach ($actionPerms as $k => $v) {
-        if ($v !== null) {
-            $updates[] = "{$k} = :{$k}";
-            $params[":{$k}"] = $v;
-        }
-    }
-}
-
 if ($nombre !== null) {
     $updates[] = "nombre = :nombre";
     $params[':nombre'] = $nombre;
+}
+
+if ($isAdmin && $nombrePdf !== null) {
+    $updates[] = "nombre_pdf = :nombre_pdf";
+    $params[':nombre_pdf'] = $nombrePdf;
 }
 
 if ($passwordRaw !== null) {
@@ -174,6 +152,13 @@ if ($isAdmin) {
             $params[":{$k}"] = $v;
         }
     }
+
+    foreach ($actionPerms as $k => $v) {
+        if ($v !== null) {
+            $updates[] = "{$k} = :{$k}";
+            $params[":{$k}"] = $v;
+        }
+    }
 }
 
 if (empty($updates)) {
@@ -187,7 +172,11 @@ try {
     $stmt->execute($params);
 
     $stmt2 = $pdo->prepare("
-        SELECT id, nombre, role,
+        SELECT
+            id,
+            nombre,
+            nombre_pdf,
+            role,
             puede_crear_noticias,
             puede_ver_gestion_noticias,
             puede_ver_estadisticas,

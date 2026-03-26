@@ -2,6 +2,7 @@
 class ReporteroAdmin {
   final int id;
   final String nombre;
+  final String? nombrePdf;
   final String role;
   final bool puedeCrearNoticias;
   final bool puedeVerGestionNoticias;
@@ -18,6 +19,7 @@ class ReporteroAdmin {
   const ReporteroAdmin({
     required this.id,
     required this.nombre,
+    this.nombrePdf,
     required this.role,
     this.puedeCrearNoticias = false,
     this.puedeVerGestionNoticias = false,
@@ -41,9 +43,11 @@ class ReporteroAdmin {
   }
 
   factory ReporteroAdmin.fromJson(Map<String, dynamic> json) {
+    final rawNombrePdf = (json['nombre_pdf'] ?? '').toString().trim();
     return ReporteroAdmin(
       id: int.parse(json['id'].toString()),
       nombre: (json['nombre'] ?? '').toString(),
+      nombrePdf: rawNombrePdf.isEmpty ? null : rawNombrePdf,
       role: (json['role'] ?? 'reportero').toString(),
 
       puedeCrearNoticias: _toBool(json['puede_crear_noticias']),

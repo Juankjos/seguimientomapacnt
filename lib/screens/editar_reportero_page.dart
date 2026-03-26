@@ -50,6 +50,7 @@ class EditarReporteroPage extends StatefulWidget {
 
 class _EditarReporteroPageState extends State<EditarReporteroPage> {
   late final TextEditingController _nombreCtrl;
+  late final TextEditingController _nombrePdfCtrl;
   final _passCtrl = TextEditingController();
   final _pass2Ctrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -74,6 +75,7 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
   void initState() {
     super.initState();
     _nombreCtrl = TextEditingController(text: widget.reportero.nombre);
+    _nombrePdfCtrl = TextEditingController(text: widget.reportero.nombrePdf ?? '');
 
     _role = (widget.reportero.role).trim();
     if (_role != 'admin' && _role != 'reportero') _role = 'reportero';
@@ -94,6 +96,7 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
   @override
   void dispose() {
     _nombreCtrl.dispose();
+    _nombrePdfCtrl.dispose();
     _passCtrl.dispose();
     _pass2Ctrl.dispose();
     super.dispose();
@@ -140,6 +143,7 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
     if (!_formKey.currentState!.validate()) return;
 
     final nombre = _nombreCtrl.text.trim();
+    final nombrePdf = _nombrePdfCtrl.text.trim();
     final pass = _passCtrl.text.trim();
     final pass2 = _pass2Ctrl.text.trim();
 
@@ -179,6 +183,7 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
       await ApiService.updateReporteroAdmin(
         reporteroId: widget.reportero.id,
         nombre: nombre,
+        nombrePdf: nombrePdf,
         password: passwordToSend,
         role: _role,
         puedeCrearNoticias: _puedeCrearNoticias,
@@ -325,6 +330,16 @@ class _EditarReporteroPageState extends State<EditarReporteroPage> {
               if (v == null || v.trim().isEmpty) return 'El nombre es requerido';
               return null;
             },
+          ),
+          const SizedBox(height: 14),
+
+          TextFormField(
+            controller: _nombrePdfCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Nombre para Reportes',
+              border: OutlineInputBorder(),
+            ),
+            textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 14),
 

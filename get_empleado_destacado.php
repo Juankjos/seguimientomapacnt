@@ -29,6 +29,7 @@ $sql = "
   SELECT
     r.id,
     r.nombre,
+    r.nombre_pdf,
     TRIM(LOWER(r.`role`)) AS role,
     COALESCE(COUNT(n.id), 0) AS total
   FROM reporteros r
@@ -39,8 +40,9 @@ $sql = "
    AND YEAR(n.hora_llegada) = ?
    AND MONTH(n.hora_llegada) = ?
   WHERE TRIM(LOWER(r.`role`)) = 'reportero'
-  GROUP BY r.id, r.nombre, role
-  ORDER BY total DESC, r.nombre ASC
+  GROUP BY r.id, r.nombre, r.nombre_pdf, role
+  ORDER BY total DESC,
+          COALESCE(NULLIF(TRIM(r.nombre_pdf), ''), r.nombre) ASC
 ";
 
 try {

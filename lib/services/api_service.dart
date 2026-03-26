@@ -308,6 +308,7 @@ class ApiService {
   static Future<ReporteroAdmin> updateReporteroAdmin({
     required int reporteroId,
     String? nombre,
+    String? nombrePdf,
     String? password,
     String? role,
     bool? puedeCrearNoticias,
@@ -330,6 +331,9 @@ class ApiService {
 
     if (nombre != null && nombre.trim().isNotEmpty) {
       body['nombre'] = nombre.trim();
+    }
+    if (nombrePdf != null) {
+      body['nombre_pdf'] = nombrePdf.trim();
     }
     if (password != null && password.trim().isNotEmpty) {
       body['password'] = password.trim();

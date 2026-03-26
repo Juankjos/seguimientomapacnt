@@ -6,7 +6,7 @@ $q = isset($_GET['q']) ? trim($_GET['q']) : '';
 $role = isset($_GET['role']) ? trim($_GET['role']) : '';
 
 $sql = "
-    SELECT id, nombre, role, 
+    SELECT id, nombre, nombre_pdf, role, 
         puede_crear_noticias,
         puede_ver_gestion_noticias,
         puede_ver_estadisticas,
