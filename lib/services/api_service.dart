@@ -258,6 +258,43 @@ class ApiService {
     }
   }
 
+  // 🔹 Obtener una noticia en panel de detalle
+  static Future<Noticia> getNoticiaDetalle({
+    required int noticiaId,
+    required String role,
+    int? reporteroId,
+  }) async {
+    final params = <String, String>{
+      'noticia_id': noticiaId.toString(),
+    };
+
+    if (role == 'admin') {
+      params['modo'] = 'admin';
+    } else {
+      if (reporteroId == null || reporteroId <= 0) {
+        throw Exception('reporteroId inválido');
+      }
+      params['reportero_id'] = reporteroId.toString();
+    }
+
+    final url = Uri.parse('$baseUrl/get_noticia_detalle.php')
+        .replace(queryParameters: params);
+
+    final response = await http.get(url);
+
+    if (response.statusCode != 200) {
+      throw Exception('Error en servidor (${response.statusCode})');
+    }
+
+    final Map<String, dynamic> data = json.decode(response.body);
+
+    if (data['success'] == true) {
+      return Noticia.fromJson(data['data']);
+    }
+
+    throw Exception(data['message'] ?? 'No se pudo obtener la noticia');
+  }
+
   // 🔹 Borrar noticia (admin)
   static Future<void> deleteNoticiaSinAsignar({required int noticiaId}) async {
     final url = Uri.parse('$baseUrl/delete_noticia_sin_asignar.php');

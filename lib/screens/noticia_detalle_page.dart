@@ -78,6 +78,9 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
 
   Timer? _clockTick;
 
+  Timer? _detalleRefreshTimer;
+  bool _refrescandoDetalle = false;
+
   bool get _soloLectura => widget.soloLectura || _noticia.pendiente == false;
   bool get _yaTieneHoraLlegada => _noticia.horaLlegada != null;
 
@@ -179,6 +182,14 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
     _checkCronometroActivo();
     _cargarPermisos();
 
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refrescarNoticia(silencioso: true);
+    });
+
+    _detalleRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _refrescarNoticia(silencioso: true);
+    });
+
     _clockTick = Timer.periodic(const Duration(seconds: 30), (_) async {
       if (!mounted) return;
       await _checkCronometroActivo();
@@ -189,6 +200,7 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   @override
   void dispose() {
     _clockTick?.cancel();
+    _detalleRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -269,23 +281,47 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
   bool get _tieneCoordenadas =>
       _noticia.latitud != null && _noticia.longitud != null;
 
-  Future<void> _refrescarNoticia() async {
-    if (widget.role != 'admin') return;
+  Future<void> _refrescarNoticia({bool silencioso = false}) async {
+    if (_refrescandoDetalle) return;
+    _refrescandoDetalle = true;
 
     try {
-      final list = await ApiService.getNoticiasAdmin();
-      final updated = list.firstWhere(
-        (n) => n.id == _noticia.id,
-        orElse: () => _noticia,
-      );
+      late final List<Noticia> lista;
 
-      if (!mounted) return;
-      setState(() => _noticia = updated);
+      if (widget.role == 'admin') {
+        lista = await ApiService.getNoticiasAdmin();
+      } else {
+        final reporteroId = _noticia.reporteroId;
+        if (reporteroId == null || reporteroId <= 0) {
+          throw Exception('reportero_id inválido para refrescar detalle');
+        }
+
+        lista = await ApiService.getNoticiasPorReportero(
+          reporteroId: reporteroId,
+          incluyeCerradas: true,
+        );
+      }
+
+      Noticia? updated;
+      for (final n in lista) {
+        if (n.id == _noticia.id) {
+          updated = n;
+          break;
+        }
+      }
+
+      if (!mounted || updated == null) return;
+
+      setState(() {
+        _noticia = updated!;
+      });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || silencioso) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No se pudo actualizar la noticia: $e')),
       );
+    } finally {
+      _refrescandoDetalle = false;
     }
   }
 
@@ -1176,7 +1212,6 @@ class _NoticiaDetallePageState extends State<NoticiaDetallePage> {
         appBar: AppBar(
           title: const Text('Panel de Detalles'),
           actions: [
-            if (esAdmin)
               IconButton(
                 tooltip: 'Actualizar',
                 icon: const Icon(Icons.refresh),
