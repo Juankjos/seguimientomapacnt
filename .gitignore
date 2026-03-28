@@ -67,3 +67,6 @@ firebase.json
 
 # SFTP
 /.vscode/sftp.json
+
+# TO-DO
+todo.txt
