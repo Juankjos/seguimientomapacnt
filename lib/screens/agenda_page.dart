@@ -1377,6 +1377,175 @@ class _AgendaPageState extends State<AgendaPage> {
     return jsonEncode(cleaned);
   }
 
+  String _viewTitle(AgendaView view) {
+    switch (view) {
+      case AgendaView.year:
+        return 'Panorama';
+      case AgendaView.month:
+        return 'Calendario';
+      case AgendaView.day:
+        return 'Jornada';
+    }
+  }
+
+  String _viewSubtitle(AgendaView view) {
+    switch (view) {
+      case AgendaView.year:
+        return 'Vista anual';
+      case AgendaView.month:
+        return 'Planeación mensual';
+      case AgendaView.day:
+        return 'Detalle del día';
+    }
+  }
+
+  IconData _viewIcon(AgendaView view) {
+    switch (view) {
+      case AgendaView.year:
+        return Icons.auto_awesome_mosaic_rounded;
+      case AgendaView.month:
+        return Icons.calendar_month_rounded;
+      case AgendaView.day:
+        return Icons.view_agenda_rounded;
+    }
+  }
+
+  String _viewBadge(AgendaView view) {
+    switch (view) {
+      case AgendaView.year:
+        final mesesActivos = <int>{};
+        _eventosPorDia.forEach((fecha, lista) {
+          if (fecha.year == _focusedDay.year && lista.isNotEmpty) {
+            mesesActivos.add(fecha.month);
+          }
+        });
+        return '${mesesActivos.length} meses';
+      case AgendaView.month:
+        return '${_eventosDelMes(_focusedDay).length} noticias';
+      case AgendaView.day:
+        final dia = _selectedDay ?? _soloFecha(_focusedDay);
+        return '${_eventosDeDia(dia).length} noticias';
+    }
+  }
+
+  Widget _buildViewOption(AgendaView view, ThemeData theme, bool wide) {
+    final selected = _vista == view;
+
+    final bg = selected
+        ? theme.colorScheme.primaryContainer
+        : theme.colorScheme.surface;
+
+    final borderColor = selected
+        ? theme.colorScheme.primary
+        : theme.dividerColor.withOpacity(0.45);
+
+    final fg = selected
+        ? theme.colorScheme.onPrimaryContainer
+        : theme.colorScheme.onSurface;
+
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => setState(() => _vista = view),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.symmetric(
+            horizontal: wide ? 14 : 12,
+            vertical: wide ? 14 : 12,
+          ),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: borderColor,
+              width: selected ? 1.6 : 1,
+            ),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                      color: theme.colorScheme.primary.withOpacity(0.12),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: wide ? 42 : 38,
+                height: wide ? 42 : 38,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? theme.colorScheme.primary.withOpacity(0.12)
+                      : theme.colorScheme.surfaceVariant.withOpacity(0.55),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  _viewIcon(view),
+                  color: selected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withOpacity(0.78),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _viewTitle(view),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: wide ? 14 : 13,
+                        color: fg,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _viewSubtitle(view),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: theme.colorScheme.onSurface.withOpacity(0.66),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? theme.colorScheme.primary.withOpacity(0.12)
+                      : theme.colorScheme.surfaceVariant.withOpacity(0.55),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  _viewBadge(view),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: selected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface.withOpacity(0.72),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<MenuPerms>(
@@ -1538,58 +1707,24 @@ class _AgendaPageState extends State<AgendaPage> {
     final theme = Theme.of(context);
     final wide = _isWebWide(context);
 
-    final segmented = SegmentedButton<AgendaView>(
-      segments: const [
-        ButtonSegment(
-          value: AgendaView.year,
-          label: Text('Año'),
-          icon: Icon(Icons.calendar_view_month),
-        ),
-        ButtonSegment(
-          value: AgendaView.month,
-          label: Text('Mes'),
-          icon: Icon(Icons.calendar_month),
-        ),
-        ButtonSegment(
-          value: AgendaView.day,
-          label: Text('Día'),
-          icon: Icon(Icons.view_day),
-        ),
-      ],
-      selected: <AgendaView>{_vista},
-      style: ButtonStyle(
-        visualDensity: VisualDensity.compact,
-        padding: MaterialStatePropertyAll(
-          EdgeInsets.symmetric(horizontal: wide ? 18 : 12, vertical: wide ? 12 : 10),
-        ),
-      ),
-      onSelectionChanged: (set) {
-        setState(() => _vista = set.first);
-      },
-    );
-
-    final shell = _cardShell(
-      elevation: 0,
-      color: theme.colorScheme.surface,
-      padding: EdgeInsets.symmetric(horizontal: wide ? 10 : 8, vertical: wide ? 8 : 6),
-      child: Row(
-        children: [
-          const SizedBox(width: 10),
-          Expanded(child: segmented),
-        ],
-      ),
-    );
-
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: _selectorHPad(context)),
-      child: wide
-          ? Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 860),
-                child: shell,
-              ),
-            )
-          : shell,
+      child: _cardShell(
+        elevation: 0,
+        padding: EdgeInsets.symmetric(
+          horizontal: wide ? 12 : 10,
+          vertical: wide ? 12 : 10,
+        ),
+        child: Row(
+          children: [
+            _buildViewOption(AgendaView.year, theme, wide),
+            const SizedBox(width: 10),
+            _buildViewOption(AgendaView.month, theme, wide),
+            const SizedBox(width: 10),
+            _buildViewOption(AgendaView.day, theme, wide),
+          ],
+        ),
+      ),
     );
   }
 
