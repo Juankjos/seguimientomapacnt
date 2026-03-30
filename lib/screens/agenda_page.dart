@@ -1428,6 +1428,18 @@ class _AgendaPageState extends State<AgendaPage> {
     }
   }
 
+  String _contextLabel() {
+    switch (_vista) {
+      case AgendaView.year:
+        return 'Cobertura ${_focusedDay.year}';
+      case AgendaView.month:
+        return 'Planeación de ${_nombreMes(_focusedDay.month)}';
+      case AgendaView.day:
+        final dia = _selectedDay ?? _soloFecha(_focusedDay);
+        return 'Agenda del ${dia.day} de ${_nombreMes(dia.month).toLowerCase()}';
+    }
+  }
+
   Widget _buildViewOption(AgendaView view, ThemeData theme, bool wide) {
     final selected = _vista == view;
 
@@ -1443,109 +1455,106 @@ class _AgendaPageState extends State<AgendaPage> {
         ? theme.colorScheme.onPrimaryContainer
         : theme.colorScheme.onSurface;
 
-    return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () => setState(() => _vista = view),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          padding: EdgeInsets.symmetric(
-            horizontal: wide ? 14 : 12,
-            vertical: wide ? 14 : 12,
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: () => setState(() => _vista = view),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.symmetric(
+          horizontal: wide ? 14 : 12,
+          vertical: wide ? 14 : 12,
+        ),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: borderColor,
+            width: selected ? 1.6 : 1,
           ),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: borderColor,
-              width: selected ? 1.6 : 1,
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                    color: theme.colorScheme.primary.withOpacity(0.12),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: wide ? 42 : 38,
+              height: wide ? 42 : 38,
+              decoration: BoxDecoration(
+                color: selected
+                    ? theme.colorScheme.primary.withOpacity(0.12)
+                    : theme.colorScheme.surfaceVariant.withOpacity(0.55),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                _viewIcon(view),
+                color: selected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface.withOpacity(0.78),
+                size: 20,
+              ),
             ),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                      color: theme.colorScheme.primary.withOpacity(0.12),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _viewTitle(view),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: wide ? 14 : 13,
+                      color: fg,
                     ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: wide ? 42 : 38,
-                height: wide ? 42 : 38,
-                decoration: BoxDecoration(
-                  color: selected
-                      ? theme.colorScheme.primary.withOpacity(0.12)
-                      : theme.colorScheme.surfaceVariant.withOpacity(0.55),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  _viewIcon(view),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _viewSubtitle(view),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: theme.colorScheme.onSurface.withOpacity(0.66),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color: selected
+                    ? theme.colorScheme.primary.withOpacity(0.12)
+                    : theme.colorScheme.surfaceVariant.withOpacity(0.55),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                _viewBadge(view),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
                   color: selected
                       ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurface.withOpacity(0.78),
-                  size: 20,
+                      : theme.colorScheme.onSurface.withOpacity(0.72),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _viewTitle(view),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: wide ? 14 : 13,
-                        color: fg,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _viewSubtitle(view),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: theme.colorScheme.onSurface.withOpacity(0.66),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? theme.colorScheme.primary.withOpacity(0.12)
-                      : theme.colorScheme.surfaceVariant.withOpacity(0.55),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  _viewBadge(view),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: selected
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface.withOpacity(0.72),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<MenuPerms>(
@@ -1706,23 +1715,97 @@ class _AgendaPageState extends State<AgendaPage> {
   Widget _buildSelectorVista() {
     final theme = Theme.of(context);
     final wide = _isWebWide(context);
+    if (!wide) {
+      final segmented = SegmentedButton<AgendaView>(
+        segments: const [
+          ButtonSegment(
+            value: AgendaView.year,
+            label: Text('Año'),
+            icon: Icon(Icons.calendar_view_month),
+          ),
+          ButtonSegment(
+            value: AgendaView.month,
+            label: Text('Mes'),
+            icon: Icon(Icons.calendar_month),
+          ),
+          ButtonSegment(
+            value: AgendaView.day,
+            label: Text('Día'),
+            icon: Icon(Icons.view_day),
+          ),
+        ],
+        selected: <AgendaView>{_vista},
+        style: const ButtonStyle(
+          visualDensity: VisualDensity.compact,
+          padding: MaterialStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+        ),
+        onSelectionChanged: (set) {
+          setState(() => _vista = set.first);
+        },
+      );
+
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: _selectorHPad(context)),
+        child: _cardShell(
+          elevation: 0,
+          color: theme.colorScheme.surface,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Row(
+            children: [
+              const SizedBox(width: 10),
+              Expanded(child: segmented),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // En web / escritorio: mantener el selector nuevo
+    final options = Row(
+      children: [
+        Expanded(child: _buildViewOption(AgendaView.year, theme, wide)),
+        const SizedBox(width: 10),
+        Expanded(child: _buildViewOption(AgendaView.month, theme, wide)),
+        const SizedBox(width: 10),
+        Expanded(child: _buildViewOption(AgendaView.day, theme, wide)),
+      ],
+    );
+
+    final shell = _cardShell(
+      elevation: 0,
+      color: theme.colorScheme.surface,
+      padding: EdgeInsets.symmetric(
+        horizontal: wide ? 12 : 10,
+        vertical: wide ? 12 : 10,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 2, 4, 10),
+            child: Text(
+              _contextLabel(),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          ),
+          options,
+        ],
+      ),
+    );
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: _selectorHPad(context)),
-      child: _cardShell(
-        elevation: 0,
-        padding: EdgeInsets.symmetric(
-          horizontal: wide ? 12 : 10,
-          vertical: wide ? 12 : 10,
-        ),
-        child: Row(
-          children: [
-            _buildViewOption(AgendaView.year, theme, wide),
-            const SizedBox(width: 10),
-            _buildViewOption(AgendaView.month, theme, wide),
-            const SizedBox(width: 10),
-            _buildViewOption(AgendaView.day, theme, wide),
-          ],
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 980),
+          child: shell,
         ),
       ),
     );
@@ -1962,13 +2045,19 @@ class _AgendaPageState extends State<AgendaPage> {
         padding: const EdgeInsets.all(10),
         child: LayoutBuilder(
           builder: (context, calConstraints) {
-            final double headerAndWeekdaysApprox = wide ? 100.0 : 92.0;
-            const int rows = 6;
+            final double rowHeight;
 
-            final double computedRowHeight =
-                (calConstraints.maxHeight - headerAndWeekdaysApprox) / rows;
+            if (wide) {
+              final double headerAndWeekdaysApprox = 100.0;
+              const int rows = 6;
+              final double computedRowHeight =
+                  (calConstraints.maxHeight - headerAndWeekdaysApprox) / rows;
 
-            final double rowHeight = computedRowHeight.clamp(32.0, wide ? 54.0 : 46.0);
+              rowHeight = computedRowHeight.clamp(32.0, 54.0).toDouble();
+            } else {
+              // En móvil, fijo y compacto para evitar overflow
+              rowHeight = 36.0;
+            }
 
             return TableCalendar<Noticia>(
               locale: 'es_MX',
@@ -1978,7 +2067,7 @@ class _AgendaPageState extends State<AgendaPage> {
               startingDayOfWeek: StartingDayOfWeek.monday,
               calendarFormat: CalendarFormat.month,
               rowHeight: rowHeight,
-              daysOfWeekHeight: wide ? 20 : 18,
+              daysOfWeekHeight: wide ? 20 : 16,
               selectedDayPredicate: (day) =>
                   _selectedDay != null && _soloFecha(day) == _soloFecha(_selectedDay!),
               eventLoader: _eventosDeDia,
@@ -2060,7 +2149,10 @@ class _AgendaPageState extends State<AgendaPage> {
                     bottom: 2,
                     right: 2,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: wide ? 6 : 5,
+                        vertical: wide ? 2 : 1,
+                      ),
                       decoration: BoxDecoration(
                         color: theme.colorScheme.primary,
                         borderRadius: BorderRadius.circular(999),
@@ -2074,7 +2166,11 @@ class _AgendaPageState extends State<AgendaPage> {
                       ),
                       child: Text(
                         '$count',
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: wide ? 10 : 9,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                   );
@@ -2083,7 +2179,7 @@ class _AgendaPageState extends State<AgendaPage> {
             );
           },
         ),
-      );
+      );                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
     }
 
     Widget buildListCard() {
