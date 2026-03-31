@@ -2,13 +2,12 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart' as latlng;
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart' as latlng;
 
 import '../models/noticia.dart';
 import '../services/api_service.dart';
@@ -41,6 +40,8 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
   bool _cargando = true;
   String? _error;
 
+  bool _cargandoRuta = false;
+
   bool _mapIsReady = false;
 
   StreamSubscription<Position>? _posicionSub;
@@ -51,10 +52,14 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
   static const double _zoomSeguir = 17.0;
 
   bool _enviandoLlegada = false;
-
   bool _notificacionInicioEnviada = false;
-
   bool _deteniendoServicio = false;
+
+  latlng.LatLng? _ultimaPosicionRenderizada;
+  DateTime? _ultimoRenderPosicionAt;
+
+  static const Duration _minTiempoRedibujo = Duration(seconds: 2);
+  static const double _minDistanciaRedibujoMetros = 5.0;
 
   Future<void> _notificarInicioTrayecto() async {
     if (_notificacionInicioEnviada) return;
@@ -63,12 +68,17 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     try {
       final url = Uri.parse('${ApiService.baseUrl}/inicio_trayecto_noticia.php');
 
-      final resp = await http.post(url, body: {
-        'noticia_id': widget.noticia.id.toString(),
-      });
+      final resp = await http.post(
+        url,
+        body: {
+          'noticia_id': widget.noticia.id.toString(),
+        },
+      );
 
       if (resp.statusCode != 200) {
-        debugPrint('⚠️ inicio_trayecto_noticia: HTTP ${resp.statusCode} ${resp.body}');
+        debugPrint(
+          '⚠️ inicio_trayecto_noticia: HTTP ${resp.statusCode} ${resp.body}',
+        );
         return;
       }
 
@@ -80,8 +90,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       debugPrint('⚠️ Error notificando inicio trayecto: $e');
     }
   }
-
-  // ------------------- Navegación / salir -------------------
 
   Future<bool> _confirmarCancelarTrayecto() async {
     final res = await showDialog<bool>(
@@ -110,17 +118,19 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
   Future<void> _detenerForegroundTracking() async {
     if (kIsWeb) return;
     if (_deteniendoServicio) return;
-    _deteniendoServicio = true;
 
+    _deteniendoServicio = true;
     try {
       await TrackingService.stop();
-    } catch (_) {}
-
-    _deteniendoServicio = false;
+    } catch (_) {
+      // ignorado
+    } finally {
+      _deteniendoServicio = false;
+    }
   }
 
   Future<void> _cancelarTrackingYSalir() async {
-    _posicionSub?.cancel();
+    await _posicionSub?.cancel();
     _posicionSub = null;
 
     await _detenerForegroundTracking();
@@ -147,8 +157,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     );
   }
 
-  // ------------------- ciclo de vida -------------------
-
   @override
   void initState() {
     super.initState();
@@ -161,7 +169,7 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
         widget.noticia.latitud!,
         widget.noticia.longitud!,
       );
-      _inicializarRuta();
+      unawaited(_inicializarRuta());
     }
   }
 
@@ -175,7 +183,9 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
   Future<void> _inicializarRuta() async {
     try {
       final origenPos = await _obtenerUbicacionActual();
+
       if (origenPos == null) {
+        if (!mounted) return;
         setState(() {
           _error = 'No se pudo obtener la ubicación actual.';
           _cargando = false;
@@ -183,35 +193,74 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
         return;
       }
 
-      _origen = latlng.LatLng(origenPos.latitude, origenPos.longitude);
+      final origenInicial = latlng.LatLng(
+        origenPos.latitude,
+        origenPos.longitude,
+      );
 
-      await _iniciarTrackingForeground();
-
-      unawaited(_notificarInicioTrayecto());
-
-      _iniciarStreamUbicacion();
-
+      _origen = origenInicial;
+      _ultimaPosicionRenderizada = origenInicial;
+      _ultimoRenderPosicionAt = DateTime.now();
       _followCamera = true;
 
-      final puntos = await _solicitarRutaOSRM(_origen!, _destino);
-
+      if (!mounted) return;
       setState(() {
-        _rutaPuntos = puntos;
         _cargando = false;
+        _error = null;
       });
 
       if (_mapIsReady) {
         _moverMapaInicial();
       }
+
+      await _iniciarTrackingForeground();
+      unawaited(_notificarInicioTrayecto());
+      _iniciarStreamUbicacion();
+
+      unawaited(_cargarRutaEnSegundoPlano());
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _error = 'Error al calcular ruta: $e';
+        _error = 'Error inicializando trayecto: $e';
         _cargando = false;
       });
     }
   }
 
-  // ------------------- ubicación -------------------
+  Future<void> _cargarRutaEnSegundoPlano() async {
+    final origen = _origen;
+    if (origen == null) return;
+    if (_cargandoRuta) return;
+
+    if (mounted) {
+      setState(() {
+        _cargandoRuta = true;
+      });
+    }
+
+    try {
+      final puntos = await _solicitarRutaOSRM(origen, _destino);
+
+      if (!mounted) return;
+      setState(() {
+        _rutaPuntos = puntos;
+      });
+
+      if (_mapIsReady) {
+        _ajustarMapaBounds();
+      }
+    } on TimeoutException {
+      debugPrint('⚠️ OSRM timeout: la ruta no se dibujó, pero el tracking sigue funcionando.');
+    } catch (e) {
+      debugPrint('⚠️ No se pudo calcular la ruta OSRM: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _cargandoRuta = false;
+        });
+      }
+    }
+  }
 
   Future<Position?> _obtenerUbicacionActual() async {
     final servicioHabilitado = await Geolocator.isLocationServiceEnabled();
@@ -230,13 +279,39 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     );
   }
 
+  bool _debeRedibujarPosicion(latlng.LatLng nueva) {
+    final anterior = _ultimaPosicionRenderizada;
+    final ultimoAt = _ultimoRenderPosicionAt;
+
+    if (anterior == null || ultimoAt == null) return true;
+
+    final distancia = Geolocator.distanceBetween(
+      anterior.latitude,
+      anterior.longitude,
+      nueva.latitude,
+      nueva.longitude,
+    );
+
+    final tiempo = DateTime.now().difference(ultimoAt);
+
+    if (distancia >= _minDistanciaRedibujoMetros) return true;
+    if (tiempo >= _minTiempoRedibujo) return true;
+
+    return false;
+  }
+
+  void _marcarPosicionComoRenderizada(latlng.LatLng p) {
+    _ultimaPosicionRenderizada = p;
+    _ultimoRenderPosicionAt = DateTime.now();
+  }
+
   void _iniciarStreamUbicacion() {
     if (_streamIniciado) return;
     _streamIniciado = true;
 
     _posicionSub?.cancel();
 
-    final settings = kIsWeb
+    final LocationSettings settings = kIsWeb
         ? const LocationSettings(
             accuracy: LocationAccuracy.high,
             distanceFilter: 5,
@@ -250,17 +325,24 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     _posicionSub = Geolocator.getPositionStream(
       locationSettings: settings,
     ).listen((pos) {
-      _origen = latlng.LatLng(pos.latitude, pos.longitude);
+      final nueva = latlng.LatLng(pos.latitude, pos.longitude);
 
-      if (_mapIsReady && _followCamera && _origen != null) {
-        _mapController.move(_origen!, _zoomSeguir);
+      _origen = nueva;
+
+      final redibujar = _debeRedibujarPosicion(nueva);
+      if (!redibujar) return;
+
+      _marcarPosicionComoRenderizada(nueva);
+
+      if (_mapIsReady && _followCamera) {
+        _mapController.move(nueva, _zoomSeguir);
       }
 
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
     });
   }
-
-  // ------------------- ruta OSRM -------------------
 
   Future<List<latlng.LatLng>> _solicitarRutaOSRM(
     latlng.LatLng origen,
@@ -273,26 +355,29 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       '?overview=full&geometries=geojson',
     );
 
-    final resp = await http.get(url);
+    final resp = await http.get(url).timeout(const Duration(seconds: 10));
+
     if (resp.statusCode != 200) {
       throw Exception('OSRM respondió con código ${resp.statusCode}');
     }
 
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final routes = data['routes'] as List?;
 
-    if (data['routes'] == null || (data['routes'] as List).isEmpty) {
+    if (routes == null || routes.isEmpty) {
       throw Exception('No se encontró una ruta entre los puntos.');
     }
 
-    final route = data['routes'][0];
-    final geometry = route['geometry'];
-    if (geometry == null || geometry['coordinates'] == null) {
+    final route = routes.first as Map<String, dynamic>;
+    final geometry = route['geometry'] as Map<String, dynamic>?;
+    final coords = geometry?['coordinates'] as List?;
+
+    if (coords == null) {
       throw Exception('Respuesta de ruta inválida.');
     }
 
-    final List coords = geometry['coordinates'];
-    final List<latlng.LatLng> puntos = [];
-    for (var c in coords) {
+    final puntos = <latlng.LatLng>[];
+    for (final c in coords) {
       if (c is List && c.length >= 2) {
         final lon = (c[0] as num).toDouble();
         final lat = (c[1] as num).toDouble();
@@ -302,8 +387,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
 
     return puntos;
   }
-
-  // ------------------- mapa / cámara -------------------
 
   void _moverMapaInicial() {
     if (!_mapIsReady || _origen == null) return;
@@ -337,7 +420,24 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       (minLon + maxLon) / 2,
     );
 
-    _mapController.move(center, 13);
+    final deltaLat = (maxLat - minLat).abs();
+    final deltaLon = (maxLon - minLon).abs();
+    final delta = deltaLat > deltaLon ? deltaLat : deltaLon;
+
+    double zoom = 13.0;
+    if (delta < 0.005) {
+      zoom = 16.0;
+    } else if (delta < 0.02) {
+      zoom = 15.0;
+    } else if (delta < 0.06) {
+      zoom = 14.0;
+    } else if (delta < 0.15) {
+      zoom = 13.0;
+    } else {
+      zoom = 12.0;
+    }
+
+    _mapController.move(center, zoom);
   }
 
   void _centrarEnMiUbicacion() {
@@ -368,8 +468,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
     setState(() => _followCamera = false);
     _mapController.move(_destino, _zoomSeguir);
   }
-
-  // ------------------- finalizar trayecto -------------------
 
   Future<void> _onFinalizarTrayectoPressed() async {
     if (_enviandoLlegada) return;
@@ -410,7 +508,9 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No se pudo obtener la ubicación actual para registrar la llegada.'),
+            content: Text(
+              'No se pudo obtener la ubicación actual para registrar la llegada.',
+            ),
           ),
         );
         return;
@@ -427,10 +527,12 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Trayecto finalizado y llegada registrada.')),
+        const SnackBar(
+          content: Text('Trayecto finalizado y llegada registrada.'),
+        ),
       );
 
-      _posicionSub?.cancel();
+      await _posicionSub?.cancel();
       _posicionSub = null;
 
       Navigator.pop(context, {
@@ -451,8 +553,6 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
       }
     }
   }
-
-  // ------------------- UI -------------------
 
   @override
   Widget build(BuildContext context) {
@@ -557,34 +657,53 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
                 top: 12,
                 left: 12,
                 right: 12,
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.62),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _followCamera ? Icons.gps_fixed : Icons.touch_app,
-                          size: 16,
-                          color: Colors.white,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Align(
+                      alignment: Alignment.topLeft,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _followCamera ? 'Siguiendo tu ubicación' : 'Explorando mapa',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.62),
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                      ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _followCamera
+                                  ? Icons.gps_fixed
+                                  : Icons.touch_app,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _followCamera
+                                  ? 'Siguiendo tu ubicación'
+                                  : 'Explorando mapa',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                    if (_cargandoRuta) ...[
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: const LinearProgressIndicator(minHeight: 5),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               Positioned(
@@ -595,8 +714,14 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
                     FloatingActionButton.small(
                       heroTag: 'centrar_btn',
                       onPressed: _centrarEnMiUbicacion,
-                      tooltip: _followCamera ? 'Mi ubicación (siguiendo)' : 'Mi ubicación',
-                      child: Icon(_followCamera ? Icons.gps_fixed : Icons.gps_not_fixed),
+                      tooltip: _followCamera
+                          ? 'Mi ubicación (siguiendo)'
+                          : 'Mi ubicación',
+                      child: Icon(
+                        _followCamera
+                            ? Icons.gps_fixed
+                            : Icons.gps_not_fixed,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     FloatingActionButton.small(
@@ -635,7 +760,9 @@ class _TrayectoRutaPageState extends State<TrayectoRutaPage> {
                         ),
                       )
                     : const Icon(Icons.flag),
-                label: Text(_enviandoLlegada ? 'Guardando...' : 'Finalizar trayecto'),
+                label: Text(
+                  _enviandoLlegada ? 'Guardando...' : 'Finalizar trayecto',
+                ),
                 onPressed: _enviandoLlegada ? null : _onFinalizarTrayectoPressed,
               ),
             ),
