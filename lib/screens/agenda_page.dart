@@ -171,6 +171,17 @@ class _AgendaPageState extends State<AgendaPage> {
   bool _isWebWide(BuildContext context) =>
       kIsWeb && MediaQuery.of(context).size.width >= _kWebWideBreakpoint;
 
+  bool _modoModificarJornada = false;
+  bool _savingCambiosAgenda = false;
+
+  final Map<int, DateTime> _draftFechaCitaPorNoticia = {};
+
+  int? _draggingNoticiaId;
+  double? _dragStartGlobalDy;
+  int? _dragStartMinutes;
+
+  static const int _kAgendaSnapMinutes = 15;
+
   Widget _wrapWebWidth(Widget child) {
     if (!kIsWeb) return child;
     return Align(
@@ -1447,6 +1458,160 @@ class _AgendaPageState extends State<AgendaPage> {
     return '$d/$m/$y';
   }
 
+  DateTime _fechaCitaVisible(Noticia noticia) {
+    return _draftFechaCitaPorNoticia[noticia.id] ?? noticia.fechaCita!;
+  }
+
+  bool get _hayCambiosAgenda => _draftFechaCitaPorNoticia.isNotEmpty;
+
+  int _snapMinutes(int minutes) {
+    return ((minutes / _kAgendaSnapMinutes).round()) * _kAgendaSnapMinutes;
+  }
+
+  void _entrarModoModificarJornada() {
+    setState(() {
+      _modoModificarJornada = true;
+      _savingCambiosAgenda = false;
+      _draftFechaCitaPorNoticia.clear();
+      _draggingNoticiaId = null;
+      _dragStartGlobalDy = null;
+      _dragStartMinutes = null;
+    });
+  }
+
+  void _cancelarModificacionJornada() {
+    setState(() {
+      _modoModificarJornada = false;
+      _savingCambiosAgenda = false;
+      _draftFechaCitaPorNoticia.clear();
+      _draggingNoticiaId = null;
+      _dragStartGlobalDy = null;
+      _dragStartMinutes = null;
+    });
+  }
+
+  void _setDraftFechaCita(Noticia noticia, DateTime nuevaFechaCita) {
+    final original = noticia.fechaCita!;
+    final normalizada = DateTime(
+      original.year,
+      original.month,
+      original.day,
+      nuevaFechaCita.hour,
+      nuevaFechaCita.minute,
+    );
+
+    final bool sinCambio =
+        original.year == normalizada.year &&
+        original.month == normalizada.month &&
+        original.day == normalizada.day &&
+        original.hour == normalizada.hour &&
+        original.minute == normalizada.minute;
+
+    setState(() {
+      if (sinCambio) {
+        _draftFechaCitaPorNoticia.remove(noticia.id);
+      } else {
+        _draftFechaCitaPorNoticia[noticia.id] = normalizada;
+      }
+    });
+  }
+
+  void _onAgendaItemDragStart(Noticia noticia, DragStartDetails details) {
+    final fechaBase = _fechaCitaVisible(noticia);
+    setState(() {
+      _draggingNoticiaId = noticia.id;
+      _dragStartGlobalDy = details.globalPosition.dy;
+      _dragStartMinutes = fechaBase.hour * 60 + fechaBase.minute;
+    });
+  }
+
+  void _onAgendaItemDragUpdate(
+    Noticia noticia,
+    DragUpdateDetails details,
+    double hourHeight,
+  ) {
+    if (_draggingNoticiaId != noticia.id) return;
+    if (_dragStartGlobalDy == null || _dragStartMinutes == null) return;
+
+    final deltaDy = details.globalPosition.dy - _dragStartGlobalDy!;
+    final deltaMinutes = ((deltaDy / hourHeight) * 60).round();
+
+    final int maxStartMinutes = (24 * 60) - _kAgendaSnapMinutes;
+    final int nuevoInicio = _snapMinutes(_dragStartMinutes! + deltaMinutes)
+        .clamp(0, maxStartMinutes);
+
+    final original = noticia.fechaCita!;
+    final nuevaFecha = DateTime(
+      original.year,
+      original.month,
+      original.day,
+      nuevoInicio ~/ 60,
+      nuevoInicio % 60,
+    );
+
+    _setDraftFechaCita(noticia, nuevaFecha);
+  }
+
+  void _onAgendaItemDragEnd() {
+    setState(() {
+      _draggingNoticiaId = null;
+      _dragStartGlobalDy = null;
+      _dragStartMinutes = null;
+    });
+  }
+
+  Future<void> _guardarCambiosJornada() async {
+    if (!_hayCambiosAgenda || _savingCambiosAgenda) return;
+
+    setState(() => _savingCambiosAgenda = true);
+
+    final cambios = Map<int, DateTime>.from(_draftFechaCitaPorNoticia);
+    final Map<int, DateTime> fallidos = {};
+
+    try {
+      for (final entry in cambios.entries) {
+        try {
+          await ApiService.actualizarHoraCitaNoticia(
+            noticiaId: entry.key,
+            nuevaFechaCita: entry.value,
+          );
+        } catch (_) {
+          fallidos[entry.key] = entry.value;
+        }
+      }
+
+      await _cargarNoticias();
+
+      if (!mounted) return;
+
+      setState(() {
+        _draftFechaCitaPorNoticia
+          ..clear()
+          ..addAll(fallidos);
+        _savingCambiosAgenda = false;
+        if (fallidos.isEmpty) {
+          _modoModificarJornada = false;
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            fallidos.isEmpty
+                ? 'Cambios guardados correctamente.'
+                : 'Algunas noticias no pudieron actualizarse.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _savingCambiosAgenda = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al guardar cambios: $e')),
+      );
+    }
+  }
+
   String _deltaJsonSinTamanos(quill.QuillController c) {
     final ops = c.document.toDelta().toJson();
     final cleaned = ops.map((op) {
@@ -2428,20 +2593,65 @@ class _AgendaPageState extends State<AgendaPage> {
     final bottomSafe = MediaQuery.of(context).padding.bottom;
     final fabClearance = showFabCrear ? 110.0 : 0.0;
     final wide = _isWebWide(context);
+    final canModifyAgenda = showFabCrear && eventos.isNotEmpty;
 
     final header = _cardShell(
       elevation: 0,
       padding: EdgeInsets.symmetric(horizontal: 12, vertical: wide ? 14 : 12),
-      color: isDark ? theme.colorScheme.surface : theme.colorScheme.surfaceVariant.withOpacity(0.35),
-      child: Center(
-        child: Text(
-          '${_nombreMes(dia.month)} ${dia.day}, ${dia.year}',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-            fontSize: wide ? 17 : 16,
-            color: theme.colorScheme.onSurface,
+      color: isDark
+          ? theme.colorScheme.surface
+          : theme.colorScheme.surfaceVariant.withOpacity(0.35),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Center(
+            child: Text(
+              '${_nombreMes(dia.month)} ${dia.day}, ${dia.year}',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: wide ? 17 : 16,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
           ),
-        ),
+          if (canModifyAgenda)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (!_modoModificarJornada)
+                    OutlinedButton.icon(
+                      onPressed: _entrarModoModificarJornada,
+                      icon: const Icon(Icons.edit_calendar),
+                      label: const Text('Modificar'),
+                    )
+                  else ...[
+                    TextButton(
+                      onPressed: _savingCambiosAgenda
+                          ? null
+                          : _cancelarModificacionJornada,
+                      child: const Text('Cancelar'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: (!_hayCambiosAgenda || _savingCambiosAgenda)
+                          ? null
+                          : _guardarCambiosJornada,
+                      icon: _savingCambiosAgenda
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.save),
+                      label: const Text('Guardar cambios'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+        ],
       ),
     );
 
@@ -2452,7 +2662,7 @@ class _AgendaPageState extends State<AgendaPage> {
     final hourFmt = DateFormat('h a', 'es_MX');
 
     int eventDurationMinutes(Noticia noticia) {
-      final raw = noticia.tiempoEnNota ?? noticia.limiteTiempoMinutos;
+      final raw = noticia.tiempoEnNota ?? noticia.limiteTiempoMinutos ?? 60;
       return raw.clamp(45, 180);
     }
 
@@ -2471,8 +2681,8 @@ class _AgendaPageState extends State<AgendaPage> {
     }
 
     final eventosOrdenados = [...eventos]..sort((a, b) {
-      final da = a.fechaCita ?? DateTime(9999);
-      final db = b.fechaCita ?? DateTime(9999);
+      final da = _fechaCitaVisible(a);
+      final db = _fechaCitaVisible(b);
       final c = da.compareTo(db);
       if (c != 0) return c;
       return a.id.compareTo(b.id);
@@ -2482,7 +2692,7 @@ class _AgendaPageState extends State<AgendaPage> {
     final List<_AgendaDayLayoutItem> activeItems = [];
 
     for (final noticia in eventosOrdenados) {
-      final fecha = noticia.fechaCita!;
+      final fecha = _fechaCitaVisible(noticia);
       final startMinutes = fecha.hour * 60 + fecha.minute;
       final endMinutes = (startMinutes + eventDurationMinutes(noticia)).clamp(0, 24 * 60);
 
@@ -2607,7 +2817,7 @@ class _AgendaPageState extends State<AgendaPage> {
                               for (final item in layoutItems)
                                 () {
                                   final noticia = item.noticia;
-                                  final start = noticia.fechaCita!;
+                                  final start = _fechaCitaVisible(noticia);
                                   final bool cerrada = noticia.pendiente == false;
                                   final top = (item.startMinutes / 60) * hourHeight;
                                   final height = (((item.endMinutes - item.startMinutes) / 60) *
@@ -2625,108 +2835,140 @@ class _AgendaPageState extends State<AgendaPage> {
                                     height: height,
                                     child: Material(
                                       color: Colors.transparent,
-                                      child: InkWell(
-                                        borderRadius: BorderRadius.circular(16),
-                                        onTap: () => openDetalle(noticia),
-                                        child: Builder(
-                                          builder: (context) {
-                                            final reporterBg = _reporteroBgColor(noticia.reportero, theme, isDark);
-                                            final reporterAccent = _reporteroAccentColor(noticia.reportero, theme);
-                                            final reporterText = _readableTextOn(reporterBg);
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onVerticalDragStart: _modoModificarJornada
+                                            ? (details) => _onAgendaItemDragStart(noticia, details)
+                                            : null,
+                                        onVerticalDragUpdate: _modoModificarJornada
+                                            ? (details) =>
+                                                _onAgendaItemDragUpdate(noticia, details, hourHeight)
+                                            : null,
+                                        onVerticalDragEnd: _modoModificarJornada
+                                            ? (_) => _onAgendaItemDragEnd()
+                                            : null,
+                                        onVerticalDragCancel:
+                                            _modoModificarJornada ? _onAgendaItemDragEnd : null,
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(16),
+                                          onTap: _modoModificarJornada ? null : () => openDetalle(noticia),
+                                          child: Builder(
+                                            builder: (context) {
+                                              final reporterBg =
+                                                  _reporteroBgColor(noticia.reportero, theme, isDark);
+                                              final reporterAccent =
+                                                  _reporteroAccentColor(noticia.reportero, theme);
+                                              final reporterText = _readableTextOn(reporterBg);
 
-                                            final statusText = cerrada ? 'Cerrada' : 'Pendiente';
-                                            final statusFg =
-                                                cerrada ? theme.colorScheme.secondary : theme.colorScheme.primary;
-                                            final statusBg = cerrada
-                                                ? theme.colorScheme.secondary.withOpacity(isDark ? 0.22 : 0.14)
-                                                : theme.colorScheme.primary.withOpacity(isDark ? 0.22 : 0.12);
+                                              final statusText = cerrada ? 'Cerrada' : 'Pendiente';
+                                              final statusFg = cerrada
+                                                  ? theme.colorScheme.secondary
+                                                  : theme.colorScheme.primary;
+                                              final statusBg = cerrada
+                                                  ? theme.colorScheme.secondary.withOpacity(
+                                                      isDark ? 0.22 : 0.14,
+                                                    )
+                                                  : theme.colorScheme.primary.withOpacity(
+                                                      isDark ? 0.22 : 0.12,
+                                                    );
 
-                                            return Container(
-                                              padding: const EdgeInsets.all(8),
-                                              decoration: BoxDecoration(
-                                                color: reporterBg,
-                                                borderRadius: BorderRadius.circular(16),
-                                                border: Border.all(
-                                                  color: reporterAccent,
-                                                  width: 1.2,
-                                                ),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    blurRadius: 8,
-                                                    offset: const Offset(0, 3),
-                                                    color: Colors.black.withOpacity(isDark ? 0.20 : 0.07),
+                                              return Container(
+                                                padding: const EdgeInsets.all(8),
+                                                decoration: BoxDecoration(
+                                                  color: reporterBg,
+                                                  borderRadius: BorderRadius.circular(16),
+                                                  border: Border.all(
+                                                    color: reporterAccent,
+                                                    width: 1.2,
                                                   ),
-                                                ],
-                                              ),
-                                              child: LayoutBuilder(
-                                                builder: (context, cardConstraints) {
-                                                  final compact = cardConstraints.maxWidth < 150;
-                                                  final ultraCompact = cardConstraints.maxWidth < 120;
-
-                                                  return DefaultTextStyle(
-                                                    style: TextStyle(color: reporterText),
-                                                    child: Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: [
-                                                        Text(
-                                                          noticia.noticia,
-                                                          maxLines: compact ? 2 : 3,
-                                                          overflow: TextOverflow.ellipsis,
-                                                          style: TextStyle(
-                                                            fontWeight: FontWeight.w900,
-                                                            fontSize: compact ? 11.5 : 12.8,
-                                                            height: 1.12,
-                                                            color: reporterText,
-                                                          ),
-                                                        ),
-                                                        const SizedBox(height: 5),
-                                                        Text(
-                                                          noticia.reportero.trim().isEmpty
-                                                              ? 'Sin reportero'
-                                                              : noticia.reportero,
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow.ellipsis,
-                                                          style: TextStyle(
-                                                            fontSize: compact ? 10.2 : 11,
-                                                            fontWeight: FontWeight.w700,
-                                                            color: reporterText.withOpacity(0.90),
-                                                          ),
-                                                        ),
-                                                        const Spacer(),
-                                                        Align(
-                                                          alignment: Alignment.centerLeft,
-                                                          child: Container(
-                                                            padding: EdgeInsets.symmetric(
-                                                              horizontal: compact ? 7 : 8,
-                                                              vertical: compact ? 3 : 4,
-                                                            ),
-                                                            decoration: BoxDecoration(
-                                                              color: statusBg,
-                                                              borderRadius: BorderRadius.circular(999),
-                                                              border: Border.all(
-                                                                color: statusFg.withOpacity(0.25),
-                                                                width: 0.8,
-                                                              ),
-                                                            ),
-                                                            child: Text(
-                                                              statusText,
-                                                              maxLines: 1,
-                                                              overflow: TextOverflow.ellipsis,
-                                                              style: TextStyle(
-                                                                fontSize: compact ? 9.6 : 10.4,
-                                                                fontWeight: FontWeight.w800,
-                                                                color: statusFg,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ],
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      blurRadius: 8,
+                                                      offset: const Offset(0, 3),
+                                                      color: Colors.black.withOpacity(isDark ? 0.20 : 0.07),
                                                     ),
-                                                  );
-                                                },
-                                              ),
-                                            );
-                                          },
+                                                  ],
+                                                ),
+                                                child: LayoutBuilder(
+                                                  builder: (context, cardConstraints) {
+                                                    final compact = cardConstraints.maxWidth < 150;
+
+                                                    return DefaultTextStyle(
+                                                      style: TextStyle(color: reporterText),
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          if (_modoModificarJornada)
+                                                            Align(
+                                                              alignment: Alignment.topRight,
+                                                              child: Icon(
+                                                                Icons.drag_indicator,
+                                                                size: 16,
+                                                                color: reporterText.withOpacity(0.70),
+                                                              ),
+                                                            ),
+                                                          if (_modoModificarJornada)
+                                                            const SizedBox(height: 2),
+                                                          Text(
+                                                            noticia.noticia,
+                                                            maxLines: compact ? 2 : 3,
+                                                            overflow: TextOverflow.ellipsis,
+                                                            style: TextStyle(
+                                                              fontWeight: FontWeight.w900,
+                                                              fontSize: compact ? 11.5 : 12.8,
+                                                              height: 1.12,
+                                                              color: reporterText,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(height: 5),
+                                                          Text(
+                                                            noticia.reportero.trim().isEmpty
+                                                                ? 'Sin reportero'
+                                                                : noticia.reportero,
+                                                            maxLines: 1,
+                                                            overflow: TextOverflow.ellipsis,
+                                                            style: TextStyle(
+                                                              fontSize: compact ? 10.2 : 11,
+                                                              fontWeight: FontWeight.w700,
+                                                              color: reporterText.withOpacity(0.90),
+                                                            ),
+                                                          ),
+                                                          const Spacer(),
+                                                          Align(
+                                                            alignment: Alignment.centerLeft,
+                                                            child: Container(
+                                                              padding: EdgeInsets.symmetric(
+                                                                horizontal: compact ? 7 : 8,
+                                                                vertical: compact ? 3 : 4,
+                                                              ),
+                                                              decoration: BoxDecoration(
+                                                                color: statusBg,
+                                                                borderRadius: BorderRadius.circular(999),
+                                                                border: Border.all(
+                                                                  color: statusFg.withOpacity(0.25),
+                                                                  width: 0.8,
+                                                                ),
+                                                              ),
+                                                              child: Text(
+                                                                statusText,
+                                                                maxLines: 1,
+                                                                overflow: TextOverflow.ellipsis,
+                                                                style: TextStyle(
+                                                                  fontSize: compact ? 9.6 : 10.4,
+                                                                  fontWeight: FontWeight.w800,
+                                                                  color: statusFg,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    );
+                                                  },
+                                                ),
+                                              );
+                                            },
+                                          ),
                                         ),
                                       ),
                                     ),

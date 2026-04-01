@@ -884,6 +884,46 @@ class ApiService {
     }
   }
 
+  // 🔹 Cambia hora de cita en noticia con drag de Agenda
+  static Future<Noticia> actualizarHoraCitaNoticia({
+    required int noticiaId,
+    required DateTime nuevaFechaCita,
+  }) async {
+    final url = Uri.parse('$baseUrl/update_noticia.php');
+
+    final fechaCitaStr = nuevaFechaCita
+        .toIso8601String()
+        .substring(0, 19)
+        .replaceFirst('T', ' ');
+
+    final resp = await http.post(
+      url,
+      body: _withToken({
+        'noticia_id': noticiaId.toString(),
+        'fecha_cita': fechaCitaStr,
+        'ultima_mod': _mysqlDateTime(DateTime.now()),
+      }),
+      headers: _authHeaders(),
+    );
+
+    if (resp.statusCode != 200) {
+      throw _parseApiError(resp);
+    }
+
+    final data = json.decode(resp.body);
+
+    if (data is Map && data['success'] == true) {
+      return Noticia.fromJson(
+        (data['data'] as Map).map((k, v) => MapEntry(k.toString(), v)),
+      );
+    }
+
+    throw Exception(
+      (data is Map ? data['message'] : null) ??
+          'No se pudo actualizar la hora de cita',
+    );
+  }
+
   // 🔹 Guardar tiempo transcurrido en la nota
   static Future<Noticia> guardarTiempoEnNota({
     required int noticiaId,
