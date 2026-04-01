@@ -1907,15 +1907,6 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
 
           const SizedBox(height: 12),
           TextFormField(
-            controller: _descCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Descripción (opcional)',
-              border: OutlineInputBorder(),
-            ),
-            maxLines: 3,
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
             controller: _domicilioCtrl,
             readOnly: _usarDomicilioCliente,
             enabled: !_guardando,
@@ -1924,6 +1915,15 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
               border: OutlineInputBorder(),
             ),
             maxLines: 2,
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _descCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Descripción (opcional)',
+              border: OutlineInputBorder(),
+            ),
+            maxLines: 3,
           ),
         ],
       ),
