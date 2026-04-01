@@ -224,6 +224,77 @@ class _AgendaPageState extends State<AgendaPage> {
     return base.withOpacity(opacity);
   }
 
+  static const List<Color> _reporteroLightPalette = [
+    Color(0xFFE3F2FD),
+    Color(0xFFE8F5E9),
+    Color(0xFFFFF3E0),
+    Color(0xFFF3E5F5),
+    Color(0xFFE0F7FA),
+    Color(0xFFFFEBEE),
+    Color(0xFFF1F8E9),
+    Color(0xFFEDE7F6),
+    Color(0xFFE8EAF6),
+    Color(0xFFFFF8E1),
+  ];
+
+  static const List<Color> _reporteroAccentPalette = [
+    Color(0xFF1E88E5),
+    Color(0xFF43A047),
+    Color(0xFFFB8C00),
+    Color(0xFF8E24AA),
+    Color(0xFF00ACC1),
+    Color(0xFFE53935),
+    Color(0xFF7CB342),
+    Color(0xFF5E35B1),
+    Color(0xFF3949AB),
+    Color(0xFFF9A825),
+  ];
+
+  String _reporteroKey(String? nombre) {
+    return (nombre ?? '').trim().toLowerCase();
+  }
+
+  int _stableStringHash(String value) {
+    var hash = 0;
+    for (final unit in value.codeUnits) {
+      hash = ((hash * 31) + unit) & 0x7fffffff;
+    }
+    return hash;
+  }
+
+  int _reporteroColorIndex(String? nombre) {
+    final key = _reporteroKey(nombre);
+    if (key.isEmpty) return 0;
+    return _stableStringHash(key) % _reporteroAccentPalette.length;
+  }
+
+  Color _reporteroAccentColor(String? nombre, ThemeData theme) {
+    final key = _reporteroKey(nombre);
+    if (key.isEmpty) return theme.colorScheme.outline;
+    return _reporteroAccentPalette[_reporteroColorIndex(nombre)];
+  }
+
+  Color _reporteroBgColor(String? nombre, ThemeData theme, bool isDark) {
+    final key = _reporteroKey(nombre);
+    if (key.isEmpty) {
+      return isDark
+          ? theme.colorScheme.surfaceVariant.withOpacity(0.55)
+          : theme.colorScheme.surfaceVariant.withOpacity(0.90);
+    }
+
+    final accent = _reporteroAccentColor(nombre, theme);
+    if (isDark) {
+      return accent.withOpacity(0.22);
+    }
+
+    return _reporteroLightPalette[_reporteroColorIndex(nombre)];
+  }
+
+  Color _readableTextOn(Color color) {
+    final brightness = ThemeData.estimateBrightnessForColor(color);
+    return brightness == Brightness.dark ? Colors.white : Colors.black87;
+  }
+
   Widget _calDayCell({
     required ThemeData theme,
     required DateTime day,
@@ -409,12 +480,14 @@ class _AgendaPageState extends State<AgendaPage> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      cerrada ? Icons.check_circle : Icons.schedule,
-                      size: 14,
-                      color: cerrada
-                          ? theme.colorScheme.secondary
-                          : theme.colorScheme.primary,
+                    Container(
+                      width: 12,
+                      height: 12,
+                      margin: const EdgeInsets.only(top: 2),
+                      decoration: BoxDecoration(
+                        color: _reporteroAccentColor(n.reportero, theme),
+                        shape: BoxShape.circle,
+                      ),
                     ),
                     const SizedBox(width: 6),
                     Expanded(
@@ -2377,8 +2450,6 @@ class _AgendaPageState extends State<AgendaPage> {
     const double minCardHeight = 92;
     final totalHeight = hourHeight * 24;
     final hourFmt = DateFormat('h a', 'es_MX');
-    final detailHourFmt = DateFormat('h:mm a', 'es_MX');
-    final detailDateFmt = DateFormat('dd/MM/yyyy', 'es_MX');
 
     int eventDurationMinutes(Noticia noticia) {
       final raw = noticia.tiempoEnNota ?? noticia.limiteTiempoMinutos;
@@ -2557,96 +2628,105 @@ class _AgendaPageState extends State<AgendaPage> {
                                       child: InkWell(
                                         borderRadius: BorderRadius.circular(16),
                                         onTap: () => openDetalle(noticia),
-                                        child: Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            color: cerrada
-                                                ? theme.colorScheme.secondaryContainer
-                                                    .withOpacity(isDark ? 0.45 : 0.86)
-                                                : theme.colorScheme.primaryContainer
-                                                    .withOpacity(isDark ? 0.52 : 0.92),
-                                            borderRadius: BorderRadius.circular(16),
-                                            border: Border.all(
-                                              color: cerrada
-                                                  ? theme.colorScheme.secondary
-                                                  : theme.colorScheme.primary,
-                                              width: 1.1,
-                                            ),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                blurRadius: 8,
-                                                offset: const Offset(0, 3),
-                                                color: Colors.black.withOpacity(isDark ? 0.20 : 0.07),
+                                        child: Builder(
+                                          builder: (context) {
+                                            final reporterBg = _reporteroBgColor(noticia.reportero, theme, isDark);
+                                            final reporterAccent = _reporteroAccentColor(noticia.reportero, theme);
+                                            final reporterText = _readableTextOn(reporterBg);
+
+                                            final statusText = cerrada ? 'Cerrada' : 'Pendiente';
+                                            final statusFg =
+                                                cerrada ? theme.colorScheme.secondary : theme.colorScheme.primary;
+                                            final statusBg = cerrada
+                                                ? theme.colorScheme.secondary.withOpacity(isDark ? 0.22 : 0.14)
+                                                : theme.colorScheme.primary.withOpacity(isDark ? 0.22 : 0.12);
+
+                                            return Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: reporterBg,
+                                                borderRadius: BorderRadius.circular(16),
+                                                border: Border.all(
+                                                  color: reporterAccent,
+                                                  width: 1.2,
+                                                ),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    blurRadius: 8,
+                                                    offset: const Offset(0, 3),
+                                                    color: Colors.black.withOpacity(isDark ? 0.20 : 0.07),
+                                                  ),
+                                                ],
                                               ),
-                                            ],
-                                          ),
-                                          child: LayoutBuilder(
-                                            builder: (context, cardConstraints) {
-                                              final compact = cardConstraints.maxWidth < 150;
-                                              final ultraCompact = cardConstraints.maxWidth < 120;
+                                              child: LayoutBuilder(
+                                                builder: (context, cardConstraints) {
+                                                  final compact = cardConstraints.maxWidth < 150;
+                                                  final ultraCompact = cardConstraints.maxWidth < 120;
 
-                                              final statusText = cerrada ? 'Cerrada' : 'Pendiente';
-
-                                              final bottomLabel = ultraCompact
-                                                  ? '${detailHourFmt.format(start)} • $statusText'
-                                                  : compact
-                                                      ? '${detailHourFmt.format(start)} • $statusText'
-                                                      : '${detailHourFmt.format(start)} • $statusText';
-
-                                              return DefaultTextStyle(
-                                                style: TextStyle(
-                                                  color: cerrada
-                                                      ? theme.colorScheme.onSecondaryContainer
-                                                      : theme.colorScheme.onPrimaryContainer,
-                                                ),
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      noticia.noticia,
-                                                      maxLines: compact ? 1 : 2,
-                                                      overflow: TextOverflow.ellipsis,
-                                                      style: TextStyle(
-                                                        fontWeight: FontWeight.w900,
-                                                        fontSize: compact ? 11.8 : 13,
-                                                        height: 1.15,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    if (!ultraCompact)
-                                                      Text(
-                                                        noticia.reportero.isEmpty
-                                                            ? 'Sin reportero'
-                                                            : noticia.reportero,
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
-                                                        style: TextStyle(
-                                                          fontSize: compact ? 10.4 : 11.2,
-                                                          fontWeight: FontWeight.w700,
-                                                          color: (cerrada
-                                                                  ? theme.colorScheme.onSecondaryContainer
-                                                                  : theme.colorScheme.onPrimaryContainer)
-                                                              .withOpacity(0.90),
+                                                  return DefaultTextStyle(
+                                                    style: TextStyle(color: reporterText),
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Text(
+                                                          noticia.noticia,
+                                                          maxLines: compact ? 2 : 3,
+                                                          overflow: TextOverflow.ellipsis,
+                                                          style: TextStyle(
+                                                            fontWeight: FontWeight.w900,
+                                                            fontSize: compact ? 11.5 : 12.8,
+                                                            height: 1.12,
+                                                            color: reporterText,
+                                                          ),
                                                         ),
-                                                      ),
-                                                    const Spacer(),
-                                                    Text(
-                                                      bottomLabel,
-                                                      maxLines: compact ? 2 : 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                      style: TextStyle(
-                                                        fontSize: compact ? 10 : 10.8,
-                                                        fontWeight: FontWeight.w800,
-                                                        color: cerrada
-                                                            ? theme.colorScheme.secondary
-                                                            : theme.colorScheme.primary,
-                                                      ),
+                                                        const SizedBox(height: 5),
+                                                        Text(
+                                                          noticia.reportero.trim().isEmpty
+                                                              ? 'Sin reportero'
+                                                              : noticia.reportero,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                          style: TextStyle(
+                                                            fontSize: compact ? 10.2 : 11,
+                                                            fontWeight: FontWeight.w700,
+                                                            color: reporterText.withOpacity(0.90),
+                                                          ),
+                                                        ),
+                                                        const Spacer(),
+                                                        Align(
+                                                          alignment: Alignment.centerLeft,
+                                                          child: Container(
+                                                            padding: EdgeInsets.symmetric(
+                                                              horizontal: compact ? 7 : 8,
+                                                              vertical: compact ? 3 : 4,
+                                                            ),
+                                                            decoration: BoxDecoration(
+                                                              color: statusBg,
+                                                              borderRadius: BorderRadius.circular(999),
+                                                              border: Border.all(
+                                                                color: statusFg.withOpacity(0.25),
+                                                                width: 0.8,
+                                                              ),
+                                                            ),
+                                                            child: Text(
+                                                              statusText,
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                              style: TextStyle(
+                                                                fontSize: compact ? 9.6 : 10.4,
+                                                                fontWeight: FontWeight.w800,
+                                                                color: statusFg,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
-                                                  ],
-                                                ),
-                                              );
-                                            },
-                                          ),
+                                                  );
+                                                },
+                                              ),
+                                            );
+                                          },
                                         ),
                                       ),
                                     ),
