@@ -71,6 +71,12 @@ flutter_launcher_icons:
   adaptive_icon_foreground: "assets/icon/CNT_NOTICIERO_EMPTY.png"
   adaptive_icon_background: "#FFFFFF"
 
+  web:
+      generate: true
+      image_path: "assets/icon/CNT_NOTICIERO_EMPTY.png"
+      background_color: "#FFFFFF"
+      theme_color: "#FFFFFF"
+
 flutter_native_splash:
   android: true
   ios: false
