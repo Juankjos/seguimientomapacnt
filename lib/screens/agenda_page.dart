@@ -285,20 +285,27 @@ class _AgendaPageState extends State<AgendaPage> {
     required Color fg,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: theme.dividerColor.withOpacity(0.35), width: 0.8),
+        border: Border.all(
+          color: theme.dividerColor.withOpacity(0.30),
+          width: 0.7,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: fg),
-          const SizedBox(width: 6),
+          Icon(icon, size: 14, color: fg),
+          const SizedBox(width: 5),
           Text(
             label,
-            style: TextStyle(fontWeight: FontWeight.w800, color: fg, fontSize: 12.5),
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: fg,
+              fontSize: 11.5,
+            ),
           ),
         ],
       ),
@@ -314,38 +321,42 @@ class _AgendaPageState extends State<AgendaPage> {
     final pendientes = eventos.where((e) => e.pendiente == true).length;
     final cerradas = total - pendientes;
 
-    final preview = eventos.take(6).toList();
+    final preview = eventos.take(4).toList();
 
     return _cardShell(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       elevation: 0.5,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.insights, size: 18, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
+              Icon(Icons.insights, size: 16, color: theme.colorScheme.primary),
+              const SizedBox(width: 6),
               const Expanded(
                 child: Text(
                   'Resumen del día',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             '${_nombreMes(dia.month)} ${dia.day}, ${dia.year}',
             style: TextStyle(
               fontWeight: FontWeight.w800,
+              fontSize: 12.5,
               color: theme.colorScheme.onSurface.withOpacity(0.75),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 6,
+            runSpacing: 6,
             children: [
               _pill(
                 theme: theme,
@@ -370,42 +381,51 @@ class _AgendaPageState extends State<AgendaPage> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Divider(height: 1, color: theme.dividerColor.withOpacity(0.5)),
           const SizedBox(height: 10),
+          Divider(height: 1, color: theme.dividerColor.withOpacity(0.45)),
+          const SizedBox(height: 8),
           Text(
             'Vista rápida',
             style: TextStyle(
               fontWeight: FontWeight.w900,
+              fontSize: 12.5,
               color: theme.colorScheme.onSurface.withOpacity(0.88),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           if (total == 0)
             Text(
               'No hay noticias para este día.',
-              style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.65)),
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurface.withOpacity(0.65),
+              ),
             )
           else
             ...preview.map((n) {
               final cerrada = n.pendiente == false;
               return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
+                padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(
                       cerrada ? Icons.check_circle : Icons.schedule,
-                      size: 16,
-                      color: cerrada ? theme.colorScheme.secondary : theme.colorScheme.primary,
+                      size: 14,
+                      color: cerrada
+                          ? theme.colorScheme.secondary
+                          : theme.colorScheme.primary,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         n.noticia,
-                        maxLines: 2,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ],
@@ -413,10 +433,13 @@ class _AgendaPageState extends State<AgendaPage> {
               );
             }),
           if (total > preview.length) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text(
               '…y ${total - preview.length} más',
-              style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.60), fontSize: 12),
+              style: TextStyle(
+                color: theme.colorScheme.onSurface.withOpacity(0.60),
+                fontSize: 11,
+              ),
             ),
           ],
         ],
@@ -2349,102 +2372,296 @@ class _AgendaPageState extends State<AgendaPage> {
       ),
     );
 
-    final list = eventos.isEmpty
-        ? const Center(child: Text('No hay noticias para este día.'))
-        : ListView.builder(
-            padding: EdgeInsets.only(bottom: 16 + fabClearance + bottomSafe),
-            physics: const AlwaysScrollableScrollPhysics(),
-            itemCount: eventos.length,
-            itemBuilder: (context, index) {
-              final n = eventos[index];
-              final bool cerrada = (n.pendiente == false);
+    const double hourHeight = 88;
+    const double timeLabelWidth = 62;
+    const double minCardHeight = 92;
+    final totalHeight = hourHeight * 24;
+    final hourFmt = DateFormat('h a', 'es_MX');
+    final detailHourFmt = DateFormat('h:mm a', 'es_MX');
+    final detailDateFmt = DateFormat('dd/MM/yyyy', 'es_MX');
 
-              final Color? bg = cerrada
-                  ? (isDark
-                      ? theme.colorScheme.secondary.withOpacity(0.18)
-                      : theme.colorScheme.secondary.withOpacity(0.10))
-                  : null;
+    int eventDurationMinutes(Noticia noticia) {
+      final raw = noticia.tiempoEnNota ?? noticia.limiteTiempoMinutos;
+      return raw.clamp(45, 180);
+    }
 
-              final fecha = n.fechaCita != null ? _formatearFechaCorta(n.fechaCita!) : 'Sin fecha';
+    Future<void> openDetalle(Noticia noticia) async {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NoticiaDetallePage(
+            noticia: noticia,
+            soloLectura: (noticia.pendiente == false),
+            role: widget.esAdmin ? 'admin' : 'reportero',
+          ),
+        ),
+      );
+      await _cargarNoticias();
+    }
 
-              return Card(
-                color: bg,
-                margin: EdgeInsets.symmetric(horizontal: _hPad(context), vertical: 6),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                elevation: kIsWeb ? 0.5 : 1,
-                child: Padding(
-                  padding: EdgeInsets.all(wide ? 14 : 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              n.noticia,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: wide ? 16 : 15,
-                              ),
-                            ),
-                          ),
-                          if (cerrada) ...[
-                            const SizedBox(width: 10),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.surfaceVariant.withOpacity(0.7),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: const Text(
-                                'Cerrada',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Domicilio: ${n.domicilio ?? 'Sin domicilio'}',
-                        style: TextStyle(fontSize: wide ? 13.5 : 13),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        'Fecha: $fecha',
-                        style: TextStyle(
-                          fontSize: wide ? 13.5 : 13,
-                          color: theme.colorScheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.open_in_new, size: 16),
-                          label: const Text('Ir a detalles'),
-                          onPressed: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => NoticiaDetallePage(
-                                  noticia: n,
-                                  soloLectura: (n.pendiente == false),
-                                  role: widget.esAdmin ? 'admin' : 'reportero',
+    final eventosOrdenados = [...eventos]..sort((a, b) {
+      final da = a.fechaCita ?? DateTime(9999);
+      final db = b.fechaCita ?? DateTime(9999);
+      final c = da.compareTo(db);
+      if (c != 0) return c;
+      return a.id.compareTo(b.id);
+    });
+
+    final List<_AgendaDayLayoutItem> layoutItems = [];
+    final List<_AgendaDayLayoutItem> activeItems = [];
+
+    for (final noticia in eventosOrdenados) {
+      final fecha = noticia.fechaCita!;
+      final startMinutes = fecha.hour * 60 + fecha.minute;
+      final endMinutes = (startMinutes + eventDurationMinutes(noticia)).clamp(0, 24 * 60);
+
+      activeItems.removeWhere((item) => item.endMinutes <= startMinutes);
+
+      final usedColumns = activeItems.map((item) => item.column).toSet();
+      int column = 0;
+      while (usedColumns.contains(column)) {
+        column++;
+      }
+
+      final item = _AgendaDayLayoutItem(
+        noticia: noticia,
+        startMinutes: startMinutes,
+        endMinutes: endMinutes,
+        column: column,
+      );
+
+      activeItems.add(item);
+      layoutItems.add(item);
+
+      final overlapping = [
+        for (final active in activeItems)
+          if (active.startMinutes < endMinutes && active.endMinutes > startMinutes) active,
+      ];
+      final overlapColumns = overlapping.fold<int>(
+        1,
+        (maxCols, active) => active.column + 1 > maxCols ? active.column + 1 : maxCols,
+      );
+      for (final active in overlapping) {
+        active.totalColumns = overlapColumns > active.totalColumns ? overlapColumns : active.totalColumns;
+      }
+    }
+
+    final agenda = _cardShell(
+      padding: const EdgeInsets.fromLTRB(0, 10, 10, 10),
+      child: eventos.isEmpty
+          ? SizedBox(
+              height: 260,
+              child: Center(
+                child: Text(
+                  'No hay noticias para este día.',
+                  style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.70)),
+                ),
+              ),
+            )
+          : SingleChildScrollView(
+              padding: EdgeInsets.only(bottom: 16 + fabClearance + bottomSafe),
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: totalHeight,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: timeLabelWidth,
+                      child: Column(
+                        children: List.generate(24, (hour) {
+                          final hourDate = DateTime(dia.year, dia.month, dia.day, hour);
+                          return SizedBox(
+                            height: hourHeight,
+                            child: Align(
+                              alignment: Alignment.topCenter,
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  hourFmt.format(hourDate).toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.72),
+                                  ),
                                 ),
                               ),
-                            );
-                            await _cargarNoticias();
-                          },
-                        ),
+                            ),
+                          );
+                        }),
                       ),
-                    ],
-                  ),
+                    ),
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          const double gap = 6;
+
+                          return Stack(
+                            children: [
+                              Positioned.fill(
+                                child: Column(
+                                  children: List.generate(24, (hour) {
+                                    return Container(
+                                      height: hourHeight,
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          top: BorderSide(
+                                            color: theme.dividerColor.withOpacity(0.28),
+                                          ),
+                                        ),
+                                      ),
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Container(
+                                          margin: const EdgeInsets.only(top: 44),
+                                          height: hour == 23 ? 0 : 1,
+                                          color: theme.dividerColor.withOpacity(0.12),
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ),
+                              ),
+                              Positioned.fill(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      left: BorderSide(
+                                        color: theme.dividerColor.withOpacity(0.30),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              for (final item in layoutItems)
+                                () {
+                                  final noticia = item.noticia;
+                                  final start = noticia.fechaCita!;
+                                  final bool cerrada = noticia.pendiente == false;
+                                  final top = (item.startMinutes / 60) * hourHeight;
+                                  final height = (((item.endMinutes - item.startMinutes) / 60) *
+                                          hourHeight)
+                                      .clamp(minCardHeight, totalHeight);
+                                  final columns = item.totalColumns > 0 ? item.totalColumns : 1;
+                                  final width =
+                                      (constraints.maxWidth - ((columns - 1) * gap)) / columns;
+                                  final left = (item.column * (width + gap)).toDouble();
+
+                                  return Positioned(
+                                    top: top,
+                                    left: left,
+                                    width: width,
+                                    height: height,
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(16),
+                                        onTap: () => openDetalle(noticia),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: cerrada
+                                                ? theme.colorScheme.secondaryContainer
+                                                    .withOpacity(isDark ? 0.45 : 0.86)
+                                                : theme.colorScheme.primaryContainer
+                                                    .withOpacity(isDark ? 0.52 : 0.92),
+                                            borderRadius: BorderRadius.circular(16),
+                                            border: Border.all(
+                                              color: cerrada
+                                                  ? theme.colorScheme.secondary
+                                                  : theme.colorScheme.primary,
+                                              width: 1.1,
+                                            ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 3),
+                                                color: Colors.black.withOpacity(isDark ? 0.20 : 0.07),
+                                              ),
+                                            ],
+                                          ),
+                                          child: LayoutBuilder(
+                                            builder: (context, cardConstraints) {
+                                              final compact = cardConstraints.maxWidth < 150;
+                                              final ultraCompact = cardConstraints.maxWidth < 120;
+
+                                              final statusText = cerrada ? 'Cerrada' : 'Pendiente';
+
+                                              final bottomLabel = ultraCompact
+                                                  ? '${detailHourFmt.format(start)} • $statusText'
+                                                  : compact
+                                                      ? '${detailHourFmt.format(start)} • $statusText'
+                                                      : '${detailHourFmt.format(start)} • $statusText';
+
+                                              return DefaultTextStyle(
+                                                style: TextStyle(
+                                                  color: cerrada
+                                                      ? theme.colorScheme.onSecondaryContainer
+                                                      : theme.colorScheme.onPrimaryContainer,
+                                                ),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      noticia.noticia,
+                                                      maxLines: compact ? 1 : 2,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontWeight: FontWeight.w900,
+                                                        fontSize: compact ? 11.8 : 13,
+                                                        height: 1.15,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    if (!ultraCompact)
+                                                      Text(
+                                                        noticia.reportero.isEmpty
+                                                            ? 'Sin reportero'
+                                                            : noticia.reportero,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: TextStyle(
+                                                          fontSize: compact ? 10.4 : 11.2,
+                                                          fontWeight: FontWeight.w700,
+                                                          color: (cerrada
+                                                                  ? theme.colorScheme.onSecondaryContainer
+                                                                  : theme.colorScheme.onPrimaryContainer)
+                                                              .withOpacity(0.90),
+                                                        ),
+                                                      ),
+                                                    const Spacer(),
+                                                    Text(
+                                                      bottomLabel,
+                                                      maxLines: compact ? 2 : 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontSize: compact ? 10 : 10.8,
+                                                        fontWeight: FontWeight.w800,
+                                                        color: cerrada
+                                                            ? theme.colorScheme.secondary
+                                                            : theme.colorScheme.primary,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }(),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-              );
-            },
-          );
+              ),
+            ),
+    );
 
     if (wide) {
       final side = _daySidePanel(theme: theme, dia: dia, eventos: eventos);
@@ -2460,8 +2677,8 @@ class _AgendaPageState extends State<AgendaPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(
-                    flex: 7,
-                    child: _maybeScrollbar(child: list),
+                    flex: 8,
+                    child: agenda,
                   ),
                   VerticalDivider(
                     width: 14,
@@ -2469,7 +2686,7 @@ class _AgendaPageState extends State<AgendaPage> {
                     color: theme.dividerColor.withOpacity(0.20),
                   ),
                   Expanded(
-                    flex: 4,
+                    flex: 3,
                     child: _maybeScrollbar(
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -2491,9 +2708,25 @@ class _AgendaPageState extends State<AgendaPage> {
         children: [
           header,
           const SizedBox(height: 10),
-          Expanded(child: _maybeScrollbar(child: list)),
+          Expanded(child: agenda),
         ],
       ),
     );
   }
+}
+
+class _AgendaDayLayoutItem {
+  final Noticia noticia;
+  final int startMinutes;
+  final int endMinutes;
+  final int column;
+  int totalColumns;
+
+  _AgendaDayLayoutItem({
+    required this.noticia,
+    required this.startMinutes,
+    required this.endMinutes,
+    required this.column,
+    this.totalColumns = 1,
+  });
 }
