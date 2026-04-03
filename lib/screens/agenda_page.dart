@@ -184,6 +184,11 @@ class _AgendaPageState extends State<AgendaPage> {
   double? _dragStartGlobalDy;
   int? _dragStartMinutes;
 
+  final GlobalKey _agendaGridKey = GlobalKey();
+
+  double? _dragGrabOffsetDy;
+  double? _dragPointerLocalDy;
+
   static const int _kAgendaSnapMinutes = 15;
 
   Widget _wrapWebWidth(Widget child) {
@@ -661,62 +666,62 @@ class _AgendaPageState extends State<AgendaPage> {
     _notifOverlayEntry = null;
   }
 
-  void _onAgendaItemPointerMove(
-    Noticia noticia,
-    PointerMoveEvent event,
-    double hourHeight,
-  ) {
-    if (_draggingNoticiaId != noticia.id) return;
-    if (_dragStartGlobalDy == null || _dragStartMinutes == null) return;
+  // void _onAgendaItemPointerMove(
+  //   Noticia noticia,
+  //   PointerMoveEvent event,
+  //   double hourHeight,
+  // ) {
+  //   if (_draggingNoticiaId != noticia.id) return;
+  //   if (_dragStartGlobalDy == null || _dragStartMinutes == null) return;
 
-    final duracion = _eventDurationMinutes(noticia);
+  //   final duracion = _eventDurationMinutes(noticia);
 
-    final deltaDy = event.position.dy - _dragStartGlobalDy!;
-    final deltaMinutes = (deltaDy / hourHeight) * 60.0;
+  //   final deltaDy = event.position.dy - _dragStartGlobalDy!;
+  //   final deltaMinutes = (deltaDy / hourHeight) * 60.0;
 
-    final double rawHeight =
-        ((_eventDurationMinutes(noticia) / 60.0) * hourHeight);
-    final double visualHeight =
-        rawHeight < 92 ? 92 : rawHeight;
+  //   final double rawHeight =
+  //       ((_eventDurationMinutes(noticia) / 60.0) * hourHeight);
+  //   final double visualHeight =
+  //       rawHeight < 92 ? 92 : rawHeight;
 
-    final double maxTop = (hourHeight * 24) - visualHeight;
-    final double previewTop = (((_dragStartMinutes!.toDouble() + deltaMinutes) / 60.0) * hourHeight)
-        .clamp(0.0, maxTop);
+  //   final double maxTop = (hourHeight * 24) - visualHeight;
+  //   final double previewTop = (((_dragStartMinutes!.toDouble() + deltaMinutes) / 60.0) * hourHeight)
+  //       .clamp(0.0, maxTop);
 
-    final double previewStartMinutes = (previewTop / hourHeight) * 60.0;
+  //   final double previewStartMinutes = (previewTop / hourHeight) * 60.0;
 
-    final double maxStartMinutes =
-        ((24 * 60) - duracion).clamp(0, 24 * 60).toDouble();
+  //   final double maxStartMinutes =
+  //       ((24 * 60) - duracion).clamp(0, 24 * 60).toDouble();
 
-    final int snappedStartMinutes =
-        _snapMinutes(previewStartMinutes.round()).clamp(0, maxStartMinutes.toInt());
+  //   final int snappedStartMinutes =
+  //       _snapMinutes(previewStartMinutes.round()).clamp(0, maxStartMinutes.toInt());
 
-    final original = noticia.fechaCita!;
-    final normalizada = DateTime(
-      original.year,
-      original.month,
-      original.day,
-      snappedStartMinutes ~/ 60,
-      snappedStartMinutes % 60,
-    );
+  //   final original = noticia.fechaCita!;
+  //   final normalizada = DateTime(
+  //     original.year,
+  //     original.month,
+  //     original.day,
+  //     snappedStartMinutes ~/ 60,
+  //     snappedStartMinutes % 60,
+  //   );
 
-    final bool sinCambio =
-        original.year == normalizada.year &&
-        original.month == normalizada.month &&
-        original.day == normalizada.day &&
-        original.hour == normalizada.hour &&
-        original.minute == normalizada.minute;
+  //   final bool sinCambio =
+  //       original.year == normalizada.year &&
+  //       original.month == normalizada.month &&
+  //       original.day == normalizada.day &&
+  //       original.hour == normalizada.hour &&
+  //       original.minute == normalizada.minute;
 
-    setState(() {
-      _dragPreviewStartMinutes = previewStartMinutes;
+  //   setState(() {
+  //     _dragPreviewStartMinutes = previewStartMinutes;
 
-      if (sinCambio) {
-        _draftFechaCitaPorNoticia.remove(noticia.id);
-      } else {
-        _draftFechaCitaPorNoticia[noticia.id] = normalizada;
-      }
-    });
-  }
+  //     if (sinCambio) {
+  //       _draftFechaCitaPorNoticia.remove(noticia.id);
+  //     } else {
+  //       _draftFechaCitaPorNoticia[noticia.id] = normalizada;
+  //     }
+  //   });
+  // }
 
   Future<void> _abrirNotifOverlay() async {
     await _cargarNotificacionesAdmin(silent: true);
@@ -1562,17 +1567,54 @@ class _AgendaPageState extends State<AgendaPage> {
     });
   }
 
-  void _setDraftFechaCita(Noticia noticia, DateTime nuevaFechaCita) {
+  RenderBox? _agendaGridBox() {
+    final ro = _agendaGridKey.currentContext?.findRenderObject();
+    return ro is RenderBox ? ro : null;
+  }
+
+  String _fmtHoraMin(int totalMinutes) {
+    final clamped = totalMinutes.clamp(0, (24 * 60) - 1);
+    final h = (clamped ~/ 60).toString().padLeft(2, '0');
+    final m = (clamped % 60).toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  void _updateFloatingAgendaDrag(
+    Noticia noticia,
+    Offset globalPosition,
+    double hourHeight,
+    double totalHeight,
+  ) {
+    if (_draggingNoticiaId != noticia.id) return;
+    if (_dragStartMinutes == null || _dragGrabOffsetDy == null) return;
+
+    final gridBox = _agendaGridBox();
+    if (gridBox == null) return;
+
+    final local = gridBox.globalToLocal(globalPosition);
+    final duracion = _eventDurationMinutes(noticia);
+
+    final rawHeight = (duracion / 60.0) * hourHeight;
+    final visualHeight = rawHeight.clamp(92.0, totalHeight.toDouble());
+
+    final maxTop = totalHeight - visualHeight;
+    final top = (local.dy - _dragGrabOffsetDy!).clamp(0.0, maxTop);
+
+    final previewStartMinutes = (top / hourHeight) * 60.0;
+    final maxStartMinutes = ((24 * 60) - duracion).clamp(0, 24 * 60);
+    final snappedStartMinutes =
+        _snapMinutes(previewStartMinutes.round()).clamp(0, maxStartMinutes);
+
     final original = noticia.fechaCita!;
     final normalizada = DateTime(
       original.year,
       original.month,
       original.day,
-      nuevaFechaCita.hour,
-      nuevaFechaCita.minute,
+      snappedStartMinutes ~/ 60,
+      snappedStartMinutes % 60,
     );
 
-    final bool sinCambio =
+    final sinCambio =
         original.year == normalizada.year &&
         original.month == normalizada.month &&
         original.day == normalizada.day &&
@@ -1580,6 +1622,9 @@ class _AgendaPageState extends State<AgendaPage> {
         original.minute == normalizada.minute;
 
     setState(() {
+      _dragPointerLocalDy = local.dy.clamp(0.0, totalHeight);
+      _dragPreviewStartMinutes = previewStartMinutes;
+
       if (sinCambio) {
         _draftFechaCitaPorNoticia.remove(noticia.id);
       } else {
@@ -1588,22 +1633,62 @@ class _AgendaPageState extends State<AgendaPage> {
     });
   }
 
+  // void _setDraftFechaCita(Noticia noticia, DateTime nuevaFechaCita) {
+  //   final original = noticia.fechaCita!;
+  //   final normalizada = DateTime(
+  //     original.year,
+  //     original.month,
+  //     original.day,
+  //     nuevaFechaCita.hour,
+  //     nuevaFechaCita.minute,
+  //   );
+
+  //   final bool sinCambio =
+  //       original.year == normalizada.year &&
+  //       original.month == normalizada.month &&
+  //       original.day == normalizada.day &&
+  //       original.hour == normalizada.hour &&
+  //       original.minute == normalizada.minute;
+
+  //   setState(() {
+  //     if (sinCambio) {
+  //       _draftFechaCitaPorNoticia.remove(noticia.id);
+  //     } else {
+  //       _draftFechaCitaPorNoticia[noticia.id] = normalizada;
+  //     }
+  //   });
+  // }
+
   void _beginAgendaItemDrag(
     Noticia noticia,
     _AgendaDayLayoutItem item,
-    Offset globalPosition,
+    DragStartDetails details,
+    double hourHeight,
+    double totalHeight,
   ) {
     final fechaBase = _fechaCitaVisible(noticia);
     final baseMinutes = fechaBase.hour * 60 + fechaBase.minute;
 
+    final rawHeight = ((_eventDurationMinutes(noticia) / 60.0) * hourHeight);
+    final visualHeight = rawHeight.clamp(92.0, totalHeight.toDouble());
+
     setState(() {
       _draggingNoticiaId = noticia.id;
-      _dragStartGlobalDy = globalPosition.dy;
+      _dragStartGlobalDy = details.globalPosition.dy;
       _dragStartMinutes = baseMinutes;
       _dragPreviewStartMinutes = baseMinutes.toDouble();
       _dragLockedColumn = item.column;
       _dragLockedTotalColumns = item.totalColumns > 0 ? item.totalColumns : 1;
+      _dragGrabOffsetDy = details.localPosition.dy.clamp(0.0, visualHeight);
+      _dragPointerLocalDy = null;
     });
+
+    _updateFloatingAgendaDrag(
+      noticia,
+      details.globalPosition,
+      hourHeight,
+      totalHeight,
+    );
   }
 
   void _onAgendaItemDragUpdate(
@@ -1663,6 +1748,8 @@ class _AgendaPageState extends State<AgendaPage> {
       _dragPreviewStartMinutes = null;
       _dragLockedColumn = null;
       _dragLockedTotalColumns = null;
+      _dragGrabOffsetDy = null;
+      _dragPointerLocalDy = null;
     });
   }
 
@@ -2803,7 +2890,9 @@ class _AgendaPageState extends State<AgendaPage> {
       }
     }
 
-    final eventosParaLayout = eventosOrdenados;
+    final eventosParaLayout = draggingId == null
+      ? eventosOrdenados
+      : eventosOrdenados.where((n) => n.id != draggingId).toList();
 
     final List<_AgendaDayLayoutItem> layoutItems = [];
     final List<_AgendaDayLayoutItem> activeItems = [];
@@ -2899,6 +2988,8 @@ class _AgendaPageState extends State<AgendaPage> {
                           const double gap = 6;
 
                           return Stack(
+                            key: _agendaGridKey,
+                            clipBehavior: Clip.none,
                             children: [
                               Positioned.fill(
                                 child: Column(
@@ -2957,143 +3048,346 @@ class _AgendaPageState extends State<AgendaPage> {
                                     height: height,
                                     child: Material(
                                       color: Colors.transparent,
-                                      child: Listener(
+                                      child: GestureDetector(
                                         behavior: HitTestBehavior.opaque,
-                                        onPointerDown: _modoModificarJornada
-                                            ? (event) => _beginAgendaItemDrag(noticia, item, event.position)
+                                        onVerticalDragStart: _modoModificarJornada
+                                            ? (details) => _beginAgendaItemDrag(
+                                                  noticia,
+                                                  item,
+                                                  details,
+                                                  hourHeight,
+                                                  totalHeight,
+                                                )
                                             : null,
-                                        onPointerMove: _modoModificarJornada
-                                            ? (event) => _onAgendaItemPointerMove(noticia, event, hourHeight)
-                                            : null,
-                                        onPointerUp: _modoModificarJornada
-                                            ? (_) => _onAgendaItemDragEnd()
-                                            : null,
-                                        onPointerCancel: _modoModificarJornada
-                                            ? (_) => _onAgendaItemDragEnd()
-                                            : null,
+                                        onVerticalDragUpdate: null,
+                                        onVerticalDragEnd: null,
+                                        onVerticalDragCancel: null,
                                         child: isDraggingThis
-                                          ? const SizedBox.expand()
-                                          : InkWell(
-                                              borderRadius: BorderRadius.circular(16),
-                                              onTap: _modoModificarJornada ? null : () => openDetalle(noticia),
-                                              child: Builder(
-                                            builder: (context) {
-                                              final reporterBg =
-                                                  _reporteroBgColor(noticia.reportero, theme, isDark);
-                                              final reporterAccent =
-                                                  _reporteroAccentColor(noticia.reportero, theme);
-                                              final reporterText = _readableTextOn(reporterBg);
+                                            ? const SizedBox.expand()
+                                            : InkWell(
+                                                borderRadius: BorderRadius.circular(16),
+                                                onTap: _modoModificarJornada ? null : () => openDetalle(noticia),
+                                                child: Builder(
+                                                  builder: (context) {
+                                                    final reporterBg =
+                                                        _reporteroBgColor(noticia.reportero, theme, isDark);
+                                                    final reporterAccent =
+                                                        _reporteroAccentColor(noticia.reportero, theme);
+                                                    final reporterText = _readableTextOn(reporterBg);
 
-                                              final statusText = cerrada ? 'Cerrada' : 'Pendiente';
-                                              final statusFg = cerrada
-                                                  ? theme.colorScheme.secondary
-                                                  : theme.colorScheme.primary;
-                                              final statusBg = cerrada
-                                                  ? theme.colorScheme.secondary.withOpacity(
-                                                      isDark ? 0.22 : 0.14,
-                                                    )
-                                                  : theme.colorScheme.primary.withOpacity(
-                                                      isDark ? 0.22 : 0.12,
-                                                    );
+                                                    final statusText = cerrada ? 'Cerrada' : 'Pendiente';
+                                                    final statusFg = cerrada
+                                                        ? theme.colorScheme.secondary
+                                                        : theme.colorScheme.primary;
+                                                    final statusBg = cerrada
+                                                        ? theme.colorScheme.secondary.withOpacity(
+                                                            isDark ? 0.22 : 0.14,
+                                                          )
+                                                        : theme.colorScheme.primary.withOpacity(
+                                                            isDark ? 0.22 : 0.12,
+                                                          );
 
-                                              return Container(
-                                                padding: const EdgeInsets.all(8),
-                                                decoration: BoxDecoration(
-                                                  color: reporterBg,
-                                                  borderRadius: BorderRadius.circular(16),
-                                                  border: Border.all(
-                                                    color: reporterAccent,
-                                                    width: 1.2,
-                                                  ),
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      blurRadius: 8,
-                                                      offset: const Offset(0, 3),
-                                                      color: Colors.black.withOpacity(isDark ? 0.20 : 0.07),
-                                                    ),
-                                                  ],
-                                                ),
-                                                child: LayoutBuilder(
-                                                  builder: (context, cardConstraints) {
-                                                    final compact = cardConstraints.maxWidth < 150;
-
-                                                    return DefaultTextStyle(
-                                                      style: TextStyle(color: reporterText),
-                                                      child: Column(
-                                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                                        children: [
-                                                          if (_modoModificarJornada)
-                                                            Align(
-                                                              alignment: Alignment.topRight,
-                                                              child: Icon(
-                                                                Icons.drag_indicator,
-                                                                size: 16,
-                                                                color: reporterText.withOpacity(0.70),
-                                                              ),
-                                                            ),
-                                                          if (_modoModificarJornada)
-                                                            const SizedBox(height: 2),
-                                                          Text(
-                                                            noticia.noticia,
-                                                            maxLines: compact ? 2 : 3,
-                                                            overflow: TextOverflow.ellipsis,
-                                                            style: TextStyle(
-                                                              fontWeight: FontWeight.w900,
-                                                              fontSize: compact ? 11.5 : 12.8,
-                                                              height: 1.12,
-                                                              color: reporterText,
-                                                            ),
-                                                          ),
-                                                          const SizedBox(height: 5),
-                                                          Text(
-                                                            noticia.reportero.trim().isEmpty
-                                                                ? 'Sin reportero'
-                                                                : noticia.reportero,
-                                                            maxLines: 1,
-                                                            overflow: TextOverflow.ellipsis,
-                                                            style: TextStyle(
-                                                              fontSize: compact ? 10.2 : 11,
-                                                              fontWeight: FontWeight.w700,
-                                                              color: reporterText.withOpacity(0.90),
-                                                            ),
-                                                          ),
-                                                          const Spacer(),
-                                                          Align(
-                                                            alignment: Alignment.centerLeft,
-                                                            child: Container(
-                                                              padding: EdgeInsets.symmetric(
-                                                                horizontal: compact ? 7 : 8,
-                                                                vertical: compact ? 3 : 4,
-                                                              ),
-                                                              decoration: BoxDecoration(
-                                                                color: statusBg,
-                                                                borderRadius: BorderRadius.circular(999),
-                                                                border: Border.all(
-                                                                  color: statusFg.withOpacity(0.25),
-                                                                  width: 0.8,
-                                                                ),
-                                                              ),
-                                                              child: Text(
-                                                                statusText,
-                                                                maxLines: 1,
-                                                                overflow: TextOverflow.ellipsis,
-                                                                style: TextStyle(
-                                                                  fontSize: compact ? 9.6 : 10.4,
-                                                                  fontWeight: FontWeight.w800,
-                                                                  color: statusFg,
-                                                                ),
-                                                              ),
+                                                    return Container(
+                                                      padding: const EdgeInsets.all(8),
+                                                      decoration: BoxDecoration(
+                                                        color: reporterBg,
+                                                        borderRadius: BorderRadius.circular(16),
+                                                        border: Border.all(
+                                                          color: reporterAccent,
+                                                          width: 1.2,
+                                                        ),
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            blurRadius: 8,
+                                                            offset: const Offset(0, 3),
+                                                            color: Colors.black.withOpacity(
+                                                              isDark ? 0.20 : 0.07,
                                                             ),
                                                           ),
                                                         ],
                                                       ),
+                                                      child: LayoutBuilder(
+                                                        builder: (context, cardConstraints) {
+                                                          final compact = cardConstraints.maxWidth < 150;
+
+                                                          return DefaultTextStyle(
+                                                            style: TextStyle(color: reporterText),
+                                                            child: Column(
+                                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                                              children: [
+                                                                if (_modoModificarJornada)
+                                                                  Align(
+                                                                    alignment: Alignment.topRight,
+                                                                    child: Icon(
+                                                                      Icons.drag_indicator,
+                                                                      size: 16,
+                                                                      color: reporterText.withOpacity(0.70),
+                                                                    ),
+                                                                  ),
+                                                                if (_modoModificarJornada)
+                                                                  const SizedBox(height: 2),
+                                                                Text(
+                                                                  noticia.noticia,
+                                                                  maxLines: compact ? 2 : 3,
+                                                                  overflow: TextOverflow.ellipsis,
+                                                                  style: TextStyle(
+                                                                    fontWeight: FontWeight.w900,
+                                                                    fontSize: compact ? 11.5 : 12.8,
+                                                                    height: 1.12,
+                                                                    color: reporterText,
+                                                                  ),
+                                                                ),
+                                                                const SizedBox(height: 5),
+                                                                Text(
+                                                                  noticia.reportero.trim().isEmpty
+                                                                      ? 'Sin reportero'
+                                                                      : noticia.reportero,
+                                                                  maxLines: 1,
+                                                                  overflow: TextOverflow.ellipsis,
+                                                                  style: TextStyle(
+                                                                    fontSize: compact ? 10.2 : 11,
+                                                                    fontWeight: FontWeight.w700,
+                                                                    color: reporterText.withOpacity(0.90),
+                                                                  ),
+                                                                ),
+                                                                const Spacer(),
+                                                                Align(
+                                                                  alignment: Alignment.centerLeft,
+                                                                  child: Container(
+                                                                    padding: EdgeInsets.symmetric(
+                                                                      horizontal: compact ? 7 : 8,
+                                                                      vertical: compact ? 3 : 4,
+                                                                    ),
+                                                                    decoration: BoxDecoration(
+                                                                      color: statusBg,
+                                                                      borderRadius: BorderRadius.circular(999),
+                                                                      border: Border.all(
+                                                                        color: statusFg.withOpacity(0.25),
+                                                                        width: 0.8,
+                                                                      ),
+                                                                    ),
+                                                                    child: Text(
+                                                                      statusText,
+                                                                      maxLines: 1,
+                                                                      overflow: TextOverflow.ellipsis,
+                                                                      style: TextStyle(
+                                                                        fontSize: compact ? 9.6 : 10.4,
+                                                                        fontWeight: FontWeight.w800,
+                                                                        color: statusFg,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          );
+                                                        },
+                                                      ),
                                                     );
                                                   },
                                                 ),
-                                              );
-                                            },
+                                              ),
+                                      ),
+                                    ),
+                                  );
+                                }(),
+
+                                if (_modoModificarJornada && draggingNoticia != null)
+                                () {
+                                  final noticia = draggingNoticia!;
+                                  final cerrada = noticia.pendiente == false;
+
+                                  final previewFecha = _fechaCitaVisible(noticia);
+                                  final previewMinutes = previewFecha.hour * 60 + previewFecha.minute;
+
+                                  final rawHeight = ((_eventDurationMinutes(noticia) / 60.0) * hourHeight);
+                                  final height = rawHeight.clamp(minCardHeight, totalHeight.toDouble());
+
+                                  final topMinutes =
+                                      _dragPreviewStartMinutes ?? previewMinutes.toDouble();
+                                  final rawTop = (topMinutes / 60) * hourHeight;
+                                  final top = rawTop.clamp(0.0, totalHeight - height);
+
+                                  final lockedColumns =
+                                      (_dragLockedTotalColumns ?? 1).clamp(1, 12).toInt();
+                                  final lockedColumn =
+                                      (_dragLockedColumn ?? 0).clamp(0, lockedColumns - 1).toInt();
+
+                                  final width =
+                                      (constraints.maxWidth - ((lockedColumns - 1) * gap)) / lockedColumns;
+                                  final left = (lockedColumn * (width + gap)).toDouble();
+
+                                  final chipTop = (top - 30).clamp(4.0, totalHeight - 30);
+                                  final chipLeft = left.clamp(4.0, constraints.maxWidth - 90.0);
+
+                                  return Positioned.fill(
+                                    child: Listener(
+                                      behavior: HitTestBehavior.translucent,
+                                      onPointerMove: (event) => _updateFloatingAgendaDrag(
+                                        noticia,
+                                        event.position,
+                                        hourHeight,
+                                        totalHeight,
+                                      ),
+                                      onPointerUp: (_) => _onAgendaItemDragEnd(),
+                                      onPointerCancel: (_) => _onAgendaItemDragEnd(),
+                                      child: Stack(
+                                        clipBehavior: Clip.none,
+                                        children: [
+                                          Positioned(
+                                            top: top,
+                                            left: left,
+                                            width: width,
+                                            height: height,
+                                            child: IgnorePointer(
+                                              child: Opacity(
+                                                opacity: 0.72,
+                                                child: Builder(
+                                                  builder: (context) {
+                                                    final reporterBg =
+                                                        _reporteroBgColor(noticia.reportero, theme, isDark);
+                                                    final reporterAccent =
+                                                        _reporteroAccentColor(noticia.reportero, theme);
+                                                    final reporterText = _readableTextOn(reporterBg);
+
+                                                    final statusText = cerrada ? 'Cerrada' : 'Pendiente';
+                                                    final statusFg = cerrada
+                                                        ? theme.colorScheme.secondary
+                                                        : theme.colorScheme.primary;
+                                                    final statusBg = cerrada
+                                                        ? theme.colorScheme.secondary.withOpacity(
+                                                            isDark ? 0.22 : 0.14,
+                                                          )
+                                                        : theme.colorScheme.primary.withOpacity(
+                                                            isDark ? 0.22 : 0.12,
+                                                          );
+
+                                                    return Container(
+                                                      padding: const EdgeInsets.all(8),
+                                                      decoration: BoxDecoration(
+                                                        color: reporterBg,
+                                                        borderRadius: BorderRadius.circular(16),
+                                                        border: Border.all(
+                                                          color: reporterAccent,
+                                                          width: 1.6,
+                                                        ),
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            blurRadius: 12,
+                                                            offset: const Offset(0, 4),
+                                                            color: Colors.black.withOpacity(
+                                                              isDark ? 0.24 : 0.10,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      child: LayoutBuilder(
+                                                        builder: (context, cardConstraints) {
+                                                          final compact = cardConstraints.maxWidth < 150;
+
+                                                          return DefaultTextStyle(
+                                                            style: TextStyle(color: reporterText),
+                                                            child: Column(
+                                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                                              children: [
+                                                                Align(
+                                                                  alignment: Alignment.topRight,
+                                                                  child: Icon(
+                                                                    Icons.drag_indicator,
+                                                                    size: 16,
+                                                                    color: reporterText.withOpacity(0.75),
+                                                                  ),
+                                                                ),
+                                                                const SizedBox(height: 2),
+                                                                Text(
+                                                                  noticia.noticia,
+                                                                  maxLines: compact ? 2 : 3,
+                                                                  overflow: TextOverflow.ellipsis,
+                                                                  style: TextStyle(
+                                                                    fontWeight: FontWeight.w900,
+                                                                    fontSize: compact ? 11.5 : 12.8,
+                                                                    height: 1.12,
+                                                                    color: reporterText,
+                                                                  ),
+                                                                ),
+                                                                const SizedBox(height: 5),
+                                                                Text(
+                                                                  noticia.reportero.trim().isEmpty
+                                                                      ? 'Sin reportero'
+                                                                      : noticia.reportero,
+                                                                  maxLines: 1,
+                                                                  overflow: TextOverflow.ellipsis,
+                                                                  style: TextStyle(
+                                                                    fontSize: compact ? 10.2 : 11,
+                                                                    fontWeight: FontWeight.w700,
+                                                                    color: reporterText.withOpacity(0.90),
+                                                                  ),
+                                                                ),
+                                                                const Spacer(),
+                                                                Align(
+                                                                  alignment: Alignment.centerLeft,
+                                                                  child: Container(
+                                                                    padding: EdgeInsets.symmetric(
+                                                                      horizontal: compact ? 7 : 8,
+                                                                      vertical: compact ? 3 : 4,
+                                                                    ),
+                                                                    decoration: BoxDecoration(
+                                                                      color: statusBg,
+                                                                      borderRadius: BorderRadius.circular(999),
+                                                                      border: Border.all(
+                                                                        color: statusFg.withOpacity(0.25),
+                                                                        width: 0.8,
+                                                                      ),
+                                                                    ),
+                                                                    child: Text(
+                                                                      statusText,
+                                                                      maxLines: 1,
+                                                                      overflow: TextOverflow.ellipsis,
+                                                                      style: TextStyle(
+                                                                        fontSize: compact ? 9.6 : 10.4,
+                                                                        fontWeight: FontWeight.w800,
+                                                                        color: statusFg,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          );
+                                                        },
+                                                      ),
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                            ),
                                           ),
-                                        ),
+                                          Positioned(
+                                            top: chipTop,
+                                            left: chipLeft,
+                                            child: IgnorePointer(
+                                              child: Material(
+                                                elevation: 4,
+                                                color: theme.colorScheme.inverseSurface,
+                                                borderRadius: BorderRadius.circular(999),
+                                                child: Padding(
+                                                  padding: const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 6,
+                                                  ),
+                                                  child: Text(
+                                                    _fmtHoraMin(previewMinutes),
+                                                    style: TextStyle(
+                                                      color: theme.colorScheme.onInverseSurface,
+                                                      fontWeight: FontWeight.w800,
+                                                      fontSize: 11.5,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   );
