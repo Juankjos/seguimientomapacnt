@@ -53,6 +53,21 @@ class _AgendaDayLayoutItem {
     this.totalColumns = 1,
   });
 }
+class _AgendaConflict {
+  final Noticia a;
+  final Noticia b;
+  final int startOverlapMinutes;
+  final int endOverlapMinutes;
+
+  const _AgendaConflict({
+    required this.a,
+    required this.b,
+    required this.startOverlapMinutes,
+    required this.endOverlapMinutes,
+  });
+
+  int get overlapMinutes => endOverlapMinutes - startOverlapMinutes;
+}
 
 MesEfemeride efemerideMes(int month, ThemeData theme) {
   switch (month) {
@@ -218,6 +233,66 @@ class _AgendaPageState extends State<AgendaPage> {
     );
   }
 
+  Widget _buildConflictBanner({
+    required ThemeData theme,
+    required List<_AgendaConflict> conflicts,
+  }) {
+    if (conflicts.isEmpty) return const SizedBox.shrink();
+
+    final color = theme.colorScheme.error;
+    final bg = color.withOpacity(theme.brightness == Brightness.dark ? 0.18 : 0.10);
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: color, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  conflicts.length == 1
+                      ? 'Hay 1 conflicto de horario'
+                      : 'Hay ${conflicts.length} conflictos de horario',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: color,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...conflicts.map((c) {
+
+            return Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                '• "${c.a.noticia}" se cruza con "${c.b.noticia}" '
+                'entre ${_fmtHoraMin(c.startOverlapMinutes)} y ${_fmtHoraMin(c.endOverlapMinutes)}. '
+                'Mueve una para que inicie después de ${_fmtHoraMin(c.endOverlapMinutes)}.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: theme.colorScheme.onSurface,
+                  height: 1.35,
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   double _hPad(BuildContext context) => _isWebWide(context) ? 20 : 12;
   double _selectorHPad(BuildContext context) => _isWebWide(context) ? 20 : 16;
 
@@ -227,9 +302,12 @@ class _AgendaPageState extends State<AgendaPage> {
   }
 
   String _fmtHoraMin(int totalMinutes) {
-    final clamped = totalMinutes.clamp(0, 1439);
-    final h = (clamped ~/ 60).toString().padLeft(2, '0');
-    final m = (clamped % 60).toString().padLeft(2, '0');
+    final safe = totalMinutes.clamp(0, 1440);
+
+    if (safe == 1440) return '24:00';
+
+    final h = (safe ~/ 60).toString().padLeft(2, '0');
+    final m = (safe % 60).toString().padLeft(2, '0');
     return '$h:$m';
   }
 
@@ -825,11 +903,11 @@ class _AgendaPageState extends State<AgendaPage> {
       return a.noticia.id.compareTo(b.noticia.id);
     });
 
-    final columnEnds = <int, int>{};
+    final Map<int, int> columnEnds = {};
     int maxColumns = 0;
 
     bool canUseColumn(int col, int startMinutes) {
-      final end = columnEnds[col];
+      final int? end = columnEnds[col];
       return end == null || end <= startMinutes;
     }
 
@@ -840,7 +918,8 @@ class _AgendaPageState extends State<AgendaPage> {
 
       int? chosen;
 
-      if (preferredColumn != null && canUseColumn(preferredColumn, item.startMinutes)) {
+      if (preferredColumn != null &&
+          canUseColumn(preferredColumn, item.startMinutes)) {
         chosen = preferredColumn;
       } else {
         final reusable = <int>[];
@@ -952,6 +1031,80 @@ class _AgendaPageState extends State<AgendaPage> {
       ..addEntries(result.map((e) => MapEntry(e.noticia.id, e.column)));
 
     return result;
+  }
+
+  List<_AgendaConflict> _visibleConflicts = const [];
+  List<_AgendaConflict> _buildAgendaConflicts(List<Noticia> eventos) {
+    final items = eventos
+        .where((n) => n.fechaCita != null)
+        .map((n) {
+          final start = _fechaCitaVisible(n);
+          final startMinutes = start.hour * 60 + start.minute;
+          final endMinutes =
+              (startMinutes + _eventDurationMinutes(n)).clamp(0, 24 * 60);
+
+          return (
+            noticia: n,
+            reporteroKey: _reporteroKey(n.reportero),
+            startMinutes: startMinutes,
+            endMinutes: endMinutes,
+          );
+        })
+        .toList()
+      ..sort((x, y) {
+        final c = x.startMinutes.compareTo(y.startMinutes);
+        if (c != 0) return c;
+        return x.noticia.id.compareTo(y.noticia.id);
+      });
+
+    final conflicts = <_AgendaConflict>[];
+
+    for (int i = 0; i < items.length; i++) {
+      final current = items[i];
+
+      for (int j = i + 1; j < items.length; j++) {
+        final next = items[j];
+
+        if (next.startMinutes >= current.endMinutes) {
+          break;
+        }
+
+        // Solo conflicto si es el mismo reportero
+        if (current.reporteroKey.isEmpty || next.reporteroKey.isEmpty) {
+          continue;
+        }
+        if (current.reporteroKey != next.reporteroKey) {
+          continue;
+        }
+
+        final overlapStart =
+            current.startMinutes > next.startMinutes ? current.startMinutes : next.startMinutes;
+        final overlapEnd =
+            current.endMinutes < next.endMinutes ? current.endMinutes : next.endMinutes;
+
+        if (overlapEnd > overlapStart) {
+          conflicts.add(
+            _AgendaConflict(
+              a: current.noticia,
+              b: next.noticia,
+              startOverlapMinutes: overlapStart,
+              endOverlapMinutes: overlapEnd,
+            ),
+          );
+        }
+      }
+    }
+
+    return conflicts;
+  }
+
+  Set<int> _buildConflictIds(List<_AgendaConflict> conflicts) {
+    final ids = <int>{};
+    for (final c in conflicts) {
+      ids.add(c.a.id);
+      ids.add(c.b.id);
+    }
+    return ids;
   }
 
   // void _onAgendaItemPointerMove(
@@ -1828,6 +1981,16 @@ class _AgendaPageState extends State<AgendaPage> {
   }
 
   void _entrarModoModificarJornada() {
+    final dia = _selectedDay ?? _soloFecha(DateTime.now());
+    final eventos = _eventosDeDia(dia);
+    final conflictosIniciales = _buildAgendaConflicts([...eventos]..sort((a, b) {
+      final da = _fechaCitaVisible(a);
+      final db = _fechaCitaVisible(b);
+      final c = da.compareTo(db);
+      if (c != 0) return c;
+      return a.id.compareTo(b.id);
+    }));
+
     setState(() {
       _modoModificarJornada = true;
       _savingCambiosAgenda = false;
@@ -1838,6 +2001,7 @@ class _AgendaPageState extends State<AgendaPage> {
       _dragPreviewStartMinutes = null;
       _dragLockedColumn = null;
       _dragLockedTotalColumns = null;
+      _visibleConflicts = conflictosIniciales;
     });
   }
 
@@ -2029,6 +2193,16 @@ class _AgendaPageState extends State<AgendaPage> {
   }
 
   void _onAgendaItemDragEnd() {
+    final dia = _selectedDay ?? _soloFecha(DateTime.now());
+    final eventos = _eventosDeDia(dia);
+    final conflictosActuales = _buildAgendaConflicts([...eventos]..sort((a, b) {
+      final da = _fechaCitaVisible(a);
+      final db = _fechaCitaVisible(b);
+      final c = da.compareTo(db);
+      if (c != 0) return c;
+      return a.id.compareTo(b.id);
+    }));
+
     setState(() {
       _draggingNoticiaId = null;
       _dragStartGlobalDy = null;
@@ -2038,6 +2212,7 @@ class _AgendaPageState extends State<AgendaPage> {
       _dragLockedTotalColumns = null;
       _dragGrabOffsetDy = null;
       _dragPointerLocalDy = null;
+      _visibleConflicts = conflictosActuales;
     });
   }
 
@@ -3166,6 +3341,12 @@ class _AgendaPageState extends State<AgendaPage> {
       return a.id.compareTo(b.id);
     });
 
+    final conflicts = _buildAgendaConflicts(eventosOrdenados);
+    final liveConflicts = _buildAgendaConflicts(eventosOrdenados);
+    final shownConflicts =
+        _draggingNoticiaId != null ? _visibleConflicts : liveConflicts;
+    final conflictIds = _buildConflictIds(liveConflicts);
+
     final draggingId = _draggingNoticiaId;
 
     Noticia? draggingNoticia;
@@ -3207,7 +3388,7 @@ class _AgendaPageState extends State<AgendaPage> {
             )
           : SingleChildScrollView(
               padding: EdgeInsets.only(bottom: 16 + fabClearance + bottomSafe),
-              physics: _modoModificarJornada
+              physics: _draggingNoticiaId != null
                 ? const NeverScrollableScrollPhysics()
                 : const AlwaysScrollableScrollPhysics(),
               child: SizedBox(
@@ -3299,6 +3480,7 @@ class _AgendaPageState extends State<AgendaPage> {
                                   final left = (item.column * (width + gap)).toDouble();
                                   final isDraggingThis =
                                       _modoModificarJornada && _draggingNoticiaId == noticia.id;
+                                  final hasConflict = conflictIds.contains(noticia.id);
                                   return AnimatedPositioned(
                                     key: ValueKey('agenda_item_${noticia.id}'),
                                     duration: const Duration(milliseconds: 160),
@@ -3371,8 +3553,8 @@ class _AgendaPageState extends State<AgendaPage> {
                                                         color: reporterBg,
                                                         borderRadius: BorderRadius.circular(16),
                                                         border: Border.all(
-                                                          color: reporterAccent,
-                                                          width: 1.2,
+                                                          color: hasConflict ? theme.colorScheme.error : reporterAccent,
+                                                          width: hasConflict ? 2.0 : 1.2,
                                                         ),
                                                         boxShadow: [
                                                           BoxShadow(
@@ -3876,7 +4058,16 @@ class _AgendaPageState extends State<AgendaPage> {
                     child: _maybeScrollbar(
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.only(bottom: 12),
-                        child: side,
+                        child: Column(
+                          children: [
+                            _daySidePanel(theme: theme, dia: dia, eventos: eventos),
+                            const SizedBox(height: 10),
+                            _buildConflictBanner(
+                              theme: theme,
+                              conflicts: shownConflicts,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -3893,6 +4084,7 @@ class _AgendaPageState extends State<AgendaPage> {
       child: Column(
         children: [
           header,
+          _buildConflictBanner(theme: theme, conflicts: conflicts),
           const SizedBox(height: 10),
           Expanded(child: agenda),
         ],
