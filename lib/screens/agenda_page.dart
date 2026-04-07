@@ -835,7 +835,7 @@ class _AgendaPageState extends State<AgendaPage> {
 
     _notifLoading = true;
     try {
-      final feed = await ApiService.getAdminNotificaciones(limit: 20);
+      final feed = await ApiService.getAdminNotificaciones(limit: 50);
 
       if (!mounted) return;
       setState(() {
