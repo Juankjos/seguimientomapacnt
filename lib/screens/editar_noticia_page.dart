@@ -146,16 +146,49 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
   bool _mostrarBuscadorCliente = false;
 
   int? _clienteId;
+  int? _usuarioClienteId;
   String? _clienteNombre;
   Cliente? _clienteSeleccionado;
 
   bool _usarDomicilioCliente = false;
   bool _cargandoClienteDetalle = false;
+  int? _domicilioClienteSlotSeleccionado;
 
-  String get _domicilioCliente => (_clienteSeleccionado?.domicilio ?? '').trim();
-  bool get _clienteTieneDomicilio => _domicilioCliente.isNotEmpty;
+  List<ClienteDomicilioOption> get _domiciliosCliente =>
+      _clienteSeleccionado?.domiciliosDisponibles ?? const [];
+
+  String? get _domicilioClienteSeleccionado {
+    if (_domicilioClienteSlotSeleccionado == null) return null;
+
+    for (final d in _domiciliosCliente) {
+      if (d.slot == _domicilioClienteSlotSeleccionado) {
+        return d.texto;
+      }
+    }
+    return null;
+  }
+
+  bool get _clienteTieneDomicilios => _domiciliosCliente.isNotEmpty;
+
   bool get _tieneClienteAsignado =>
-    _clienteId != null || (_clienteNombre?.trim().isNotEmpty ?? false);
+      _clienteId != null || (_clienteNombre?.trim().isNotEmpty ?? false);
+
+  ClienteDomicilioOption? _buscarDomicilioCoincidente(Cliente cliente, String textoActual) {
+    final actual = _norm(textoActual);
+    for (final d in cliente.domiciliosDisponibles) {
+      if (_norm(d.texto) == actual) return d;
+    }
+    return null;
+  }
+
+  void _aplicarDomicilioClienteSeleccionado() {
+    final texto = _domicilioClienteSeleccionado;
+    if (texto == null || texto.trim().isEmpty) {
+      _domCtrl.clear();
+      return;
+    }
+    _domCtrl.text = texto;
+  }
 
   // ---------- Límite ----------
   static const List<int> _limitesMin = [60, 120, 180, 240, 300];
@@ -176,7 +209,7 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
   DateTime? _fechaCita;
   bool _guardando = false;
   String? _error;
-  String _tipoDeNota = 'Nota';
+  String _tipoDeNota = 'Noticia';
 
   bool get _esAdmin => widget.role == 'admin';
   bool get _yaTieneHoraLlegada => widget.noticia.horaLlegada != null;
@@ -1131,10 +1164,11 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     _domCtrl = TextEditingController(text: widget.noticia.domicilio ?? '');
 
     _fechaCita = widget.noticia.fechaCita;
-    _tipoDeNota = widget.noticia.tipoDeNota;
+    _tipoDeNota = widget.noticia.tipoDeNota.isEmpty ? 'Noticia' : widget.noticia.tipoDeNota;
     _limiteTiempoMin = _normalizarLimite(widget.noticia.limiteTiempoMinutos);
 
-    _clienteId = widget.noticia.clienteId;
+    _clienteId = widget.noticia.clienteClienteId ?? widget.noticia.clienteId;
+    _usuarioClienteId = widget.noticia.usuarioClienteId;
     _clienteNombre =
         (widget.noticia.cliente ?? '').trim().isEmpty ? null : widget.noticia.cliente;
 
@@ -1272,28 +1306,27 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
       final det = await ApiService.getClienteDetalle(clienteId: id);
       if (!mounted) return;
 
-      final domNota = _domCtrl.text.trim();
-      final domCli = (det.domicilio ?? '').trim();
-
-      bool shouldUse = false;
-      if (domNota.isNotEmpty && domCli.isNotEmpty) {
-        final a = _norm(domNota);
-        final b = _norm(domCli);
-        shouldUse = (a == b) || a.contains(b) || b.contains(a);
-      }
+      final coincidente = _buscarDomicilioCoincidente(det, _domCtrl.text);
+      final slotInicial = coincidente != null
+          ? coincidente.slot
+          : (det.domiciliosDisponibles.isNotEmpty
+              ? det.domiciliosDisponibles.first.slot
+              : null);
 
       setState(() {
         _clienteSeleccionado = det;
+        _usuarioClienteId = det.usuarioClienteId;
         _cargandoClienteDetalle = false;
-        _usarDomicilioCliente = shouldUse;
+        _domicilioClienteSlotSeleccionado = slotInicial;
+        _usarDomicilioCliente = coincidente != null;
       });
+
+      if (coincidente != null) {
+        _domCtrl.text = coincidente.texto;
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _cargandoClienteDetalle = false);
-
-      if (_domCtrl.text.trim().isNotEmpty) {
-        setState(() => _usarDomicilioCliente = true);
-      }
     }
   }
 
@@ -1320,33 +1353,32 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
   Future<void> _seleccionarCliente(Cliente c) async {
     setState(() {
       _clienteId = c.id;
+      _usuarioClienteId = c.usuarioClienteId;
       _clienteNombre = c.nombre;
       _clienteSeleccionado = null;
       _mostrarBuscadorCliente = false;
       _cargandoClienteDetalle = true;
+      _domicilioClienteSlotSeleccionado = null;
     });
 
     try {
       final det = await ApiService.getClienteDetalle(clienteId: c.id);
       if (!mounted) return;
 
+      final first = det.domiciliosDisponibles.isNotEmpty
+          ? det.domiciliosDisponibles.first
+          : null;
+
       setState(() {
         _clienteSeleccionado = det;
+        _clienteId = det.id;
+        _usuarioClienteId = det.usuarioClienteId;
+        _clienteNombre = det.nombre;
         _cargandoClienteDetalle = false;
+        _usarDomicilioCliente = first != null;
+        _domicilioClienteSlotSeleccionado = first?.slot;
+        _domCtrl.text = first?.texto ?? '';
       });
-
-      final dom = (det.domicilio ?? '').trim();
-      if (dom.isNotEmpty) {
-        setState(() {
-          _usarDomicilioCliente = true;
-          _domCtrl.text = dom;
-        });
-      } else {
-        setState(() {
-          _usarDomicilioCliente = false;
-          _domCtrl.clear();
-        });
-      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _cargandoClienteDetalle = false);
@@ -1397,13 +1429,14 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
   void _quitarCliente() {
     setState(() {
       _clienteId = null;
+      _usuarioClienteId = null;
       _clienteNombre = null;
       _clienteSeleccionado = null;
-
       _mostrarBuscadorCliente = false;
       _buscarClienteCtrl.clear();
       _resultadosClientes = [];
       _usarDomicilioCliente = false;
+      _domicilioClienteSlotSeleccionado = null;
       _domCtrl.clear();
     });
   }
@@ -1424,7 +1457,8 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
     final limiteMin = _limiteTiempoMin;
 
     // --------- Cliente/Domicilio (Admin) ---------
-    final int? oldClienteId = widget.noticia.clienteId;
+    final int? oldClienteId =
+      widget.noticia.clienteClienteId ?? widget.noticia.clienteId;
     final int? newClienteId = _clienteId;
 
     final bool setCliente = _esAdmin && (newClienteId != oldClienteId);
@@ -1531,7 +1565,8 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
         fechaCita: fechaSend,
         tipoDeNota: tipoSend,
         limiteTiempoMinutos: limiteSend,
-        clienteId: newClienteId,
+        clienteClienteId: newClienteId,
+        usuarioClienteId: _usuarioClienteId,
         setCliente: setCliente,
         domicilio: domSend,
         setDomicilio: setDomicilio,
@@ -1759,11 +1794,12 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                 border: const OutlineInputBorder(),
               ),
               items: const [
-                DropdownMenuItem(value: 'Nota', child: Text('Nota')),
+                DropdownMenuItem(value: 'Noticia', child: Text('Noticia')),
                 DropdownMenuItem(value: 'Entrevista', child: Text('Entrevista')),
+                DropdownMenuItem(value: 'Reportaje', child: Text('Reportaje')),
               ],
               onChanged: _puedeEditarTipoDeNota
-                  ? (v) => setState(() => _tipoDeNota = v ?? 'Nota')
+                  ? (v) => setState(() => _tipoDeNota = v ?? 'Noticia')
                   : null,
             ),
             const SizedBox(height: 12),
@@ -1882,29 +1918,70 @@ class _EditarNoticiaPageState extends State<EditarNoticiaPage> {
                 title: const Text('¿Agregar domicilio del cliente a la noticia?'),
                 subtitle: Text(
                   _cargandoClienteDetalle
-                      ? 'Cargando domicilio...'
-                      : 'Domicilio del cliente: ${_domicilioCliente.isEmpty ? '—' : _domicilioCliente}',
+                      ? 'Cargando domicilios...'
+                      : _clienteTieneDomicilios
+                          ? (_domicilioClienteSeleccionado?.trim().isNotEmpty ?? false)
+                              ? 'Domicilio seleccionado: ${_domicilioClienteSeleccionado!}'
+                              : '${_domiciliosCliente.length} domicilio(s) disponible(s)'
+                          : 'El cliente no tiene domicilios registrados',
                 ),
                 value: _usarDomicilioCliente,
                 onChanged: (!_esAdmin || _cargandoClienteDetalle)
-                  ? null
-                  : (v) {
-                      if (v && !_clienteTieneDomicilio) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('El cliente no tiene domicilio registrado')),
-                        );
-                        return;
-                      }
-                      setState(() {
-                        _usarDomicilioCliente = v;
-                        if (v) {
-                          _domCtrl.text = _domicilioCliente;
-                        } else {
-                          _domCtrl.clear();
+                    ? null
+                    : (v) {
+                        if (v && !_clienteTieneDomicilios) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('El cliente no tiene domicilio registrado')),
+                          );
+                          return;
                         }
-                      });
-                    },
+
+                        setState(() {
+                          _usarDomicilioCliente = v;
+
+                          if (v) {
+                            _domicilioClienteSlotSeleccionado ??= _domiciliosCliente.first.slot;
+                            _aplicarDomicilioClienteSeleccionado();
+                          } else {
+                            _domicilioClienteSlotSeleccionado = null;
+                            _domCtrl.clear();
+                          }
+                        });
+                      },
               ),
+            ],
+
+            if (_usarDomicilioCliente && _clienteTieneDomicilios) ...[
+              const SizedBox(height: 10),
+              DropdownButtonFormField<int>(
+                value: _domicilioClienteSlotSeleccionado,
+                decoration: const InputDecoration(
+                  labelText: 'Selecciona domicilio del cliente',
+                  border: OutlineInputBorder(),
+                ),
+                items: _domiciliosCliente
+                    .map(
+                      (d) => DropdownMenuItem<int>(
+                        value: d.slot,
+                        child: Text('Domicilio ${d.slot}'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (!_esAdmin || _cargandoClienteDetalle)
+                    ? null
+                    : (value) {
+                        setState(() {
+                          _domicilioClienteSlotSeleccionado = value;
+                          _aplicarDomicilioClienteSeleccionado();
+                        });
+                      },
+              ),
+              const SizedBox(height: 8),
+              if ((_domicilioClienteSeleccionado ?? '').trim().isNotEmpty)
+                Text(
+                  _domicilioClienteSeleccionado!,
+                  style: theme.textTheme.bodySmall,
+                ),
             ],
 
             const SizedBox(height: 12),

@@ -145,8 +145,32 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
   Cliente? _clienteSeleccionado;
   bool _usarDomicilioCliente = false;
   bool _cargandoDomicilioCliente = false;
-  String get _domicilioCliente => (_clienteSeleccionado?.domicilio ?? '').trim();
-  bool get _clienteTieneDomicilio => _domicilioCliente.isNotEmpty;
+  int? _domicilioClienteSlotSeleccionado;
+
+  List<ClienteDomicilioOption> get _domiciliosCliente =>
+      _clienteSeleccionado?.domiciliosDisponibles ?? const [];
+
+  bool get _clienteTieneDomicilios => _domiciliosCliente.isNotEmpty;
+
+  String? get _domicilioClienteSeleccionado {
+    if (_domicilioClienteSlotSeleccionado == null) return null;
+
+    for (final d in _domiciliosCliente) {
+      if (d.slot == _domicilioClienteSlotSeleccionado) {
+        return d.texto;
+      }
+    }
+    return null;
+  }
+
+  void _aplicarDomicilioClienteSeleccionado() {
+    final texto = _domicilioClienteSeleccionado;
+    if (texto == null || texto.trim().isEmpty) {
+      _domicilioCtrl.clear();
+      return;
+    }
+    _domicilioCtrl.text = texto;
+  }
 
   String _labelLimite(int min) {
     final h = (min ~/ 60);
@@ -156,7 +180,7 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
   int? _reporteroIdSeleccionado;
   String? _reporteroNombreSeleccionado;
   String? _fechaError;
-  String _tipoDeNota = 'Nota';
+  String _tipoDeNota = 'Noticia';
   List<ReporteroBusqueda> _resultadosReporteros = [];
   bool _buscandoReporteros = false;
   bool _mostrarBuscadorReportero = false;
@@ -1421,32 +1445,32 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
       _clienteNombreSeleccionado = c.nombre;
       _mostrarBuscadorCliente = false;
       _cargandoDomicilioCliente = true;
+      _domicilioClienteSlotSeleccionado = null;
     });
 
     try {
       final detalle = await ApiService.getClienteDetalle(clienteId: c.id);
       if (!mounted) return;
+
       setState(() {
         _clienteSeleccionado = detalle;
+        _clienteIdSeleccionado = detalle.id;
+        _clienteNombreSeleccionado = detalle.nombre;
         _cargandoDomicilioCliente = false;
+
+        if (detalle.domiciliosDisponibles.isNotEmpty) {
+          _domicilioClienteSlotSeleccionado = detalle.domiciliosDisponibles.first.slot;
+        } else {
+          _domicilioClienteSlotSeleccionado = null;
+        }
+
+        if (_usarDomicilioCliente) {
+          _aplicarDomicilioClienteSeleccionado();
+        }
       });
-      if (_usarDomicilioCliente) {
-        final dom = (detalle.domicilio ?? '').trim();
-        setState(() {
-          if (dom.isNotEmpty) {
-            _domicilioCtrl.text = dom;
-          } else {
-            _domicilioCtrl.clear();
-            _usarDomicilioCliente = false;
-          }
-        });
-      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _cargandoDomicilioCliente = false);
-      if (_usarDomicilioCliente && _clienteTieneDomicilio) {
-        _domicilioCtrl.text = _domicilioCliente;
-      }
     }
   }
 
@@ -1659,7 +1683,8 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
         descripcion: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
         domicilio: _domicilioCtrl.text.trim().isEmpty ? null : _domicilioCtrl.text.trim(),
         reporteroId: _reporteroIdSeleccionado,
-        clienteId: _clienteIdSeleccionado,
+        clienteClienteId: _clienteIdSeleccionado,
+        usuarioClienteId: _clienteSeleccionado?.usuarioClienteId,
         fechaCita: fechaCita,
         limiteTiempoMinutos: limiteMin,
       );
@@ -1753,10 +1778,11 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
               border: OutlineInputBorder(),
             ),
             items: const [
-              DropdownMenuItem(value: 'Nota', child: Text('Nota')),
+              DropdownMenuItem(value: 'Noticia', child: Text('Noticia')),
               DropdownMenuItem(value: 'Entrevista', child: Text('Entrevista')),
+              DropdownMenuItem(value: 'Reportaje', child: Text('Reportaje')),
             ],
-            onChanged: (v) => setState(() => _tipoDeNota = v ?? 'Nota'),
+            onChanged: (v) => setState(() => _tipoDeNota = v ?? 'Noticia'),
           ),
 
           const SizedBox(height: 12),
@@ -1863,10 +1889,10 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
                       return ListTile(
                         leading: const Icon(Icons.person),
                         title: Text(c.nombre),
-                        subtitle: (c.domicilio ?? '').trim().isEmpty
+                        subtitle: (c.domicilioPrincipal ?? '').trim().isEmpty
                             ? null
                             : Text(
-                                (c.domicilio ?? '').trim(),
+                                c.domicilioPrincipal!.trim(),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -1883,26 +1909,61 @@ class _CrearNoticiaPageState extends State<CrearNoticiaPage> {
 
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
-              title: const Text('¿Agregar domicilio del cliente a la noticia?'),
+              title: const Text('¿Usar domicilio del cliente?'),
               subtitle: Text(
                 _cargandoDomicilioCliente
-                    ? 'Cargando domicilio...'
-                    : 'Domicilio: ${_domicilioCliente.isEmpty ? '—' : _domicilioCliente}',
+                    ? 'Cargando domicilios...'
+                    : _clienteTieneDomicilios
+                        ? '${_domiciliosCliente.length} domicilio(s) disponible(s)'
+                        : 'Este cliente no tiene domicilios registrados',
               ),
               value: _usarDomicilioCliente,
-              onChanged: (_guardando || _cargandoDomicilioCliente || !_clienteTieneDomicilio)
+              onChanged: (_guardando || _cargandoDomicilioCliente || !_clienteTieneDomicilios)
                   ? null
                   : (v) {
                       setState(() {
                         _usarDomicilioCliente = v;
                         if (v) {
-                          _domicilioCtrl.text = _domicilioCliente;
+                          _domicilioClienteSlotSeleccionado ??= _domiciliosCliente.first.slot;
+                          _aplicarDomicilioClienteSeleccionado();
                         } else {
+                          _domicilioClienteSlotSeleccionado = null;
                           _domicilioCtrl.clear();
                         }
                       });
                     },
             ),
+
+            if (_usarDomicilioCliente && _clienteTieneDomicilios) ...[
+              const SizedBox(height: 10),
+              DropdownButtonFormField<int>(
+                value: _domicilioClienteSlotSeleccionado,
+                decoration: const InputDecoration(
+                  labelText: 'Selecciona domicilio del cliente',
+                  border: OutlineInputBorder(),
+                ),
+                items: _domiciliosCliente
+                    .map(
+                      (d) => DropdownMenuItem<int>(
+                        value: d.slot,
+                        child: Text('Domicilio ${d.slot}'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _domicilioClienteSlotSeleccionado = value;
+                    _aplicarDomicilioClienteSeleccionado();
+                  });
+                },
+              ),
+              const SizedBox(height: 8),
+              if ((_domicilioClienteSeleccionado ?? '').trim().isNotEmpty)
+                Text(
+                  _domicilioClienteSeleccionado!,
+                  style: theme.textTheme.bodySmall,
+                ),
+            ],
           ],
 
           const SizedBox(height: 12),

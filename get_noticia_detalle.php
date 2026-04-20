@@ -21,7 +21,7 @@ try {
             SELECT
                 n.id,
                 n.noticia,
-                COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
+                COALESCE(n.tipo_de_nota, 'Noticia') AS tipo_de_nota,
                 n.descripcion,
                 c.nombre AS cliente,
                 n.cliente_id,
@@ -70,7 +70,7 @@ try {
             SELECT
                 n.id,
                 n.noticia,
-                COALESCE(n.tipo_de_nota, 'Nota') AS tipo_de_nota,
+                COALESCE(n.tipo_de_nota, 'Noticia') AS tipo_de_nota,
                 n.descripcion,
                 c.nombre AS cliente,
                 n.cliente_id,

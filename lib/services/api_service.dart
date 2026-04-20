@@ -185,11 +185,23 @@ class ApiService {
   }
 
   // 🔹 Noticias por cliente (historial en ventana de clientes)
-  static Future<List<Noticia>> getNoticiasPorCliente({required int clienteId}) async {
-    if (clienteId <= 0) throw Exception('clienteId inválido: $clienteId');
+  static Future<List<Noticia>> getNoticiasPorCliente({
+    int? clienteClienteId,
+    int? usuarioClienteId,
+  }) async {
+    if ((clienteClienteId ?? 0) <= 0 && (usuarioClienteId ?? 0) <= 0) {
+      throw Exception('Debes enviar clienteClienteId o usuarioClienteId');
+    }
+
+    final query = <String, String>{};
+    if ((clienteClienteId ?? 0) > 0) {
+      query['cliente_cliente_id'] = clienteClienteId.toString();
+    } else if ((usuarioClienteId ?? 0) > 0) {
+      query['usuario_cliente_id'] = usuarioClienteId.toString();
+    }
 
     final uri = Uri.parse('$baseUrl/get_noticias_por_cliente.php')
-        .replace(queryParameters: {'cliente_id': clienteId.toString()});
+        .replace(queryParameters: query);
 
     final res = await http.get(uri);
     if (res.statusCode != 200) {
@@ -205,7 +217,10 @@ class ApiService {
           .toList();
     }
 
-    throw Exception((data is Map ? data['message'] : null) ?? 'No se pudieron cargar noticias del cliente');
+    throw Exception(
+      (data is Map ? data['message'] : null) ??
+          'No se pudieron cargar noticias del cliente',
+    );
   }
 
   // 🔹 Crear noticia (admin)
@@ -214,7 +229,8 @@ class ApiService {
     String? descripcion,
     String? domicilio,
     int? reporteroId,
-    int? clienteId,
+    int? clienteClienteId,
+    int? usuarioClienteId,
     required String tipoDeNota,
     DateTime? fechaCita,
     int limiteTiempoMinutos = 60,
@@ -236,7 +252,8 @@ class ApiService {
       'descripcion': descripcion ?? '',
       'domicilio': domicilio ?? '',
       'reportero_id': reporteroId?.toString() ?? '',
-      'cliente_id': clienteId?.toString() ?? '',
+      'cliente_cliente_id': clienteClienteId?.toString() ?? '',
+      'usuario_cliente_id': usuarioClienteId?.toString() ?? '',
       'fecha_cita': fechaCitaStr ?? '',
       'limite_tiempo_minutos': limiteTiempoMinutos.toString(),
     };
@@ -835,7 +852,8 @@ class ApiService {
     int? limiteTiempoMinutos,
 
     bool setCliente = false,
-    int? clienteId,
+    int? clienteClienteId,
+    int? usuarioClienteId,
     bool setDomicilio = false,
     String? domicilio,
   }) async {
@@ -852,7 +870,10 @@ class ApiService {
       'ultima_mod': _mysqlDateTime(DateTime.now()),
     };
 
-    if (setCliente) body['cliente_id'] = clienteId?.toString() ?? '';
+    if (setCliente) {
+      body['cliente_cliente_id'] = clienteClienteId?.toString() ?? '';
+      body['usuario_cliente_id'] = usuarioClienteId?.toString() ?? '';
+    }
     if (setDomicilio) body['domicilio'] = (domicilio ?? '');
     if (titulo != null) body['noticia'] = titulo;
     if (descripcion != null) body['descripcion'] = descripcion;
@@ -1244,18 +1265,22 @@ class ApiService {
   static Future<Cliente> updateCliente({
     required int id,
     required String nombre,
-    String? whatsapp,
-    String? domicilio,
-    String? correo,
+    String? telefono,
+    String? email,
+    String? domicilio1,
+    String? domicilio2,
+    String? domicilio3,
   }) async {
     final url = Uri.parse('$baseUrl/update_cliente.php');
 
     final res = await http.post(url, body: {
       'id': id.toString(),
       'nombre': nombre.trim(),
-      'whatsapp': (whatsapp ?? '').trim(),
-      'domicilio': (domicilio ?? '').trim(),
-      'correo': (correo ?? '').trim(),
+      'telefono': (telefono ?? '').trim(),
+      'email': (email ?? '').trim(),
+      'domicilio_1': (domicilio1 ?? '').trim(),
+      'domicilio_2': (domicilio2 ?? '').trim(),
+      'domicilio_3': (domicilio3 ?? '').trim(),
     });
 
     if (res.statusCode != 200) {

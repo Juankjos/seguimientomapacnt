@@ -1,4 +1,3 @@
-// lib/screens/cliente_detalle_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -93,8 +92,10 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   final _formKey = GlobalKey<FormState>();
   final _nombreCtrl = TextEditingController();
   final _telCtrl = TextEditingController();
-  final _domCtrl = TextEditingController();
   final _correoCtrl = TextEditingController();
+  final _dom1Ctrl = TextEditingController();
+  final _dom2Ctrl = TextEditingController();
+  final _dom3Ctrl = TextEditingController();
 
   static const double _kDesktopBreakpoint = 1100;
   static const double _kMaxContentWidth = 1450;
@@ -149,12 +150,14 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   void dispose() {
     _nombreCtrl.dispose();
     _telCtrl.dispose();
-    _domCtrl.dispose();
     _correoCtrl.dispose();
+    _dom1Ctrl.dispose();
+    _dom2Ctrl.dispose();
+    _dom3Ctrl.dispose();
     super.dispose();
   }
 
-  ({String lada, String digits}) _parseWhatsapp(String raw) {
+  ({String lada, String digits}) _parseTelefono(String raw) {
     final cleaned = raw.trim().replaceAll(RegExp(r'\s+'), '');
     if (cleaned.isEmpty) return (lada: '+52', digits: '');
 
@@ -174,17 +177,28 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
     return (lada: '+52', digits: cleaned.replaceAll(RegExp(r'\D'), ''));
   }
 
+  List<String> _domiciliosDe(Cliente c) {
+    final values = <String>[
+      (c.domicilio1 ?? '').trim(),
+      (c.domicilio2 ?? '').trim(),
+      (c.domicilio3 ?? '').trim(),
+    ];
+    return values.where((e) => e.isNotEmpty).toList();
+  }
+
   void _hidratarFormDesdeCliente(Cliente c) {
     _nombreCtrl.text = c.nombre;
 
-    final raw = (c.whatsapp ?? '');
-    final parsed = _parseWhatsapp(raw);
+    final rawTelefono = (c.telefono ?? '').trim();
+    final parsed = _parseTelefono(rawTelefono);
 
     _lada = parsed.lada;
     _telCtrl.text = _formatPhoneDigits(parsed.digits);
 
-    _domCtrl.text = (c.domicilio ?? '');
-    _correoCtrl.text = (c.correo ?? '');
+    _correoCtrl.text = (c.email ?? '').trim();
+    _dom1Ctrl.text = (c.domicilio1 ?? '').trim();
+    _dom2Ctrl.text = (c.domicilio2 ?? '').trim();
+    _dom3Ctrl.text = (c.domicilio3 ?? '').trim();
   }
 
   Future<void> _refrescar() async {
@@ -202,7 +216,9 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
         _cargando = false;
       });
 
-      if (!_guardando) _hidratarFormDesdeCliente(fresh);
+      if (!_guardando) {
+        _hidratarFormDesdeCliente(fresh);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -237,7 +253,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
 
   String? _validarCorreo(String? v) {
     final s = (v ?? '').trim();
-    if (s.isEmpty) return 'El correo es requerido';
+    if (s.isEmpty) return null; // no lo hagas obligatorio si la BD lo permite nulo
     final ok = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(s);
     return ok ? null : 'Correo inválido';
   }
@@ -248,9 +264,12 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
 
     final nombre = _nombreCtrl.text.trim();
     final telDigits = _telCtrl.text.replaceAll(RegExp(r'\D'), '');
-    final whatsapp = telDigits.isEmpty ? null : '$_lada$telDigits';
-    final domicilio = _domCtrl.text.trim().isEmpty ? null : _domCtrl.text.trim();
-    final correo = _correoCtrl.text.trim();
+    final telefono = telDigits.isEmpty ? null : '$_lada$telDigits';
+    final email = _correoCtrl.text.trim().isEmpty ? null : _correoCtrl.text.trim();
+
+    final domicilio1 = _dom1Ctrl.text.trim().isEmpty ? null : _dom1Ctrl.text.trim();
+    final domicilio2 = _dom2Ctrl.text.trim().isEmpty ? null : _dom2Ctrl.text.trim();
+    final domicilio3 = _dom3Ctrl.text.trim().isEmpty ? null : _dom3Ctrl.text.trim();
 
     setState(() {
       _guardando = true;
@@ -261,9 +280,11 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
       final updated = await ApiService.updateCliente(
         id: _cliente.id,
         nombre: nombre,
-        whatsapp: whatsapp,
-        domicilio: domicilio,
-        correo: correo,
+        telefono: telefono,
+        email: email,
+        domicilio1: domicilio1,
+        domicilio2: domicilio2,
+        domicilio3: domicilio3,
       );
 
       if (!mounted) return;
@@ -294,7 +315,9 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
     });
 
     try {
-      final list = await ApiService.getNoticiasPorCliente(clienteId: _cliente.id);
+      final list = await ApiService.getNoticiasPorCliente(
+        clienteClienteId: _cliente.id,
+      );
       if (!mounted) return;
 
       setState(() {
@@ -464,13 +487,13 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   }
 
   Widget _buildResumenClienteHeader(BuildContext context) {
-    final rawWhatsapp = (_cliente.whatsapp ?? '').trim();
-    final domicilioDisplay = (_cliente.domicilio ?? '').trim();
-    final correoDisplay = (_cliente.correo ?? '').trim();
+    final rawTelefono = (_cliente.telefono ?? '').trim();
+    final correoDisplay = (_cliente.email ?? '').trim();
+    final domicilios = _domiciliosDe(_cliente);
 
-    final parsed = _parseWhatsapp(rawWhatsapp);
-    final whatsappPretty = rawWhatsapp.isEmpty
-        ? 'Sin WhatsApp'
+    final parsed = _parseTelefono(rawTelefono);
+    final telefonoPretty = rawTelefono.isEmpty
+        ? 'Sin teléfono'
         : '${parsed.lada} ${_formatPhoneDigits(parsed.digits)}';
 
     final theme = Theme.of(context);
@@ -513,8 +536,8 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
                       _infoChip(
                         context,
                         icon: Icons.phone_outlined,
-                        text: whatsappPretty,
-                        onCopy: rawWhatsapp.isEmpty
+                        text: telefonoPretty,
+                        onCopy: rawTelefono.isEmpty
                             ? null
                             : () => _copiar('${parsed.lada}${parsed.digits}'),
                       ),
@@ -524,11 +547,19 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
                         text: correoDisplay.isEmpty ? 'Sin correo' : correoDisplay,
                         onCopy: correoDisplay.isEmpty ? null : () => _copiar(correoDisplay),
                       ),
-                      _infoChip(
-                        context,
-                        icon: Icons.location_on_outlined,
-                        text: domicilioDisplay.isEmpty ? 'Sin domicilio' : domicilioDisplay,
-                        onCopy: domicilioDisplay.isEmpty ? null : () => _copiar(domicilioDisplay),
+                      if (domicilios.isEmpty)
+                        _infoChip(
+                          context,
+                          icon: Icons.location_on_outlined,
+                          text: 'Sin domicilios',
+                        ),
+                      ...domicilios.asMap().entries.map(
+                        (entry) => _infoChip(
+                          context,
+                          icon: Icons.location_on_outlined,
+                          text: 'Domicilio ${entry.key + 1}',
+                          onCopy: () => _copiar(entry.value),
+                        ),
                       ),
                     ],
                   ),
@@ -645,7 +676,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
                     PhoneSpacingFormatter(maxDigits: 15),
                   ],
                   decoration: const InputDecoration(
-                    labelText: 'WhatsApp (número)',
+                    labelText: 'Teléfono',
                     border: OutlineInputBorder(),
                     hintText: 'Ej: 3331234567',
                   ),
@@ -672,10 +703,32 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
 
           const SizedBox(height: 14),
           TextFormField(
-            controller: _domCtrl,
+            controller: _dom1Ctrl,
             enabled: !_guardando,
             decoration: const InputDecoration(
-              labelText: 'Domicilio',
+              labelText: 'Domicilio 1',
+              border: OutlineInputBorder(),
+            ),
+            maxLines: 3,
+            textInputAction: TextInputAction.newline,
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _dom2Ctrl,
+            enabled: !_guardando,
+            decoration: const InputDecoration(
+              labelText: 'Domicilio 2',
+              border: OutlineInputBorder(),
+            ),
+            maxLines: 3,
+            textInputAction: TextInputAction.newline,
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _dom3Ctrl,
+            enabled: !_guardando,
+            decoration: const InputDecoration(
+              labelText: 'Domicilio 3',
               border: OutlineInputBorder(),
             ),
             maxLines: 3,
@@ -684,7 +737,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
 
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: (_guardando) ? null : _guardar,
+            onPressed: _guardando ? null : _guardar,
             icon: _guardando
                 ? const SizedBox(
                     width: 18,
@@ -721,9 +774,10 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
         final fechaTxt = (fecha != null)
             ? DateFormat('dd/MM/yyyy hh:mm a', 'es_MX').format(fecha)
             : 'Sin fecha';
-        final rep = (n.reportero ?? '').trim().isEmpty
+
+        final rep = n.reportero.trim().isEmpty
             ? 'Sin reportero'
-            : n.reportero!.trim();
+            : n.reportero.trim();
 
         return ListTile(
           contentPadding: EdgeInsets.zero,
@@ -749,13 +803,8 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   }
 
   Widget _buildNoticiasClienteSection(BuildContext context) {
-    final agendadas = _noticiasCliente
-        .where((n) => (n.pendiente ?? true) == true)
-        .toList();
-
-    final terminadas = _noticiasCliente
-        .where((n) => (n.pendiente ?? true) == false)
-        .toList();
+    final agendadas = _noticiasCliente.where((n) => n.pendiente).toList();
+    final terminadas = _noticiasCliente.where((n) => !n.pendiente).toList();
 
     final visibles = _filtroNoticias == 'agendadas' ? agendadas : terminadas;
 
@@ -790,7 +839,6 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
             },
           ),
           const SizedBox(height: 16),
-
           if (_cargandoNoticias)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
