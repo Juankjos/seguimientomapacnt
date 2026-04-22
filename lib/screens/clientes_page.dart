@@ -155,7 +155,7 @@ class _ClientesPageState extends State<ClientesPage> {
                   controller: _searchCtrl,
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
-                    hintText: 'Buscar cliente…',
+                    hintText: 'Buscar cliente, usuario, correo, empresa…',
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _searchCtrl.text.isEmpty
                         ? null
@@ -202,6 +202,13 @@ class _ClientesPageState extends State<ClientesPage> {
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (context, i) {
                           final c = _items[i];
+                          final subtitleParts = <String>[
+                            if ((c.username ?? '').trim().isNotEmpty) '@${c.username!.trim()}',
+                            if ((c.empresa ?? '').trim().isNotEmpty) c.empresa!.trim(),
+                            if ((c.email ?? '').trim().isNotEmpty) c.email!.trim(),
+                            if ((c.telefono ?? '').trim().isNotEmpty) c.telefono!.trim(),
+                          ];
+
                           return InkWell(
                             borderRadius: BorderRadius.circular(14),
                             onTap: () => _abrirDetalle(c),
@@ -219,20 +226,118 @@ class _ClientesPageState extends State<ClientesPage> {
                                 ],
                               ),
                               child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _avatarDefault(id: c.id, nombre: c.nombre),
+                                  _avatarDefault(id: c.id, nombre: c.nombreCompleto),
                                   const SizedBox(width: 12),
                                   Expanded(
-                                    child: Text(
-                                      c.nombre,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 15,
-                                      ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                c.nombreCompleto,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 15,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: c.activo
+                                                    ? Colors.green.withOpacity(0.12)
+                                                    : Colors.red.withOpacity(0.12),
+                                                borderRadius: BorderRadius.circular(999),
+                                              ),
+                                              child: Text(
+                                                c.activo ? 'Activo' : 'Inactivo',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: c.activo ? Colors.green : Colors.red,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        if (subtitleParts.isNotEmpty) ...[
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            subtitleParts.join(' • '),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ],
+                                        if ((c.domicilioPrincipal ?? '').trim().isNotEmpty) ...[
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            c.domicilioPrincipal!,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                        const SizedBox(height: 8),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .primary
+                                                    .withOpacity(0.10),
+                                                borderRadius: BorderRadius.circular(999),
+                                              ),
+                                              child: Text(
+                                                '${c.domiciliosDisponibles.length} domicilio(s)',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Theme.of(context).colorScheme.primary,
+                                                ),
+                                              ),
+                                            ),
+                                            if ((c.email ?? '').trim().isNotEmpty)
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .secondary
+                                                      .withOpacity(0.10),
+                                                  borderRadius: BorderRadius.circular(999),
+                                                ),
+                                                child: Text(
+                                                  'Correo registrado',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: Theme.of(context).colorScheme.secondary,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
                                     ),
                                   ),
+                                  const SizedBox(width: 8),
                                   const Icon(Icons.chevron_right),
                                 ],
                               ),
@@ -277,30 +382,40 @@ class _CrearClienteDialog extends StatefulWidget {
 class _CrearClienteDialogState extends State<_CrearClienteDialog> {
   final _formKey = GlobalKey<FormState>();
 
+  final _usernameCtrl = TextEditingController();
   final _nombreCtrl = TextEditingController();
-  final _whatsCtrl = TextEditingController();
-  final _domCtrl = TextEditingController();
+  final _apellidosCtrl = TextEditingController();
+  final _telefonoCtrl = TextEditingController();
+  final _correoCtrl = TextEditingController();
+  final _empresaCtrl = TextEditingController();
+  final _dom1Ctrl = TextEditingController();
+  final _dom2Ctrl = TextEditingController();
+  final _dom3Ctrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _pass2Ctrl = TextEditingController();
-  final _correoCtrl = TextEditingController();
 
   bool _creando = false;
   String? _error;
 
   @override
   void dispose() {
+    _usernameCtrl.dispose();
     _nombreCtrl.dispose();
-    _whatsCtrl.dispose();
-    _domCtrl.dispose();
+    _apellidosCtrl.dispose();
+    _telefonoCtrl.dispose();
+    _correoCtrl.dispose();
+    _empresaCtrl.dispose();
+    _dom1Ctrl.dispose();
+    _dom2Ctrl.dispose();
+    _dom3Ctrl.dispose();
     _passCtrl.dispose();
     _pass2Ctrl.dispose();
-    _correoCtrl.dispose();
     super.dispose();
   }
 
   String? _validarCorreo(String? v) {
     final s = (v ?? '').trim();
-    if (s.isEmpty) return null;
+    if (s.isEmpty) return 'El correo es obligatorio';
     final ok = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(s);
     return ok ? null : 'Correo inválido';
   }
@@ -309,12 +424,17 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
     if (_creando) return;
     if (!_formKey.currentState!.validate()) return;
 
+    final username = _usernameCtrl.text.trim();
     final nombre = _nombreCtrl.text.trim();
-    final whatsapp = _whatsCtrl.text.trim();
-    final domicilio = _domCtrl.text.trim();
+    final apellidos = _apellidosCtrl.text.trim();
+    final telefono = _telefonoCtrl.text.trim();
+    final email = _correoCtrl.text.trim();
+    final empresa = _empresaCtrl.text.trim();
+    final domicilio1 = _dom1Ctrl.text.trim();
+    final domicilio2 = _dom2Ctrl.text.trim();
+    final domicilio3 = _dom3Ctrl.text.trim();
     final pass = _passCtrl.text.trim();
     final pass2 = _pass2Ctrl.text.trim();
-    final correo = _correoCtrl.text.trim();
 
     if (pass != pass2) {
       setState(() => _error = 'Las contraseñas no coinciden');
@@ -328,10 +448,15 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
 
     try {
       await ApiService.createCliente(
+        username: username,
         nombre: nombre,
-        whatsapp: whatsapp.isEmpty ? null : whatsapp,
-        domicilio: domicilio.isEmpty ? null : domicilio,
-        correo: correo.isEmpty ? null : correo,
+        apellidos: apellidos.isEmpty ? null : apellidos,
+        telefono: telefono.isEmpty ? null : telefono,
+        email: email,
+        empresa: empresa.isEmpty ? null : empresa,
+        domicilio1: domicilio1.isEmpty ? null : domicilio1,
+        domicilio2: domicilio2.isEmpty ? null : domicilio2,
+        domicilio3: domicilio3.isEmpty ? null : domicilio3,
         password: pass,
       );
 
@@ -352,8 +477,6 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
     final viewInsetsBottom = MediaQuery.of(context).viewInsets.bottom;
     final h = MediaQuery.sizeOf(context).height;
     final w = MediaQuery.sizeOf(context).width;
-    final correo = _correoCtrl.text.trim();
-
     final isWideWeb = kIsWeb && w >= 980;
 
     return WillPopScope(
@@ -362,7 +485,7 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
         insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: isWideWeb ? 520 : 420,
+            maxWidth: isWideWeb ? 620 : 460,
             maxHeight: h * 0.90,
           ),
           child: SingleChildScrollView(
@@ -391,39 +514,51 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
                   child: Column(
                     children: [
                       TextFormField(
-                        controller: _nombreCtrl,
+                        controller: _usernameCtrl,
                         enabled: !_creando,
                         decoration: const InputDecoration(
-                          labelText: 'Nombre',
+                          labelText: 'Username *',
                           border: OutlineInputBorder(),
                         ),
-                        textInputAction: TextInputAction.next,
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) return 'El nombre es requerido';
-                          if (v.trim().length < 2) return 'Nombre demasiado corto';
+                          final s = (v ?? '').trim();
+                          if (s.isEmpty) return 'El username es obligatorio';
+                          if (s.length < 3) return 'Muy corto';
                           return null;
                         },
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
-                        controller: _whatsCtrl,
+                        controller: _nombreCtrl,
                         enabled: !_creando,
                         decoration: const InputDecoration(
-                          labelText: 'WhatsApp (opcional)',
+                          labelText: 'Nombre *',
                           border: OutlineInputBorder(),
                         ),
-                        textInputAction: TextInputAction.next,
+                        validator: (v) {
+                          final s = (v ?? '').trim();
+                          if (s.isEmpty) return 'El nombre es obligatorio';
+                          if (s.length < 2) return 'Nombre demasiado corto';
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
-                        controller: _domCtrl,
+                        controller: _apellidosCtrl,
                         enabled: !_creando,
                         decoration: const InputDecoration(
-                          labelText: 'Domicilio (opcional)',
+                          labelText: 'Apellidos',
                           border: OutlineInputBorder(),
                         ),
-                        textInputAction: TextInputAction.next,
-                        maxLines: 2,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _telefonoCtrl,
+                        enabled: !_creando,
+                        decoration: const InputDecoration(
+                          labelText: 'Teléfono',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
@@ -431,12 +566,49 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
                         enabled: !_creando,
                         keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(
-                          labelText: 'Correo (OBLIGATORIO)',
+                          labelText: 'Correo *',
                           border: OutlineInputBorder(),
-                          hintText: 'ejemplo@dominio.com',
                         ),
                         validator: _validarCorreo,
-                        textInputAction: TextInputAction.next,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _empresaCtrl,
+                        enabled: !_creando,
+                        decoration: const InputDecoration(
+                          labelText: 'Empresa',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _dom1Ctrl,
+                        enabled: !_creando,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: 'Domicilio 1',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _dom2Ctrl,
+                        enabled: !_creando,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: 'Domicilio 2',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _dom3Ctrl,
+                        enabled: !_creando,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: 'Domicilio 3',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
@@ -444,10 +616,9 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
                         enabled: !_creando,
                         obscureText: true,
                         decoration: const InputDecoration(
-                          labelText: 'Contraseña',
+                          labelText: 'Contraseña *',
                           border: OutlineInputBorder(),
                         ),
-                        textInputAction: TextInputAction.next,
                         validator: (v) {
                           final s = v?.trim() ?? '';
                           if (s.isEmpty) return 'La contraseña es requerida';
@@ -461,16 +632,15 @@ class _CrearClienteDialogState extends State<_CrearClienteDialog> {
                         enabled: !_creando,
                         obscureText: true,
                         decoration: const InputDecoration(
-                          labelText: 'Confirmar contraseña',
+                          labelText: 'Confirmar contraseña *',
                           border: OutlineInputBorder(),
                         ),
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => _creando ? null : _crear(),
                         validator: (v) {
                           final s = v?.trim() ?? '';
                           if (s.isEmpty) return 'Confirma la contraseña';
                           return null;
                         },
+                        onFieldSubmitted: (_) => _creando ? null : _crear(),
                       ),
                     ],
                   ),

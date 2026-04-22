@@ -1231,19 +1231,29 @@ class ApiService {
 
   // 🔹 Crear cliente
   static Future<Cliente> createCliente({
+    required String username,
     required String nombre,
-    String? whatsapp,
-    String? domicilio,
-    String? correo,
+    String? apellidos,
+    String? telefono,
+    required String email,
+    String? empresa,
+    String? domicilio1,
+    String? domicilio2,
+    String? domicilio3,
     required String password,
   }) async {
     final url = Uri.parse('$baseUrl/create_cliente.php');
 
     final res = await http.post(url, body: {
-      'nombre': nombre,
-      'whatsapp': (whatsapp ?? '').trim(),
-      'domicilio': (domicilio ?? '').trim(),
-      'correo': (correo ?? '').trim(),
+      'username': username.trim(),
+      'nombre': nombre.trim(),
+      'apellidos': (apellidos ?? '').trim(),
+      'telefono': (telefono ?? '').trim(),
+      'email': email.trim(),
+      'empresa': (empresa ?? '').trim(),
+      'domicilio_1': (domicilio1 ?? '').trim(),
+      'domicilio_2': (domicilio2 ?? '').trim(),
+      'domicilio_3': (domicilio3 ?? '').trim(),
       'password': password,
     });
 
@@ -1265,8 +1275,10 @@ class ApiService {
   static Future<Cliente> updateCliente({
     required int id,
     required String nombre,
+    String? apellidos,
     String? telefono,
-    String? email,
+    required String email,
+    String? empresa,
     String? domicilio1,
     String? domicilio2,
     String? domicilio3,
@@ -1276,8 +1288,10 @@ class ApiService {
     final res = await http.post(url, body: {
       'id': id.toString(),
       'nombre': nombre.trim(),
+      'apellidos': (apellidos ?? '').trim(),
       'telefono': (telefono ?? '').trim(),
-      'email': (email ?? '').trim(),
+      'email': email.trim(),
+      'empresa': (empresa ?? '').trim(),
       'domicilio_1': (domicilio1 ?? '').trim(),
       'domicilio_2': (domicilio2 ?? '').trim(),
       'domicilio_3': (domicilio3 ?? '').trim(),

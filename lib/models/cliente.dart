@@ -12,7 +12,10 @@ class ClienteDomicilioOption {
 class Cliente {
   final int id;
   final int? usuarioClienteId;
+  final String? username;
+  final bool activo;
   final String nombre;
+  final String? apellidos;
   final String? telefono;
   final String? email;
   final String? empresa;
@@ -24,6 +27,9 @@ class Cliente {
     required this.id,
     required this.nombre,
     this.usuarioClienteId,
+    this.username,
+    this.activo = true,
+    this.apellidos,
     this.telefono,
     this.email,
     this.empresa,
@@ -31,6 +37,15 @@ class Cliente {
     this.domicilio2,
     this.domicilio3,
   });
+
+  String get nombreCompleto {
+    final parts = [
+      nombre.trim(),
+      (apellidos ?? '').trim(),
+    ].where((e) => e.isNotEmpty).toList();
+
+    return parts.isEmpty ? nombre : parts.join(' ');
+  }
 
   List<ClienteDomicilioOption> get domiciliosDisponibles {
     final out = <ClienteDomicilioOption>[];
@@ -52,10 +67,6 @@ class Cliente {
   String? get domicilioPrincipal =>
       domiciliosDisponibles.isEmpty ? null : domiciliosDisponibles.first.texto;
 
-  // compatibilidad para código viejo
-  String? get domicilio => domicilioPrincipal;
-  String? get whatsapp => telefono;
-
   factory Cliente.fromJson(Map<String, dynamic> json) {
     int parseInt(dynamic v) => int.tryParse(v?.toString() ?? '') ?? 0;
 
@@ -70,17 +81,23 @@ class Cliente {
       return s.isEmpty ? null : s;
     }
 
-    final legacyDomicilio = parseNullableString(json['domicilio']);
+    bool parseBool(dynamic v) {
+      if (v == null) return false;
+      final s = v.toString().trim().toLowerCase();
+      return s == '1' || s == 'true';
+    }
 
     return Cliente(
       id: parseInt(json['id']),
-      usuarioClienteId:
-          parseNullableInt(json['usuario_cliente_id'] ?? json['usuario_id']),
-      nombre: (json['nombre'] ?? json['username'] ?? '').toString(),
-      telefono: parseNullableString(json['telefono'] ?? json['whatsapp']),
-      email: parseNullableString(json['email'] ?? json['correo']),
+      usuarioClienteId: parseNullableInt(json['usuario_cliente_id'] ?? json['usuario_id']),
+      username: parseNullableString(json['username']),
+      activo: parseBool(json['activo']),
+      nombre: (json['nombre'] ?? '').toString(),
+      apellidos: parseNullableString(json['apellidos']),
+      telefono: parseNullableString(json['telefono']),
+      email: parseNullableString(json['email']),
       empresa: parseNullableString(json['empresa']),
-      domicilio1: parseNullableString(json['domicilio_1']) ?? legacyDomicilio,
+      domicilio1: parseNullableString(json['domicilio_1']),
       domicilio2: parseNullableString(json['domicilio_2']),
       domicilio3: parseNullableString(json['domicilio_3']),
     );

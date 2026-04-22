@@ -1,3 +1,4 @@
+// lib/screens/cliente_detalle_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -85,6 +86,128 @@ class ClienteDetallePage extends StatefulWidget {
   @override
   State<ClienteDetallePage> createState() => _ClienteDetallePageState();
 }
+class _AddressForm {
+  final String calle;
+  final String numeroExterior;
+  final String numeroInterior;
+  final String colonia;
+  final String ciudad;
+  final String municipio;
+  final String estado;
+  final String codigoPostal;
+  final String referencias;
+
+  const _AddressForm({
+    this.calle = '',
+    this.numeroExterior = '',
+    this.numeroInterior = '',
+    this.colonia = '',
+    this.ciudad = '',
+    this.municipio = '',
+    this.estado = '',
+    this.codigoPostal = '',
+    this.referencias = '',
+  });
+
+  bool get isEmpty =>
+      calle.trim().isEmpty &&
+      numeroExterior.trim().isEmpty &&
+      numeroInterior.trim().isEmpty &&
+      colonia.trim().isEmpty &&
+      ciudad.trim().isEmpty &&
+      municipio.trim().isEmpty &&
+      estado.trim().isEmpty &&
+      codigoPostal.trim().isEmpty &&
+      referencias.trim().isEmpty;
+
+  _AddressForm copyWith({
+    String? calle,
+    String? numeroExterior,
+    String? numeroInterior,
+    String? colonia,
+    String? ciudad,
+    String? municipio,
+    String? estado,
+    String? codigoPostal,
+    String? referencias,
+  }) {
+    return _AddressForm(
+      calle: calle ?? this.calle,
+      numeroExterior: numeroExterior ?? this.numeroExterior,
+      numeroInterior: numeroInterior ?? this.numeroInterior,
+      colonia: colonia ?? this.colonia,
+      ciudad: ciudad ?? this.ciudad,
+      municipio: municipio ?? this.municipio,
+      estado: estado ?? this.estado,
+      codigoPostal: codigoPostal ?? this.codigoPostal,
+      referencias: referencias ?? this.referencias,
+    );
+  }
+
+  bool equals(_AddressForm other) {
+    return calle.trim() == other.calle.trim() &&
+        numeroExterior.trim() == other.numeroExterior.trim() &&
+        numeroInterior.trim() == other.numeroInterior.trim() &&
+        colonia.trim() == other.colonia.trim() &&
+        ciudad.trim() == other.ciudad.trim() &&
+        municipio.trim() == other.municipio.trim() &&
+        estado.trim() == other.estado.trim() &&
+        codigoPostal.trim() == other.codigoPostal.trim() &&
+        referencias.trim() == other.referencias.trim();
+  }
+
+  String toStorageString() {
+    final parts = <String>[
+      'Calle: ${calle.trim()}',
+      if (numeroExterior.trim().isNotEmpty) 'Num. ext: ${numeroExterior.trim()}',
+      if (numeroInterior.trim().isNotEmpty) 'Num. int: ${numeroInterior.trim()}',
+      'Colonia: ${colonia.trim()}',
+      'Ciudad: ${ciudad.trim()}',
+      'Municipio: ${municipio.trim()}',
+      'Estado: ${estado.trim()}',
+      'CP: ${codigoPostal.trim()}',
+      if (referencias.trim().isNotEmpty) 'Referencias: ${referencias.trim()}',
+    ];
+
+    return parts.join(', ');
+  }
+
+  String toPreviewString() => toStorageString();
+}
+
+const _emptyAddress = _AddressForm();
+const _addressSlots = <int>[1, 2, 3];
+
+String _extractField(String text, String label, List<String> nextLabels) {
+  final escapedLabel = RegExp.escape(label);
+  final nextPart = nextLabels.isNotEmpty
+      ? nextLabels.map(RegExp.escape).join('|')
+      : '';
+
+  final pattern = nextLabels.isNotEmpty
+      ? '$escapedLabel\\s*(.*?)(?=,\\s*(?:$nextPart)|\$)'
+      : '$escapedLabel\\s*(.*?)\$';
+
+  final regex = RegExp(pattern);
+  return regex.firstMatch(text)?.group(1)?.trim() ?? '';
+}
+
+_AddressForm _parseDomicilio(String? domicilio) {
+  final text = (domicilio ?? '').trim();
+  if (text.isEmpty) return _emptyAddress;
+
+  return _AddressForm(
+    calle: _extractField(text, 'Calle:', ['Num. ext:', 'Num. int:', 'Colonia:']),
+    numeroExterior: _extractField(text, 'Num. ext:', ['Num. int:', 'Colonia:']),
+    numeroInterior: _extractField(text, 'Num. int:', ['Colonia:']),
+    colonia: _extractField(text, 'Colonia:', ['Ciudad:']),
+    ciudad: _extractField(text, 'Ciudad:', ['Municipio:']),
+    municipio: _extractField(text, 'Municipio:', ['Estado:']),
+    estado: _extractField(text, 'Estado:', ['CP:']),
+    codigoPostal: _extractField(text, 'CP:', ['Referencias:']),
+    referencias: _extractField(text, 'Referencias:', []),
+  );
+}
 
 class _ClienteDetallePageState extends State<ClienteDetallePage> {
   late Cliente _cliente;
@@ -93,12 +216,16 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   final _nombreCtrl = TextEditingController();
   final _telCtrl = TextEditingController();
   final _correoCtrl = TextEditingController();
-  final _dom1Ctrl = TextEditingController();
-  final _dom2Ctrl = TextEditingController();
-  final _dom3Ctrl = TextEditingController();
+  final _apellidosCtrl = TextEditingController();
+  final _empresaCtrl = TextEditingController();
 
   static const double _kDesktopBreakpoint = 1100;
   static const double _kMaxContentWidth = 1450;
+
+  int? _editingAddressSlot;
+
+  late Map<int, _AddressForm> _addresses;
+  late Map<int, _AddressForm> _originalAddresses;
 
   bool _cargando = false;
   bool _guardando = false;
@@ -109,38 +236,18 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   String? _errorNoticias;
 
   String _filtroNoticias = 'agendadas';
-  String _lada = '+52';
-
-  static const _ladasAmerica = <({String label, String code})>[
-    (label: 'México', code: '+52'),
-    (label: 'Estados Unidos', code: '+1'),
-    (label: 'Canadá', code: '+1'),
-    (label: 'Guatemala', code: '+502'),
-    (label: 'Belice', code: '+501'),
-    (label: 'Honduras', code: '+504'),
-    (label: 'El Salvador', code: '+503'),
-    (label: 'Nicaragua', code: '+505'),
-    (label: 'Costa Rica', code: '+506'),
-    (label: 'Panamá', code: '+507'),
-    (label: 'Cuba', code: '+53'),
-    (label: 'República Dominicana', code: '+1'),
-    (label: 'Puerto Rico', code: '+1'),
-    (label: 'Colombia', code: '+57'),
-    (label: 'Venezuela', code: '+58'),
-    (label: 'Ecuador', code: '+593'),
-    (label: 'Perú', code: '+51'),
-    (label: 'Bolivia', code: '+591'),
-    (label: 'Chile', code: '+56'),
-    (label: 'Argentina', code: '+54'),
-    (label: 'Uruguay', code: '+598'),
-    (label: 'Paraguay', code: '+595'),
-    (label: 'Brasil', code: '+55'),
-  ];
 
   @override
   void initState() {
     super.initState();
     _cliente = widget.cliente;
+    _addresses = {
+      1: _parseDomicilio(_cliente.domicilio1),
+      2: _parseDomicilio(_cliente.domicilio2),
+      3: _parseDomicilio(_cliente.domicilio3),
+    };
+    _originalAddresses = Map<int, _AddressForm>.from(_addresses);
+
     _hidratarFormDesdeCliente(_cliente);
     _cargarNoticiasCliente();
     _refrescar();
@@ -151,30 +258,20 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
     _nombreCtrl.dispose();
     _telCtrl.dispose();
     _correoCtrl.dispose();
-    _dom1Ctrl.dispose();
-    _dom2Ctrl.dispose();
-    _dom3Ctrl.dispose();
+    _apellidosCtrl.dispose();
+    _empresaCtrl.dispose();
     super.dispose();
   }
 
-  ({String lada, String digits}) _parseTelefono(String raw) {
-    final cleaned = raw.trim().replaceAll(RegExp(r'\s+'), '');
-    if (cleaned.isEmpty) return (lada: '+52', digits: '');
+  void _syncAddressesFromCliente(Cliente c) {
+    final parsed = {
+      1: _parseDomicilio(c.domicilio1),
+      2: _parseDomicilio(c.domicilio2),
+      3: _parseDomicilio(c.domicilio3),
+    };
 
-    final codes = _ladasAmerica.map((e) => e.code).toList()
-      ..sort((a, b) => b.length.compareTo(a.length));
-
-    if (cleaned.startsWith('+')) {
-      for (final code in codes) {
-        if (cleaned.startsWith(code)) {
-          final digits = cleaned.substring(code.length).replaceAll(RegExp(r'\D'), '');
-          return (lada: code, digits: digits);
-        }
-      }
-      return (lada: '+52', digits: cleaned.replaceAll(RegExp(r'\D'), ''));
-    }
-
-    return (lada: '+52', digits: cleaned.replaceAll(RegExp(r'\D'), ''));
+    _addresses = parsed;
+    _originalAddresses = Map<int, _AddressForm>.from(parsed);
   }
 
   List<String> _domiciliosDe(Cliente c) {
@@ -188,17 +285,13 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
 
   void _hidratarFormDesdeCliente(Cliente c) {
     _nombreCtrl.text = c.nombre;
+    _apellidosCtrl.text = (c.apellidos ?? '').trim();
+    _empresaCtrl.text = (c.empresa ?? '').trim();
 
-    final rawTelefono = (c.telefono ?? '').trim();
-    final parsed = _parseTelefono(rawTelefono);
-
-    _lada = parsed.lada;
-    _telCtrl.text = _formatPhoneDigits(parsed.digits);
+    final rawTelefono = (c.telefono ?? '').replaceAll(RegExp(r'\D'), '');
+    _telCtrl.text = _formatPhoneDigits(rawTelefono);
 
     _correoCtrl.text = (c.email ?? '').trim();
-    _dom1Ctrl.text = (c.domicilio1 ?? '').trim();
-    _dom2Ctrl.text = (c.domicilio2 ?? '').trim();
-    _dom3Ctrl.text = (c.domicilio3 ?? '').trim();
   }
 
   Future<void> _refrescar() async {
@@ -213,6 +306,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
 
       setState(() {
         _cliente = fresh;
+        _syncAddressesFromCliente(fresh);
         _cargando = false;
       });
 
@@ -253,23 +347,43 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
 
   String? _validarCorreo(String? v) {
     final s = (v ?? '').trim();
-    if (s.isEmpty) return null; // no lo hagas obligatorio si la BD lo permite nulo
+    if (s.isEmpty) return 'El correo es requerido';
     final ok = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(s);
     return ok ? null : 'Correo inválido';
   }
 
-  Future<void> _guardar() async {
+  String? _validarAddress(_AddressForm a) {
+    if (a.calle.trim().isEmpty ||
+        a.colonia.trim().isEmpty ||
+        a.ciudad.trim().isEmpty ||
+        a.municipio.trim().isEmpty ||
+        a.estado.trim().isEmpty ||
+        a.codigoPostal.trim().isEmpty) {
+      return 'Completa todos los campos obligatorios del domicilio';
+    }
+
+    if (a.numeroExterior.trim().isEmpty && a.numeroInterior.trim().isEmpty) {
+      return 'Captura número exterior o número interior';
+    }
+
+    if (!RegExp(r'^\d{5}$').hasMatch(a.codigoPostal.trim())) {
+      return 'El código postal debe tener 5 dígitos';
+    }
+
+    return null;
+  }
+
+  Future<void> _guardarPerfil() async {
     if (_guardando) return;
     if (!_formKey.currentState!.validate()) return;
 
     final nombre = _nombreCtrl.text.trim();
-    final telDigits = _telCtrl.text.replaceAll(RegExp(r'\D'), '');
-    final telefono = telDigits.isEmpty ? null : '$_lada$telDigits';
-    final email = _correoCtrl.text.trim().isEmpty ? null : _correoCtrl.text.trim();
+    final apellidos = _apellidosCtrl.text.trim().isEmpty ? null : _apellidosCtrl.text.trim();
+    final empresa = _empresaCtrl.text.trim().isEmpty ? null : _empresaCtrl.text.trim();
+    final email = _correoCtrl.text.trim();
 
-    final domicilio1 = _dom1Ctrl.text.trim().isEmpty ? null : _dom1Ctrl.text.trim();
-    final domicilio2 = _dom2Ctrl.text.trim().isEmpty ? null : _dom2Ctrl.text.trim();
-    final domicilio3 = _dom3Ctrl.text.trim().isEmpty ? null : _dom3Ctrl.text.trim();
+    final telDigits = _telCtrl.text.replaceAll(RegExp(r'\D'), '');
+    final telefono = telDigits.isEmpty ? null : telDigits;
 
     setState(() {
       _guardando = true;
@@ -280,17 +394,20 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
       final updated = await ApiService.updateCliente(
         id: _cliente.id,
         nombre: nombre,
+        apellidos: apellidos,
         telefono: telefono,
         email: email,
-        domicilio1: domicilio1,
-        domicilio2: domicilio2,
-        domicilio3: domicilio3,
+        empresa: empresa,
+        domicilio1: _addresses[1]!.isEmpty ? null : _addresses[1]!.toStorageString(),
+        domicilio2: _addresses[2]!.isEmpty ? null : _addresses[2]!.toStorageString(),
+        domicilio3: _addresses[3]!.isEmpty ? null : _addresses[3]!.toStorageString(),
       );
 
       if (!mounted) return;
 
       setState(() {
         _cliente = updated;
+        _syncAddressesFromCliente(updated);
         _guardando = false;
       });
 
@@ -306,6 +423,144 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
         _error = e.toString();
       });
     }
+  }
+
+  Future<void> _guardarDomicilio(int slot) async {
+    final address = _addresses[slot]!;
+    final validation = _validarAddress(address);
+
+    if (validation != null) {
+      setState(() => _error = validation);
+      return;
+    }
+
+    setState(() {
+      _guardando = true;
+      _error = null;
+    });
+
+    try {
+      final telDigits = _telCtrl.text.replaceAll(RegExp(r'\D'), '');
+      final telefono = telDigits.isEmpty ? null : telDigits;
+
+      final updated = await ApiService.updateCliente(
+        id: _cliente.id,
+        nombre: _nombreCtrl.text.trim(),
+        apellidos: _apellidosCtrl.text.trim().isEmpty ? null : _apellidosCtrl.text.trim(),
+        telefono: telefono,
+        email: _correoCtrl.text.trim(),
+        empresa: _empresaCtrl.text.trim().isEmpty ? null : _empresaCtrl.text.trim(),
+        domicilio1: _addresses[1]!.isEmpty ? null : _addresses[1]!.toStorageString(),
+        domicilio2: _addresses[2]!.isEmpty ? null : _addresses[2]!.toStorageString(),
+        domicilio3: _addresses[3]!.isEmpty ? null : _addresses[3]!.toStorageString(),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _cliente = updated;
+        _syncAddressesFromCliente(updated);
+        _editingAddressSlot = null;
+        _guardando = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Domicilio $slot guardado')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _guardando = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  Future<void> _eliminarDomicilio(int slot) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Eliminar domicilio $slot'),
+        content: const Text('Esta acción eliminará el domicilio actual.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    setState(() {
+      _addresses[slot] = _emptyAddress;
+      _guardando = true;
+      _error = null;
+    });
+
+    try {
+      final telDigits = _telCtrl.text.replaceAll(RegExp(r'\D'), '');
+      final telefono = telDigits.isEmpty ? null : telDigits;
+
+      final updated = await ApiService.updateCliente(
+        id: _cliente.id,
+        nombre: _nombreCtrl.text.trim(),
+        apellidos: _apellidosCtrl.text.trim().isEmpty ? null : _apellidosCtrl.text.trim(),
+        telefono: telefono,
+        email: _correoCtrl.text.trim(),
+        empresa: _empresaCtrl.text.trim().isEmpty ? null : _empresaCtrl.text.trim(),
+        domicilio1: _addresses[1]!.isEmpty ? null : _addresses[1]!.toStorageString(),
+        domicilio2: _addresses[2]!.isEmpty ? null : _addresses[2]!.toStorageString(),
+        domicilio3: _addresses[3]!.isEmpty ? null : _addresses[3]!.toStorageString(),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _cliente = updated;
+        _syncAddressesFromCliente(updated);
+        _editingAddressSlot = null;
+        _guardando = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Domicilio $slot eliminado')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _guardando = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  void _cancelarDomicilio(int slot) {
+    setState(() {
+      _addresses[slot] = _originalAddresses[slot]!;
+      _editingAddressSlot = null;
+      _error = null;
+    });
+  }
+
+  void _agregarDomicilio() {
+    final next = _addressSlots.firstWhere(
+      (slot) => _originalAddresses[slot]!.isEmpty,
+      orElse: () => 0,
+    );
+
+    if (next == 0) return;
+
+    setState(() {
+      _addresses[next] = _emptyAddress;
+      _editingAddressSlot = next;
+      _error = null;
+    });
   }
 
   Future<void> _cargarNoticiasCliente() async {
@@ -487,14 +742,13 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
   }
 
   Widget _buildResumenClienteHeader(BuildContext context) {
-    final rawTelefono = (_cliente.telefono ?? '').trim();
+    final rawTelefono = (_cliente.telefono ?? '').replaceAll(RegExp(r'\D'), '');
     final correoDisplay = (_cliente.email ?? '').trim();
     final domicilios = _domiciliosDe(_cliente);
 
-    final parsed = _parseTelefono(rawTelefono);
     final telefonoPretty = rawTelefono.isEmpty
         ? 'Sin teléfono'
-        : '${parsed.lada} ${_formatPhoneDigits(parsed.digits)}';
+        : _formatPhoneDigits(rawTelefono);
 
     final theme = Theme.of(context);
 
@@ -510,7 +764,9 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
               radius: 30,
               backgroundColor: theme.colorScheme.primaryContainer,
               child: Text(
-                _cliente.nombre.isNotEmpty ? _cliente.nombre[0].toUpperCase() : '?',
+                _cliente.nombreCompleto.isNotEmpty
+                    ? _cliente.nombreCompleto[0].toUpperCase()
+                    : '?',
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
                   color: theme.colorScheme.onPrimaryContainer,
@@ -523,7 +779,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _cliente.nombre,
+                    _cliente.nombreCompleto,
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
@@ -537,9 +793,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
                         context,
                         icon: Icons.phone_outlined,
                         text: telefonoPretty,
-                        onCopy: rawTelefono.isEmpty
-                            ? null
-                            : () => _copiar('${parsed.lada}${parsed.digits}'),
+                        onCopy: rawTelefono.isEmpty ? null : () => _copiar(rawTelefono),
                       ),
                       _infoChip(
                         context,
@@ -547,6 +801,27 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
                         text: correoDisplay.isEmpty ? 'Sin correo' : correoDisplay,
                         onCopy: correoDisplay.isEmpty ? null : () => _copiar(correoDisplay),
                       ),
+                      if ((_cliente.username ?? '').trim().isNotEmpty)
+                        _infoChip(
+                          context,
+                          icon: Icons.alternate_email,
+                          text: _cliente.username!,
+                          onCopy: () => _copiar(_cliente.username!),
+                        ),
+                      _infoChip(
+                        context,
+                        icon: _cliente.activo
+                            ? Icons.check_circle_outline
+                            : Icons.cancel_outlined,
+                        text: _cliente.activo ? 'Activo' : 'Inactivo',
+                      ),
+                      if ((_cliente.empresa ?? '').trim().isNotEmpty)
+                        _infoChip(
+                          context,
+                          icon: Icons.business_outlined,
+                          text: _cliente.empresa!,
+                          onCopy: () => _copiar(_cliente.empresa!),
+                        ),
                       if (domicilios.isEmpty)
                         _infoChip(
                           context,
@@ -621,6 +896,284 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
     );
   }
 
+  Widget _buildDomiciliosSection(BuildContext context) {
+    final theme = Theme.of(context);
+    final addressCount =
+        _addressSlots.where((slot) => !_originalAddresses[slot]!.isEmpty).length;
+    final canAddAddress = addressCount < 3 && _editingAddressSlot == null;
+
+    return _buildPanelCard(
+      context: context,
+      title: 'Domicilios',
+      subtitle: 'Administra hasta 3 domicilios por cliente.',
+      trailing: canAddAddress
+          ? OutlinedButton(
+              onPressed: _agregarDomicilio,
+              child: const Text('Agregar domicilio'),
+            )
+          : null,
+      child: Column(
+        children: _addressSlots.map((slot) {
+          final exists = !_originalAddresses[slot]!.isEmpty;
+          final isEditing = _editingAddressSlot == slot;
+          final address = _addresses[slot]!;
+
+          if (!exists && !isEditing) {
+            return const SizedBox.shrink();
+          }
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              border: Border.all(color: theme.dividerColor),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Domicilio $slot',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (!isEditing) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              _originalAddresses[slot]!.toPreviewString(),
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (!isEditing)
+                      OutlinedButton(
+                        onPressed: () {
+                          setState(() {
+                            _editingAddressSlot = slot;
+                            _error = null;
+                          });
+                        },
+                        child: const Text('Editar'),
+                      ),
+                  ],
+                ),
+                if (isEditing) ...[
+                  const SizedBox(height: 14),
+                  _buildAddressEditor(slot),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _guardando ? null : () => _cancelarDomicilio(slot),
+                          child: const Text('Cancelar'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      if (exists)
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _guardando ? null : () => _eliminarDomicilio(slot),
+                            child: const Text('Eliminar'),
+                          ),
+                        ),
+                      if (exists) const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _guardando ? null : () => _guardarDomicilio(slot),
+                          child: Text(_guardando ? 'Guardando...' : 'Guardar'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          );
+        }).toList()
+          ..addAll(
+            addressCount == 0 && _editingAddressSlot == null
+                ? [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        'No hay domicilios registrados.',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    )
+                  ]
+                : [],
+          ),
+      ),
+    );
+  }
+
+  Widget _buildAddressEditor(int slot) {
+    void setField(String field, String value) {
+      setState(() {
+        final current = _addresses[slot]!;
+
+        switch (field) {
+          case 'calle':
+            _addresses[slot] = current.copyWith(calle: value);
+            break;
+          case 'numeroExterior':
+            _addresses[slot] = current.copyWith(numeroExterior: value);
+            break;
+          case 'numeroInterior':
+            _addresses[slot] = current.copyWith(numeroInterior: value);
+            break;
+          case 'colonia':
+            _addresses[slot] = current.copyWith(colonia: value);
+            break;
+          case 'ciudad':
+            _addresses[slot] = current.copyWith(ciudad: value);
+            break;
+          case 'municipio':
+            _addresses[slot] = current.copyWith(municipio: value);
+            break;
+          case 'estado':
+            _addresses[slot] = current.copyWith(estado: value);
+            break;
+          case 'codigoPostal':
+            _addresses[slot] = current.copyWith(codigoPostal: value);
+            break;
+          case 'referencias':
+            _addresses[slot] = current.copyWith(referencias: value);
+            break;
+        }
+      });
+    }
+
+    final address = _addresses[slot]!;
+
+    return Column(
+      children: [
+        TextFormField(
+          initialValue: address.calle,
+          decoration: const InputDecoration(
+            labelText: 'Calle',
+            border: OutlineInputBorder(),
+          ),
+          onChanged: (v) => setField('calle', v),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                initialValue: address.numeroExterior,
+                decoration: const InputDecoration(
+                  labelText: 'Número exterior',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) => setField('numeroExterior', v),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextFormField(
+                initialValue: address.numeroInterior,
+                decoration: const InputDecoration(
+                  labelText: 'Número interior',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) => setField('numeroInterior', v),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          initialValue: address.colonia,
+          decoration: const InputDecoration(
+            labelText: 'Colonia',
+            border: OutlineInputBorder(),
+          ),
+          onChanged: (v) => setField('colonia', v),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                initialValue: address.ciudad,
+                decoration: const InputDecoration(
+                  labelText: 'Ciudad',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) => setField('ciudad', v),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextFormField(
+                initialValue: address.municipio,
+                decoration: const InputDecoration(
+                  labelText: 'Municipio',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) => setField('municipio', v),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                initialValue: address.estado,
+                decoration: const InputDecoration(
+                  labelText: 'Estado',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) => setField('estado', v),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextFormField(
+                initialValue: address.codigoPostal,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(5),
+                ],
+                decoration: const InputDecoration(
+                  labelText: 'Código postal',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) => setField('codigoPostal', v),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          initialValue: address.referencias,
+          minLines: 2,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Referencias',
+            border: OutlineInputBorder(),
+          ),
+          onChanged: (v) => setField('referencias', v),
+        ),
+      ],
+    );
+  }
+
   Widget _buildDatosClienteSection(BuildContext context) {
     return _buildPanelCard(
       context: context,
@@ -637,56 +1190,40 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
               border: OutlineInputBorder(),
             ),
             validator: _validarNombre,
-            textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 14),
-
-          Row(
-            children: [
-              Expanded(
-                flex: 4,
-                child: DropdownButtonFormField<String>(
-                  value: _lada,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Lada',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: _ladasAmerica
-                      .map((x) => DropdownMenuItem(
-                            value: x.code,
-                            child: Text('${x.label} (${x.code})'),
-                          ))
-                      .toList(),
-                  onChanged: _guardando
-                      ? null
-                      : (v) {
-                          setState(() => _lada = v ?? '+52');
-                        },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 6,
-                child: TextFormField(
-                  controller: _telCtrl,
-                  enabled: !_guardando,
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [
-                    PhoneSpacingFormatter(maxDigits: 15),
-                  ],
-                  decoration: const InputDecoration(
-                    labelText: 'Teléfono',
-                    border: OutlineInputBorder(),
-                    hintText: 'Ej: 3331234567',
-                  ),
-                  validator: _validarTelefono,
-                  textInputAction: TextInputAction.next,
-                ),
-              ),
-            ],
+          TextFormField(
+            controller: _apellidosCtrl,
+            enabled: !_guardando,
+            decoration: const InputDecoration(
+              labelText: 'Apellidos',
+              border: OutlineInputBorder(),
+            ),
           ),
-
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _empresaCtrl,
+            enabled: !_guardando,
+            decoration: const InputDecoration(
+              labelText: 'Empresa',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _telCtrl,
+            enabled: !_guardando,
+            keyboardType: TextInputType.phone,
+            inputFormatters: [
+              PhoneSpacingFormatter(maxDigits: 15),
+            ],
+            decoration: const InputDecoration(
+              labelText: 'Teléfono',
+              border: OutlineInputBorder(),
+              hintText: '333 123 4567',
+            ),
+            validator: _validarTelefono,
+          ),
           const SizedBox(height: 14),
           TextFormField(
             controller: _correoCtrl,
@@ -695,49 +1232,12 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
             decoration: const InputDecoration(
               labelText: 'Correo',
               border: OutlineInputBorder(),
-              hintText: 'ejemplo@gmail.com',
             ),
             validator: _validarCorreo,
-            textInputAction: TextInputAction.next,
           ),
-
-          const SizedBox(height: 14),
-          TextFormField(
-            controller: _dom1Ctrl,
-            enabled: !_guardando,
-            decoration: const InputDecoration(
-              labelText: 'Domicilio 1',
-              border: OutlineInputBorder(),
-            ),
-            maxLines: 3,
-            textInputAction: TextInputAction.newline,
-          ),
-          const SizedBox(height: 14),
-          TextFormField(
-            controller: _dom2Ctrl,
-            enabled: !_guardando,
-            decoration: const InputDecoration(
-              labelText: 'Domicilio 2',
-              border: OutlineInputBorder(),
-            ),
-            maxLines: 3,
-            textInputAction: TextInputAction.newline,
-          ),
-          const SizedBox(height: 14),
-          TextFormField(
-            controller: _dom3Ctrl,
-            enabled: !_guardando,
-            decoration: const InputDecoration(
-              labelText: 'Domicilio 3',
-              border: OutlineInputBorder(),
-            ),
-            maxLines: 3,
-            textInputAction: TextInputAction.newline,
-          ),
-
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: _guardando ? null : _guardar,
+            onPressed: _guardando ? null : _guardarPerfil,
             icon: _guardando
                 ? const SizedBox(
                     width: 18,
@@ -747,7 +1247,6 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
                 : const Icon(Icons.save),
             label: Text(_guardando ? 'Guardando…' : 'Guardar cambios'),
           ),
-
           const SizedBox(height: 20),
           _buildDangerZone(context),
         ],
@@ -872,7 +1371,7 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
           ),
           IconButton(
             tooltip: 'Guardar',
-            onPressed: (_cargando || _guardando) ? null : _guardar,
+            onPressed: (_cargando || _guardando) ? null : _guardarPerfil,
             icon: _guardando
                 ? const SizedBox(
                     width: 18,
@@ -901,27 +1400,35 @@ class _ClienteDetallePageState extends State<ClienteDetallePage> {
                         _buildResumenClienteHeader(context),
                         const SizedBox(height: 16),
                         isDesktop
-                            ? Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    flex: 5,
-                                    child: _buildDatosClienteSection(context),
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  flex: 5,
+                                  child: Column(
+                                    children: [
+                                      _buildDatosClienteSection(context),
+                                      const SizedBox(height: 16),
+                                      _buildDomiciliosSection(context),
+                                    ],
                                   ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    flex: 6,
-                                    child: _buildNoticiasClienteSection(context),
-                                  ),
-                                ],
-                              )
-                            : Column(
-                                children: [
-                                  _buildDatosClienteSection(context),
-                                  const SizedBox(height: 16),
-                                  _buildNoticiasClienteSection(context),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  flex: 6,
+                                  child: _buildNoticiasClienteSection(context),
+                                ),
+                              ],
+                            )
+                          : Column(
+                              children: [
+                                _buildDatosClienteSection(context),
+                                const SizedBox(height: 16),
+                                _buildDomiciliosSection(context),
+                                const SizedBox(height: 16),
+                                _buildNoticiasClienteSection(context),
+                              ],
+                            ),
                       ],
                     );
 

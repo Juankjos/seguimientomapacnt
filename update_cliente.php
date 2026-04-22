@@ -10,72 +10,140 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $id = isset($_POST['id']) ? intval($_POST['id']) : 0;
 $nombre = trim($_POST['nombre'] ?? '');
-$whatsapp = trim($_POST['whatsapp'] ?? '');
-$domicilio = trim($_POST['domicilio'] ?? '');
-$correo = trim($_POST['correo'] ?? '');
-$correo = ($correo === '') ? null : $correo;
-
-if ($correo !== null) {
-    if (!filter_var($correo, FILTER_VALIDATE_EMAIL)) {
-        echo json_encode(['success' => false, 'message' => 'Correo inválido']);
-        exit;
-    }
-}
+$apellidos = trim($_POST['apellidos'] ?? '');
+$telefono = trim($_POST['telefono'] ?? '');
+$email = trim($_POST['email'] ?? '');
+$empresa = trim($_POST['empresa'] ?? '');
+$dom1 = trim($_POST['domicilio_1'] ?? '');
+$dom2 = trim($_POST['domicilio_2'] ?? '');
+$dom3 = trim($_POST['domicilio_3'] ?? '');
 
 if ($id <= 0) {
     echo json_encode(['success' => false, 'message' => 'id inválido']);
     exit;
 }
+
 if ($nombre === '') {
     echo json_encode(['success' => false, 'message' => 'El nombre es requerido']);
     exit;
 }
 
-if ($whatsapp === '') {
-    $whatsapp = null;
-} else {
-    // Quita espacios
-    $whatsapp = preg_replace('/\s+/', '', $whatsapp);
-
-    // Normaliza: permite '+' solo al inicio y solo dígitos después
-    if (str_starts_with($whatsapp, '+')) {
-        $digits = preg_replace('/\D/', '', substr($whatsapp, 1));
-        $whatsapp = $digits === '' ? null : ('+' . $digits);
-    } else {
-        $digits = preg_replace('/\D/', '', $whatsapp);
-        $whatsapp = $digits === '' ? null : $digits;
-    }
+if ($email === '') {
+    echo json_encode(['success' => false, 'message' => 'El correo es obligatorio']);
+    exit;
 }
-$domicilio = ($domicilio === '') ? null : $domicilio;
+
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    echo json_encode(['success' => false, 'message' => 'Correo inválido']);
+    exit;
+}
+
+if ($telefono === '') $telefono = null;
+if ($apellidos === '') $apellidos = null;
+if ($empresa === '') $empresa = null;
+if ($dom1 === '') $dom1 = null;
+if ($dom2 === '') $dom2 = null;
+if ($dom3 === '') $dom3 = null;
 
 try {
+    $pdo->beginTransaction();
+
     $stmt = $pdo->prepare("
-        UPDATE clientes
-        SET nombre = :nombre,
-            whatsapp = :whatsapp,
-            domicilio = :domicilio,
-            correo = :correo
+        SELECT usuario_id
+        FROM clientes_clientes
+        WHERE id = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$id]);
+    $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$cliente) {
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'Cliente no encontrado']);
+        exit;
+    }
+
+    $usuarioId = intval($cliente['usuario_id']);
+
+    $stmt = $pdo->prepare("
+        UPDATE clientes_clientes
+        SET
+            nombre = :nombre,
+            apellidos = :apellidos,
+            telefono = :telefono,
+            email = :email,
+            empresa = :empresa,
+            domicilio_1 = :dom1,
+            domicilio_2 = :dom2,
+            domicilio_3 = :dom3
         WHERE id = :id
         LIMIT 1
     ");
     $stmt->execute([
         ':id' => $id,
         ':nombre' => $nombre,
-        ':whatsapp' => $whatsapp,
-        ':domicilio' => $domicilio,
-        ':correo' => $correo,
+        ':apellidos' => $apellidos,
+        ':telefono' => $telefono,
+        ':email' => $email,
+        ':empresa' => $empresa,
+        ':dom1' => $dom1,
+        ':dom2' => $dom2,
+        ':dom3' => $dom3,
     ]);
 
-    $stmt2 = $pdo->prepare("SELECT id, nombre, whatsapp, domicilio, correo FROM clientes WHERE id = ? LIMIT 1");
-    $stmt2->execute([$id]);
-    $row = $stmt2->fetch(PDO::FETCH_ASSOC);
+    $stmt = $pdo->prepare("
+        UPDATE usuarios_clientes
+        SET email = :email
+        WHERE id = :usuario_id
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ':email' => $email,
+        ':usuario_id' => $usuarioId,
+    ]);
+
+    $stmt = $pdo->prepare("
+        SELECT
+            c.id,
+            c.usuario_id AS usuario_cliente_id,
+            u.username,
+            u.activo,
+            c.nombre,
+            c.apellidos,
+            c.telefono,
+            COALESCE(NULLIF(c.email, ''), u.email) AS email,
+            c.empresa,
+            c.domicilio_1,
+            c.domicilio_2,
+            c.domicilio_3
+        FROM clientes_clientes c
+        INNER JOIN usuarios_clientes u ON u.id = c.usuario_id
+        WHERE c.id = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    $pdo->commit();
 
     echo json_encode(['success' => true, 'data' => $row]);
-} catch (Exception $e) {
-    if (str_contains($e->getMessage(), 'uq_clientes_nombre')) {
-        echo json_encode(['success' => false, 'message' => 'Ya existe un cliente con ese nombre']);
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    if (str_contains($e->getMessage(), 'Duplicate entry')) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'El username o correo ya existe',
+        ]);
         exit;
     }
+
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Error al actualizar', 'error' => $e->getMessage()]);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Error al actualizar',
+        'error' => $e->getMessage(),
+    ]);
 }
